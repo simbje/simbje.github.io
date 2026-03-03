@@ -37,8 +37,8 @@ format:
     highlight-style: github
 
 execute:
-  freeze: auto   # only re-execute files that have changed
+  freeze: auto
   echo: true
   warning: false
   message: false
-  error: false   # don't halt entire render if one chunk errors
+  error: true

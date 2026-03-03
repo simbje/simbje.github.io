@@ -82,27 +82,40 @@ SSB_CATALOGUE <- '
 
 ---
 
-## PxWebApiData usage pattern
+## PxWebApiData usage pattern (follow this EXACTLY)
 ```r
 library(PxWebApiData)
 
-# Fetch data
+# Step 1: Fetch
 result <- ApiData(
   "https://data.ssb.no/api/v0/en/table/TABLE_ID",
-  ContentsCode = "CODE",          # the measure you want
-  Tid = list(filter="top", values=40)  # last 40 periods
+  ContentsCode = "CODE",
+  Tid = list(filter = "top", values = 40)
 )
 
-# result is a list: result[[1]] is a data.frame with columns:
-# value, Tid (time), and dimension columns
-df <- result[[1]] %>%
+# Step 2: ALWAYS extract and inspect first — column names vary by table!
+df <- result[[1]]
+print(names(df))   # do this in a chunk so you can see what columns exist
+print(head(df))
+
+# Step 3: Find the time column defensively — it is NOT always called "Tid"
+time_col <- names(df)[grepl("tid|aar|kvartal|maaned|year|quarter", 
+                             names(df), ignore.case = TRUE)][1]
+message("Time column is: ", time_col)
+
+# Step 4: Parse time using the discovered column name
+df <- df %>%
   mutate(
     value = as.numeric(value),
-    # parse Tid depending on frequency:
-    # Monthly  "2024M01" -> ym("2024-01")
-    # Quarterly "2024K1" -> yq("2024 Q1")  
-    # Annual   "2024"   -> ymd(paste0(Tid, "-01-01"))
-  )
+    time_str = .data[[time_col]],
+    date = case_when(
+      str_detect(time_str, "M")  ~ ym(str_replace(time_str, "M", "-")),
+      str_detect(time_str, "K")  ~ yq(str_replace(time_str, "K", " Q")),
+      str_length(time_str) == 4  ~ ymd(paste0(time_str, "-01-01")),
+      TRUE ~ NA_Date_
+    )
+  ) %>%
+  filter(!is.na(value), !is.na(date))
 ```
 '
 
@@ -186,21 +199,28 @@ analysis of Statistics Norway (SSB) data using R.
 - Use echo: true so readers can see the code
 - Add brief prose comments explaining WHY you make analytical choices
 
+## R code defensive requirements (CRITICAL — follow exactly)
+- After every ApiData() call, ALWAYS do: `df <- result[[1]]` then immediately print `names(df)` and `head(df)` in a chunk
+- NEVER assume column names — SSB returns different names per table. Always use `names(df)` to discover them first
+- The time column is sometimes called "Tid", sometimes the full dimension name like "Kvartal" or "Maaned" — check with names()
+- Parse time AFTER confirming the column exists: `time_col <- names(df)[grepl("id|aar|kvartal|maaned", names(df), ignore.case=TRUE)][1]`
+- Every chunk that could fail MUST be wrapped in tryCatch
+- Add `knitr::opts_chunk$set(error = TRUE)` in the setup chunk so one error never kills the whole post
+
 ## Post structure
-Every post must have this exact YAML front matter format:
+Every post must have this exact YAML front matter format (NO image field):
 ```
 ---
 title: "COMPELLING TITLE"
 description: "ONE SENTENCE SUMMARY"
 date: "DATE_TODAY"
 categories: [SSB, category1, category2]
-image: "thumbnail.png"  
 ---
 ```
 
 Then structure:
 1. Brief intro (2-3 sentences) — the hook, why this matters today
-2. Data section — fetch + wrangle, show the raw shape
+2. Data section — fetch + wrangle, ALWAYS show names(df) and head(df) first
 3. Analysis section(s) — 2-3 distinct analytical angles with charts
 4. Key findings — 3-5 bullet points with the numbers
 5. Closing reflection — broader context or what to watch next
