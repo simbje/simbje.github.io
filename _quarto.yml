@@ -1,0 +1,44 @@
+project:
+  type: website
+  output-dir: _site
+
+website:
+  title: "Simen Bjerkelund"
+  description: "Financial Analyst · Quantitative Researcher · Data Scientist"
+
+  navbar:
+    left:
+      - text: "Home"
+        href: index.qmd
+      - text: "CV"
+        href: cv.qmd
+      - text: "Projects"
+        href: projects/index.qmd
+      - text: "Blog"
+        href: blog/index.qmd
+      - text: "🇳🇴 SSB Daily"
+        href: ssb-daily/index.qmd
+    right:
+      - icon: github
+        href: https://github.com/simbje
+      - icon: envelope
+        href: mailto:simbje@gmail.com
+
+  page-footer:
+    left: "© 2025 Simen Bjerkelund · Built with [Quarto](https://quarto.org)"
+
+format:
+  html:
+    theme:
+      light: [cosmo, assets/styles.scss]
+    toc: true
+    code-fold: true
+    code-tools: true
+    highlight-style: github
+
+execute:
+  freeze: auto   # only re-execute files that have changed
+  echo: true
+  warning: false
+  message: false
+  error: false   # don't halt entire render if one chunk errors

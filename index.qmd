@@ -1,0 +1,101 @@
+---
+title: ""
+page-layout: full
+toc: false
+---
+
+```{=html}
+<div class="hero-section">
+  <h1>Simen Bjerkelund</h1>
+  <p class="subtitle">Financial Analyst · Quantitative Researcher · Data Scientist</p>
+  <div class="hero-badges">
+    <span class="badge">📊 Algorithmic Trading</span>
+    <span class="badge">🤖 Machine Learning</span>
+    <span class="badge">🇳🇴 Norwegian Markets</span>
+    <span class="badge">📈 Risk Analytics</span>
+    <span class="badge">R · Python · Shiny</span>
+  </div>
+</div>
+```
+
+## About Me
+
+I'm a financial analyst and quantitative researcher with a background spanning public sector finance management (Bærum Municipality, NOK 2.2bn budget), two master's degrees in applied finance and intelligence systems, and independent algorithmic trading development.
+
+I build my own analytics tools in R and Shiny — covering trade performance attribution, ML-driven opportunity scanning, Monte Carlo risk simulation, and automated economic analysis of Norwegian SSB data. Currently writing a master's thesis on applied machine learning for bankruptcy prediction.
+
+```{=html}
+<div class="stats-bar">
+  <div class="stat-item">
+    <div class="stat-number">2</div>
+    <div class="stat-label">Master's Degrees</div>
+  </div>
+  <div class="stat-item">
+    <div class="stat-number">NOK 2.2bn</div>
+    <div class="stat-label">Budget Managed</div>
+  </div>
+  <div class="stat-item">
+    <div class="stat-number">3</div>
+    <div class="stat-label">ML Models Live</div>
+  </div>
+  <div class="stat-item">
+    <div class="stat-number">Daily</div>
+    <div class="stat-label">SSB Data Updates</div>
+  </div>
+</div>
+```
+
+## Featured Projects
+
+```{=html}
+<div class="card-grid">
+  <a class="project-card" href="projects/trading-analytics.html">
+    <div class="card-icon">🚀</div>
+    <h3>Trading Analytics Platform</h3>
+    <p>Comprehensive R Shiny app for trade performance analysis, ML-driven strategy development, and risk optimization. Processes data from Nordnet broker.</p>
+    <div class="tech-tags">
+      <span class="tag">R Shiny</span>
+      <span class="tag">XGBoost</span>
+      <span class="tag">Random Forest</span>
+      <span class="tag">Monte Carlo</span>
+    </div>
+  </a>
+
+  <a class="project-card" href="ssb-daily/index.html">
+    <div class="card-icon">🇳🇴</div>
+    <h3>SSB Daily Dashboard</h3>
+    <p>Automated daily analysis of Statistics Norway (SSB) data — economic indicators, market trends, and macro signals — refreshed every morning via GitHub Actions.</p>
+    <div class="tech-tags">
+      <span class="tag">PxWebApiData</span>
+      <span class="tag">GitHub Actions</span>
+      <span class="tag">Quarto</span>
+      <span class="tag">SSB API</span>
+    </div>
+  </a>
+
+  <a class="project-card" href="projects/opportunity-scanner.html">
+    <div class="card-icon">🔍</div>
+    <h3>Opportunity Scanner</h3>
+    <p>ML-powered scanner across major stock indices using adaptive filter indicators, temporal cross-validation, and ensemble predictions.</p>
+    <div class="tech-tags">
+      <span class="tag">Logistic Regression</span>
+      <span class="tag">Technical Indicators</span>
+      <span class="tag">Yahoo Finance</span>
+    </div>
+  </a>
+</div>
+```
+
+## Latest from the Blog
+
+```{r}
+#| echo: false
+library(quarto)
+# The blog listing below is auto-generated from blog/index.qmd
+```
+
+*→ See all posts on the [Blog](blog/index.qmd)*
+
+---
+
+*Built with [Quarto](https://quarto.org) · Hosted on [GitHub Pages](https://pages.github.com) · Updated daily*

@@ -1,0 +1,71 @@
+---
+title: "Trading Analytics Platform"
+description: "A comprehensive R Shiny application for systematic trade analysis and ML-driven strategy development"
+date: "2025-01-01"
+categories: [R, Shiny, Machine Learning, Trading]
+---
+
+## Overview
+
+A full-featured trading analytics platform built in R Shiny that processes trade data exported from Nordnet. The application has evolved from basic performance analysis to a sophisticated ML-driven strategy development environment.
+
+## Key Features
+
+**Performance Analytics**
+
+- Van Tharp statistics (R-multiples, expectancy, SQN score)
+- Benchmark comparison against OSEBX and other indices
+- Temporal performance patterns (time of day, day of week, month)
+- Leverage analysis for BULL/BEAR products
+
+**Machine Learning**
+
+- Three production ML models: Logistic Regression, Random Forest, XGBoost
+- Feature set including 50+ technical indicators, price action variables, and macroeconomic inputs (VIX, oil prices, interest rates, financial ratios)
+- Custom target variable system for flexible model training
+- Temporal cross-validation to prevent lookahead bias
+- Adaptive filter indicators for regime detection
+
+**Risk Management**
+
+- Monte Carlo simulation for portfolio risk assessment
+- Position sizing optimization
+- Post-exit analysis to identify opportunity costs
+
+**Opportunity Scanner**
+
+- Scans major stock indices for entry signals
+- Real-time data via Yahoo Finance API
+- Ensemble signal from multiple ML models
+
+## Technical Architecture
+
+```
+app/
+├── R/
+│   ├── modules/           # Shiny modules (one per tab)
+│   │   ├── mod_performance.R
+│   │   ├── mod_ml_models.R
+│   │   ├── mod_scanner.R
+│   │   ├── mod_risk.R
+│   │   └── mod_backtest.R
+│   ├── utils/             # Shared utilities
+│   │   ├── data_processing.R
+│   │   ├── feature_engineering.R
+│   │   ├── ml_training.R
+│   │   └── plotting.R
+│   └── config.R
+├── app.R
+└── DESCRIPTION
+```
+
+## Lessons Learned
+
+- Modularizing a large Shiny app with `{golem}` dramatically improves maintainability
+- Yahoo Finance API rate limiting requires careful batching and caching
+- Temporal cross-validation (not random k-fold) is essential for honest ML evaluation in time series
+- Reactive value scoping bugs are the #1 source of Shiny headaches
+
+## Source Code
+
+*Available on GitHub — link here*

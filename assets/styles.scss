@@ -1,0 +1,229 @@
+/*-- scss:defaults --*/
+
+// Color palette — clean, professional, Nordic feel
+$primary:    #1a1a2e;
+$secondary:  #16213e;
+$accent:     #0f3460;
+$highlight:  #e94560;
+$light-gray: #f8f9fa;
+$mid-gray:   #6c757d;
+
+$font-family-sans-serif: 'Inter', 'Segoe UI', system-ui, sans-serif;
+$font-family-monospace: 'JetBrains Mono', 'Fira Code', monospace;
+$headings-font-weight: 600;
+$link-color: $highlight;
+$navbar-bg: $primary;
+$navbar-fg: #ffffff;
+$footer-bg: $light-gray;
+
+/*-- scss:rules --*/
+
+// Google Fonts import
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+// Hero section on index page
+.hero-section {
+  padding: 5rem 0 4rem;
+  background: linear-gradient(135deg, $primary 0%, $accent 100%);
+  color: white;
+  text-align: center;
+  
+  h1 {
+    font-size: 3rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+  }
+  
+  .subtitle {
+    font-size: 1.25rem;
+    opacity: 0.85;
+    font-weight: 300;
+    margin-bottom: 2rem;
+  }
+  
+  .hero-badges {
+    display: flex;
+    justify-content: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+  }
+  
+  .badge {
+    background: rgba(255,255,255,0.15);
+    border: 1px solid rgba(255,255,255,0.3);
+    color: white;
+    padding: 0.4rem 1rem;
+    border-radius: 2rem;
+    font-size: 0.85rem;
+    font-weight: 500;
+    backdrop-filter: blur(4px);
+  }
+}
+
+// Card grid for projects / highlights
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.5rem;
+  margin: 2rem 0;
+}
+
+.project-card {
+  background: white;
+  border: 1px solid #e9ecef;
+  border-radius: 12px;
+  padding: 1.75rem;
+  transition: transform 0.2s, box-shadow 0.2s;
+  text-decoration: none;
+  color: inherit;
+  display: block;
+  
+  &:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 32px rgba(0,0,0,0.1);
+    text-decoration: none;
+    color: inherit;
+  }
+  
+  .card-icon {
+    font-size: 2rem;
+    margin-bottom: 1rem;
+  }
+  
+  h3 {
+    font-size: 1.1rem;
+    margin-bottom: 0.5rem;
+    color: $primary;
+  }
+  
+  p {
+    color: $mid-gray;
+    font-size: 0.9rem;
+    margin-bottom: 1rem;
+  }
+  
+  .tech-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
+  
+  .tag {
+    background: $light-gray;
+    color: $accent;
+    font-size: 0.75rem;
+    padding: 0.2rem 0.6rem;
+    border-radius: 1rem;
+    font-family: $font-family-monospace;
+    font-weight: 500;
+  }
+}
+
+// Stats bar
+.stats-bar {
+  background: $light-gray;
+  border-radius: 12px;
+  padding: 2rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1.5rem;
+  text-align: center;
+  margin: 2rem 0;
+  
+  .stat-item {
+    .stat-number {
+      font-size: 2rem;
+      font-weight: 700;
+      color: $highlight;
+    }
+    .stat-label {
+      font-size: 0.85rem;
+      color: $mid-gray;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+  }
+}
+
+// SSB daily dashboard
+.ssb-header {
+  background: linear-gradient(90deg, #0f3460, #16213e);
+  color: white;
+  padding: 2rem;
+  border-radius: 12px;
+  margin-bottom: 2rem;
+  
+  h2 { color: white; }
+  .update-time { opacity: 0.7; font-size: 0.85rem; }
+}
+
+.metric-boxes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem;
+  margin: 1.5rem 0;
+}
+
+.metric-box {
+  background: white;
+  border: 1px solid #e9ecef;
+  border-radius: 10px;
+  padding: 1.25rem;
+  text-align: center;
+  
+  .metric-value {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: $primary;
+  }
+  
+  .metric-label {
+    font-size: 0.8rem;
+    color: $mid-gray;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-top: 0.25rem;
+  }
+  
+  &.positive .metric-value { color: #198754; }
+  &.negative .metric-value { color: #dc3545; }
+}
+
+// CV page
+.cv-section {
+  margin-bottom: 2.5rem;
+  
+  h2 {
+    border-bottom: 2px solid $highlight;
+    padding-bottom: 0.5rem;
+    color: $primary;
+  }
+}
+
+.cv-entry {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+  
+  .entry-title { font-weight: 600; }
+  .entry-org { color: $mid-gray; }
+  .entry-date { 
+    color: $mid-gray;
+    font-size: 0.85rem;
+    white-space: nowrap;
+  }
+}
+
+// Blog listing
+.blog-post-meta {
+  color: $mid-gray;
+  font-size: 0.85rem;
+  margin-bottom: 0.5rem;
+}
+
+// Responsive
+@media (max-width: 768px) {
+  .hero-section h1 { font-size: 2rem; }
+  .cv-entry { grid-template-columns: 1fr; }
+}

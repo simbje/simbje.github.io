@@ -1,0 +1,33 @@
+---
+title: "Building a Trading Analytics Platform in R Shiny"
+description: "How I went from a simple Quarto document to a full ML-powered trading analytics application — the architecture, the challenges, and what I learned."
+date: "2025-01-15"
+categories: [R, Shiny, Trading, Machine Learning]
+image: "thumbnail.png"
+---
+
+## Background
+
+This is a template blog post. Replace with your own content.
+
+When I first started tracking my trades with Nordnet, I was doing everything in spreadsheets. Then I moved to Quarto documents for reproducible analysis. Then Shiny, and then... it grew.
+
+## The Architecture
+
+*Write your post content here.*
+
+```r
+# Example code block — automatically styled
+library(tidyverse)
+library(xgboost)
+
+# Your code here
+```
+
+## What I Learned
+
+*Your insights here.*
+
+## Conclusion
+
+*Wrap up here.*

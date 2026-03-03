@@ -1,0 +1,177 @@
+---
+title: ""
+toc: false
+page-layout: full
+---
+
+```{=html}
+<style>
+.cv-wrap { max-width: 860px; margin: 0 auto; padding: 2rem 1.5rem 4rem; font-family: 'Segoe UI', system-ui, sans-serif; }
+.cv-header { display: flex; align-items: center; gap: 2rem; margin-bottom: 2.5rem; padding-bottom: 2rem; border-bottom: 2px solid #e94560; }
+.cv-photo { width: 110px; height: 110px; border-radius: 50%; object-fit: cover; flex-shrink: 0; border: 3px solid #e9ecef; }
+.cv-name { font-size: 2rem; font-weight: 700; color: #1a1a2e; margin: 0 0 0.25rem; }
+.cv-tagline { color: #6c757d; font-size: 0.95rem; margin: 0 0 0.6rem; }
+.cv-contacts { display: flex; flex-wrap: wrap; gap: 1rem; font-size: 0.85rem; }
+.cv-contacts a { color: #0f3460; text-decoration: none; }
+.cv-contacts a:hover { color: #e94560; }
+.cv-section-title { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.12em; color: #e94560; margin: 2rem 0 1rem; padding-bottom: 0.35rem; border-bottom: 1px solid #f0f0f0; }
+.cv-entry { display: grid; grid-template-columns: 130px 1fr; gap: 0 1.5rem; margin-bottom: 1.5rem; }
+.cv-date { font-size: 0.8rem; color: #6c757d; padding-top: 0.15rem; line-height: 1.5; }
+.cv-role { font-weight: 600; color: #1a1a2e; margin-bottom: 0.1rem; }
+.cv-org { font-size: 0.88rem; color: #444; margin-bottom: 0.5rem; }
+.cv-body { font-size: 0.88rem; color: #555; line-height: 1.65; }
+.cv-body ul { margin: 0.3rem 0 0 0; padding-left: 1.2rem; }
+.cv-body li { margin-bottom: 0.25rem; }
+.cv-skills-table { width: 100%; border-collapse: collapse; font-size: 0.87rem; margin-top: 0.5rem; }
+.cv-skills-table td { padding: 0.5rem 0.75rem; border-bottom: 1px solid #f0f0f0; vertical-align: top; }
+.cv-skills-table td:first-child { font-weight: 600; color: #1a1a2e; width: 160px; white-space: nowrap; }
+.pill-row { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.5rem; }
+.pill { background: #f0f2f5; color: #1a1a2e; font-size: 0.77rem; padding: 0.2rem 0.65rem; border-radius: 1rem; font-family: monospace; font-weight: 500; }
+@media (max-width: 600px) { .cv-header { flex-direction: column; } .cv-entry { grid-template-columns: 1fr; } }
+</style>
+
+<div class="cv-wrap">
+  <div class="cv-header">
+    <img src="../assets/simen.jpeg" class="cv-photo" alt="Simen Bjerkelund">
+    <div>
+      <h1 class="cv-name">Simen Bjerkelund</h1>
+      <p class="cv-tagline">Financial Analyst · Quantitative Researcher · Data Scientist</p>
+      <div class="cv-contacts">
+        <span>📍 Herslebs gate 32a, Oslo</span>
+        <a href="tel:93017845">📞 930 17 845</a>
+        <a href="mailto:simbje@gmail.com">✉️ simbje@gmail.com</a>
+        <a href="https://github.com/simbje" target="_blank">💻 github.com/simbje</a>
+        <span>🎂 08.03.1991</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="cv-section-title">Experience</div>
+
+  <div class="cv-entry">
+    <div class="cv-date">Des 2020 – Aug 2022</div>
+    <div>
+      <div class="cv-role">Chief Financial Advisor — Healthcare Sector</div>
+      <div class="cv-org">Bærum Municipality</div>
+      <div class="cv-body"><ul>
+        <li>Financial Manager responsible for a budget of NOK 2.2 billion</li>
+        <li>Coordinated the reporting for politicians and managers</li>
+        <li>Managed and coordinated the work of 5 financial advisors</li>
+      </ul></div>
+    </div>
+  </div>
+
+  <div class="cv-entry">
+    <div class="cv-date">Aug 2017 – Aug 2022</div>
+    <div>
+      <div class="cv-role">Financial Advisor — Healthcare Sector</div>
+      <div class="cv-org">Bærum Municipality</div>
+      <div class="cv-body"><ul>
+        <li>Responsible for reporting, analysis, budget, and forecasting within the business portfolio</li>
+        <li>Monitored management data and KPIs</li>
+        <li>Oversaw procurement processes — managed procurement routines and analysed procurement data</li>
+        <li>Representative for the <em>Municipal network for management information and healthcare services</em> across the largest municipalities in Norway</li>
+        <li>Automated data retrieval through VBA scripts and the use of APIs</li>
+      </ul></div>
+    </div>
+  </div>
+
+  <div class="cv-entry">
+    <div class="cv-date">Aug 2010 – Jun 2017</div>
+    <div>
+      <div class="cv-role">Tennis Coach</div>
+      <div class="cv-org">Stavanger Tennisklubb</div>
+      <div class="cv-body"><ul>
+        <li>Coaching competitive players, adults and children</li>
+      </ul></div>
+    </div>
+  </div>
+
+  <div class="cv-section-title">Education</div>
+
+  <div class="cv-entry">
+    <div class="cv-date">2022 – Present</div>
+    <div>
+      <div class="cv-role">Master in Intelligence Systems and Business Analysis</div>
+      <div class="cv-org">Høyskolen i Kristiania</div>
+      <div class="cv-body">Big data analytics · Database management · Applied visual and statistical analysis · Agile project management and IT governance<br><br><strong>Thesis:</strong> Applied machine learning and bankruptcy prediction</div>
+    </div>
+  </div>
+
+  <div class="cv-entry">
+    <div class="cv-date">Aug 2014 – Jun 2016</div>
+    <div>
+      <div class="cv-role">Master in Economics and Administration</div>
+      <div class="cv-org">Universitetet i Stavanger (UiS) · Specialization: Applied Finance</div>
+      <div class="cv-body"><strong>Thesis:</strong> Investigated the effect of currency risk management on financial statements, stock prices, and company value for seafood companies using Monte Carlo analyses and statistical models in R</div>
+    </div>
+  </div>
+
+  <div class="cv-entry">
+    <div class="cv-date">Aug 2011 – Jun 2014</div>
+    <div>
+      <div class="cv-role">Bachelor in Economics and Administration</div>
+      <div class="cv-org">Bedriftsøkonomisk Institutt (BI) Stavanger · Management Accounting and Investment Analysis</div>
+      <div class="cv-body"><strong>Thesis:</strong> Investigated Lean management techniques in hotel operations</div>
+    </div>
+  </div>
+
+  <div class="cv-entry">
+    <div class="cv-date">Jul 2012</div>
+    <div>
+      <div class="cv-role">Game Theory and Strategy</div>
+      <div class="cv-org">London School of Economics</div>
+    </div>
+  </div>
+
+  <div class="cv-entry">
+    <div class="cv-date">Aug 2010 – Jun 2011</div>
+    <div>
+      <div class="cv-role">Engineering Studies — Computer Engineering</div>
+      <div class="cv-org">Universitetet i Agder</div>
+    </div>
+  </div>
+
+  <div class="cv-section-title">Technical Skills</div>
+
+  <table class="cv-skills-table">
+    <tr><td>Languages</td><td>R, Python, SQL, VBA (Excel)</td></tr>
+    <tr><td>ML / Statistics</td><td>XGBoost, Random Forest, Logistic Regression, Monte Carlo simulation, time series analysis</td></tr>
+    <tr><td>Finance & Trading</td><td>Van Tharp metrics, technical analysis, backtesting, BULL/BEAR products, bankruptcy prediction</td></tr>
+    <tr><td>Frameworks</td><td>R Shiny, Quarto, ggplot2, tidyverse, tidymodels</td></tr>
+    <tr><td>BI & Reporting</td><td>Power BI, Tableau, Alteryx, Excel (advanced), VBA automation</td></tr>
+    <tr><td>ERP / Systems</td><td>Agresso (Unit4), Oracle BI & EPM, Visma</td></tr>
+    <tr><td>Data & APIs</td><td>SSB/PxWebApiData, Yahoo Finance, Nordnet, REST APIs</td></tr>
+    <tr><td>DevOps</td><td>Git, GitHub Actions, automated reporting pipelines</td></tr>
+  </table>
+
+  <div class="pill-row">
+    <span class="pill">R</span><span class="pill">Python</span><span class="pill">SQL</span>
+    <span class="pill">VBA</span><span class="pill">Shiny</span><span class="pill">Quarto</span>
+    <span class="pill">XGBoost</span><span class="pill">tidymodels</span><span class="pill">ggplot2</span>
+    <span class="pill">Power BI</span><span class="pill">Tableau</span><span class="pill">Alteryx</span>
+    <span class="pill">GitHub Actions</span><span class="pill">Monte Carlo</span>
+  </div>
+
+  <div class="cv-section-title">Courses & Other Experience</div>
+  <div class="cv-entry">
+    <div class="cv-date">Various</div>
+    <div class="cv-body"><ul>
+      <li><strong>In-depth municipal statistics and analysis</strong> — Bærum Municipality, 2017</li>
+      <li><strong>Activity Leader Course</strong> — Stavanger Tennisklubb, 2010</li>
+      <li><strong>Coach Level 1</strong> — Stavanger Tennisklubb, 2008</li>
+      <li><strong>Leader</strong>, BI Investments Club</li>
+      <li><strong>Analyst</strong>, UiS Student Capital Management</li>
+    </ul></div>
+  </div>
+
+  <div class="cv-section-title">Interests</div>
+  <div class="cv-body" style="margin-bottom:2rem;">
+    Competitive tennis · Stocks and investments · Algorithmic trading · Coding projects · TidyTuesday data visualisation
+  </div>
+
+  <div style="text-align:center; padding-top:2rem; border-top:1px solid #e9ecef; color:#aaa; font-size:0.8rem;">
+    References available upon request · Last updated 2025
+  </div>
+</div>
+```
