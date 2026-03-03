@@ -88,12 +88,6 @@ I build my own analytics tools in R and Shiny — covering trade performance att
 
 ## Latest from the Blog
 
-```{r}
-#| echo: false
-library(quarto)
-# The blog listing below is auto-generated from blog/index.qmd
-```
-
 *→ See all posts on the [Blog](blog/index.qmd)*
 
 ---

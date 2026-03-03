@@ -3,7 +3,7 @@ title: "Building a Trading Analytics Platform in R Shiny"
 description: "How I went from a simple Quarto document to a full ML-powered trading analytics application — the architecture, the challenges, and what I learned."
 date: "2025-01-15"
 categories: [R, Shiny, Trading, Machine Learning]
-image: "thumbnail.png"
+freeze: true
 ---
 
 ## Background
