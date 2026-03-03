@@ -238,8 +238,7 @@ Guidelines:
 - Include at least one angle that connects to broader Norwegian society or economy
 - Use at least 3 different chart types
 - Make the thumbnail-worthy chart the first or most prominent one
-- Reference the bankruptcy dataset (10582) occasionally since this site owner is writing 
-  a master thesis on bankruptcy prediction — but not every day
+
 
 Remember: return ONLY the raw .qmd content, starting with ---
 ')
