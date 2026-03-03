@@ -29,37 +29,28 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
 
-    env:
-      R_LIBS_USER: ~/R/library
-
     steps:
-      # ── 1. Checkout ──────────────────────────────────────────────────────────
       - name: 📥 Checkout repo
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # ── 2. R setup ───────────────────────────────────────────────────────────
       - name: 🔧 Set up R
         uses: r-lib/actions/setup-r@v2
         with:
           r-version: '4.4.0'
           use-public-rspm: true
 
-      # ── 3. Cache R packages ───────────────────────────────────────────────────
       - name: 📦 Cache R packages
         uses: actions/cache@v4
         with:
-          path: ~/R/library
+          path: ${{ env.R_LIBS_USER }}
           key: ${{ runner.os }}-r-4.4-${{ hashFiles('ssb-daily/r-packages.txt') }}
           restore-keys: ${{ runner.os }}-r-4.4-
 
-      # ── 4. Install R packages ─────────────────────────────────────────────────
       - name: 📚 Install R packages
         run: |
-          mkdir -p ~/R/library
           Rscript -e "
-            .libPaths('~/R/library')
             pkgs <- c(
               'httr2', 'jsonlite', 'glue', 'lubridate',
               'PxWebApiData', 'tidyverse',
@@ -71,19 +62,17 @@ jobs:
               'sf', 'rnaturalearth', 'rnaturalearthdata',
               'gt', 'gtExtras', 'knitr', 'rmarkdown'
             )
-            installed <- installed.packages(.libPaths()[1])[,'Package']
-            missing   <- pkgs[!pkgs %in% installed]
+            missing <- pkgs[!pkgs %in% installed.packages()[,'Package']]
             if (length(missing) > 0) {
               message('Installing: ', paste(missing, collapse=', '))
-              install.packages(missing, lib='~/R/library',
-                repos='https://packagemanager.posit.co/cran/__linux__/noble/latest',
-                quiet=TRUE)
+              install.packages(missing,
+                repos = 'https://packagemanager.posit.co/cran/__linux__/noble/latest',
+                quiet = TRUE)
             } else {
-              message('All packages cached.')
+              message('All packages already installed.')
             }
           "
 
-      # ── 5. Generate today's post ─────────────────────────────────────────────
       - name: 🤖 Generate daily SSB post via Claude API
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -91,11 +80,9 @@ jobs:
           if [ "${{ github.event.inputs.force_regenerate }}" = "true" ]; then
             TODAY=$(date +%Y-%m-%d)
             rm -rf "ssb-daily/posts/$TODAY"
-            echo "Force regenerating post for $TODAY"
           fi
           Rscript ssb-daily/generate_post.R
 
-      # ── 6. Commit new post ────────────────────────────────────────────────────
       - name: 💾 Commit generated post
         run: |
           git config user.name  "github-actions[bot]"
@@ -104,12 +91,10 @@ jobs:
           if git diff --staged --quiet; then
             echo "No new post to commit"
           else
-            TODAY=$(date +%Y-%m-%d)
-            git commit -m "🇳🇴 SSB post — $TODAY [skip ci]"
+            git commit -m "🇳🇴 SSB post — $(date +%Y-%m-%d) [skip ci]"
             git push
           fi
 
-      # ── 7. Quarto setup & render ─────────────────────────────────────────────
       - name: 🔧 Set up Quarto
         uses: quarto-dev/quarto-actions/setup@v2
         with:
@@ -118,20 +103,18 @@ jobs:
       - name: 🏗️ Render Quarto site
         run: quarto render
 
-      # ── 8. Commit _freeze folder (caches rendered outputs for next run) ───────
       - name: 💾 Commit _freeze cache
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add _freeze/
           if git diff --staged --quiet; then
-            echo "No freeze changes to commit"
+            echo "No freeze changes"
           else
-            git commit -m "chore: update _freeze cache [skip ci]"
+            git commit -m "chore: update _freeze [skip ci]"
             git push
           fi
 
-      # ── 9. Deploy ─────────────────────────────────────────────────────────────
       - name: 📄 Setup GitHub Pages
         uses: actions/configure-pages@v5
 
@@ -143,6 +126,3 @@ jobs:
       - name: 🚀 Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
-
-      - name: ✅ Done
-        run: echo "Deployed → ${{ steps.deployment.outputs.page_url }}"
