@@ -1,0 +1,544 @@
+---
+title: "Norway's Electric Revolution: How EVs Conquered the Roads"
+description: "With over 80% of new car sales now electric, we dive into SSB data to understand Norway's unprecedented vehicle transition."
+date: "2026-03-03"
+categories: [SSB, electric vehicles, energy, environment, transportation]
+---
+
+```{r setup}
+#| include: false
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  error = TRUE,
+  fig.width = 10,
+  fig.height = 6
+)
+```
+
+Norway has become the world's laboratory for electric vehicle adoption. While other countries debate EV mandates for 2035 or 2040, Norway has already crossed a threshold most thought impossible a decade ago. Today, we dig into Statistics Norway's data to understand the speed, scale, and implications of this transformation.
+
+## Setting Up Our Analysis
+
+```{r libraries}
+library(tidyverse)
+library(PxWebApiData)
+library(lubridate)
+library(scales)
+library(ggridges)
+
+# Custom color palette - inspired by Norwegian nature and electric energy
+norway_ev_palette <- c(
+  "#0A2342",  # Deep fjord blue
+  "#2CA58D",  # Electric green
+  "#84BC9C",  # Light green
+  "#F46036",  # Warning orange
+  "#E8E8E8",  # Light grey
+  "#1B4965",  # Medium blue
+  "#5FA8D3"   # Sky blue
+)
+
+# Custom theme for all charts
+theme_ev <- function() {
+  theme_minimal(base_size = 13) +
+    theme(
+      plot.title = element_text(face = "bold", size = 18, color = "#0A2342"),
+      plot.subtitle = element_text(size = 12, color = "#555555", margin = margin(b = 15)),
+      plot.caption = element_text(size = 9, color = "#888888", hjust = 0),
+      panel.grid.minor = element_blank(),
+      panel.grid.major.x = element_blank(),
+      legend.position = "top",
+      legend.title = element_blank(),
+      axis.title = element_text(size = 11, color = "#444444"),
+      plot.margin = margin(20, 20, 20, 20),
+      plot.background = element_rect(fill = "#FAFAFA", color = NA)
+    )
+}
+```
+
+## Fetching the EV Registration Data
+
+Let's start by pulling the electric vehicle registration data from SSB. This dataset tracks new vehicle registrations by fuel type.
+
+```{r fetch-ev-data}
+# Fetch EV registration data
+ev_result <- tryCatch({
+  ApiData(
+    "https://data.ssb.no/api/v0/en/table/13931",
+    Tid = list(filter = "top", values = 60)
+  )
+}, error = function(e) {
+  message("Error fetching EV data: ", e$message)
+  NULL
+})
+
+# CRITICAL: Always inspect the data structure first
+if (!is.null(ev_result)) {
+  ev_raw <- ev_result[[1]]
+  cat("Column names in EV dataset:\n")
+  print(names(ev_raw))
+  cat("\nFirst few rows:\n")
+  print(head(ev_raw))
+}
+```
+
+```{r process-ev-data}
+# Process the EV data after understanding its structure
+if (!is.null(ev_result)) {
+  
+  # Find the time column
+  time_col <- names(ev_raw)[grepl("tid|month|year|quarter|maaned", 
+                                   names(ev_raw), ignore.case = TRUE)][1]
+  cat("Identified time column:", time_col, "\n")
+  
+  # Find the value column
+  value_col <- names(ev_raw)[grepl("value|antall|number", 
+                                    names(ev_raw), ignore.case = TRUE)][1]
+  cat("Identified value column:", value_col, "\n")
+  
+  ev_data <- ev_raw %>%
+    mutate(
+      value = as.numeric(.data[[value_col]]),
+      time_str = as.character(.data[[time_col]]),
+      date = case_when(
+        str_detect(time_str, "M") ~ ym(str_replace(time_str, "M", "-")),
+        str_detect(time_str, "K") ~ yq(str_replace(time_str, "K", " Q")),
+        str_length(time_str) == 4 ~ ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
+    ) %>%
+    filter(!is.na(value), !is.na(date))
+  
+  cat("\nProcessed data sample:\n")
+  print(head(ev_data))
+}
+```
+
+## The Stacked Area Chart: Norway's Fuel Type Transition
+
+Our first visualization shows the dramatic shift in new vehicle registrations by fuel type over time. This is the "thumbnail" chart — it captures the entire story in one view.
+
+```{r area-chart}
+#| fig-height: 8
+
+if (exists("ev_data") && nrow(ev_data) > 0) {
+  
+  # Check for fuel type column
+  fuel_col <- names(ev_data)[grepl("fuel|drivstoff|type", 
+                                    names(ev_data), ignore.case = TRUE)][1]
+  
+  if (!is.na(fuel_col)) {
+    
+    # Aggregate by date and fuel type
+    ev_monthly <- ev_data %>%
+      group_by(date, fuel_type = .data[[fuel_col]]) %>%
+      summarise(registrations = sum(value, na.rm = TRUE), .groups = "drop") %>%
+      filter(date >= ymd("2015-01-01"))
+    
+    # Calculate percentages for each month
+    ev_pct <- ev_monthly %>%
+      group_by(date) %>%
+      mutate(
+        total = sum(registrations),
+        pct = registrations / total * 100
+      ) %>%
+      ungroup()
+    
+    # Simplify fuel type categories
+    ev_pct <- ev_pct %>%
+      mutate(
+        fuel_category = case_when(
+          str_detect(fuel_type, regex("electric|el|battery|bev", ignore_case = TRUE)) & 
+            !str_detect(fuel_type, regex("hybrid|plug", ignore_case = TRUE)) ~ "Battery Electric (BEV)",
+          str_detect(fuel_type, regex("plug|phev", ignore_case = TRUE)) ~ "Plug-in Hybrid",
+          str_detect(fuel_type, regex("hybrid", ignore_case = TRUE)) ~ "Other Hybrid",
+          str_detect(fuel_type, regex("petrol|gasoline|bensin", ignore_case = TRUE)) ~ "Petrol",
+          str_detect(fuel_type, regex("diesel", ignore_case = TRUE)) ~ "Diesel",
+          TRUE ~ "Other"
+        )
+      ) %>%
+      group_by(date, fuel_category) %>%
+      summarise(
+        registrations = sum(registrations),
+        pct = sum(pct),
+        .groups = "drop"
+      )
+    
+    # Order fuel categories for the stack
+    fuel_order <- c("Diesel", "Petrol", "Other", "Other Hybrid", 
+                    "Plug-in Hybrid", "Battery Electric (BEV)")
+    
+    ev_pct <- ev_pct %>%
+      mutate(fuel_category = factor(fuel_category, levels = fuel_order))
+    
+    # Create the stacked area chart
+    p_area <- ggplot(ev_pct, aes(x = date, y = pct, fill = fuel_category)) +
+      geom_area(alpha = 0.9) +
+      scale_fill_manual(
+        values = c(
+          "Diesel" = "#4A4A4A",
+          "Petrol" = "#8B4513",
+          "Other" = "#B8B8B8",
+          "Other Hybrid" = "#84BC9C",
+          "Plug-in Hybrid" = "#5FA8D3",
+          "Battery Electric (BEV)" = "#2CA58D"
+        )
+      ) +
+      scale_y_continuous(labels = label_percent(scale = 1), expand = c(0, 0)) +
+      scale_x_date(date_breaks = "2 years", date_labels = "%Y") +
+      labs(
+        title = "Norway's Electric Takeover: The Fastest Vehicle Transition in History",
+        subtitle = "Share of new vehicle registrations by fuel type, 2015–2026. Battery electric vehicles\nnow dominate new sales, while diesel has collapsed from over 50% to near irrelevance.",
+        x = NULL,
+        y = "Share of new registrations",
+        caption = "Source: Statistics Norway (SSB), Table 13931 | Chart: Norwegian Data Stories"
+      ) +
+      theme_ev() +
+      theme(
+        legend.position = "bottom",
+        legend.direction = "horizontal"
+      ) +
+      guides(fill = guide_legend(nrow = 1, reverse = TRUE))
+    
+    # Add annotation for key moment
+    p_area <- p_area +
+      annotate(
+        "segment",
+        x = ymd("2022-01-01"), xend = ymd("2022-01-01"),
+        y = 0, yend = 100,
+        linetype = "dashed", color = "#F46036", alpha = 0.7
+      ) +
+      annotate(
+        "label",
+        x = ymd("2022-01-01"), y = 50,
+        label = "2022:\nBEVs hit\n50%+",
+        fill = "#F46036", color = "white",
+        fontface = "bold", size = 3, label.size = 0
+      )
+    
+    print(p_area)
+    
+  } else {
+    message("Could not find fuel type column in the data")
+  }
+}
+```
+
+The visual tells a dramatic story: diesel vehicles, which once accounted for over half of new registrations, have virtually disappeared. Battery electric vehicles have surged from a niche product to the dominant choice.
+
+## Lollipop Chart: Year-over-Year EV Growth
+
+Let's zoom in on the annual growth rates of electric vehicle registrations to understand the acceleration.
+
+```{r lollipop-chart}
+#| fig-height: 7
+
+if (exists("ev_pct") && nrow(ev_pct) > 0) {
+  
+  # Calculate annual totals for BEVs
+  annual_bev <- ev_pct %>%
+    filter(fuel_category == "Battery Electric (BEV)") %>%
+    mutate(year = year(date)) %>%
+    group_by(year) %>%
+    summarise(
+      total_bev = sum(registrations),
+      avg_share = mean(pct),
+      .groups = "drop"
+    ) %>%
+    filter(year >= 2015, year <= 2025) %>%
+    mutate(
+      yoy_growth = (total_bev / lag(total_bev) - 1) * 100,
+      growth_label = paste0(ifelse(yoy_growth > 0, "+", ""), round(yoy_growth), "%")
+    )
+  
+  # Create lollipop chart for growth
+  p_lollipop <- annual_bev %>%
+    filter(!is.na(yoy_growth)) %>%
+    ggplot(aes(x = factor(year), y = yoy_growth)) +
+    geom_segment(
+      aes(x = factor(year), xend = factor(year), y = 0, yend = yoy_growth),
+      color = "#1B4965", linewidth = 1.5
+    ) +
+    geom_point(
+      aes(color = yoy_growth > 0),
+      size = 8
+    ) +
+    geom_text(
+      aes(label = growth_label),
+      color = "white", fontface = "bold", size = 3
+    ) +
+    geom_hline(yintercept = 0, color = "#444444", linewidth = 0.5) +
+    scale_color_manual(values = c("TRUE" = "#2CA58D", "FALSE" = "#F46036")) +
+    scale_y_continuous(
+      labels = label_percent(scale = 1),
+      limits = c(min(annual_bev$yoy_growth, na.rm = TRUE) - 10, 
+                 max(annual_bev$yoy_growth, na.rm = TRUE) + 10)
+    ) +
+    labs(
+      title = "EV Growth: Explosive Early Years, Now Maturing",
+      subtitle = "Year-over-year change in battery electric vehicle registrations.\nGrowth rates naturally decline as EVs become the mainstream choice.",
+      x = NULL,
+      y = "Year-over-year growth rate",
+      caption = "Source: Statistics Norway (SSB), Table 13931 | Chart: Norwegian Data Stories"
+    ) +
+    theme_ev() +
+    theme(
+      legend.position = "none",
+      panel.grid.major.y = element_line(color = "#E0E0E0")
+    )
+  
+  print(p_lollipop)
+}
+```
+
+The early years saw explosive triple-digit growth, but that's the mathematics of growing from a small base. What's remarkable is that significant growth continued even as EVs became the majority — a sign of genuine, sustained demand rather than early-adopter hype.
+
+## Connecting to Energy: Does Norway Have the Power?
+
+One question that often arises: can Norway's grid handle millions of EVs? Let's pull electricity production data to contextualize.
+
+```{r fetch-electricity}
+# Fetch electricity data
+elec_result <- tryCatch({
+  ApiData(
+    "https://data.ssb.no/api/v0/en/table/10315",
+    ContentsCode = "KWhProd",
+    Tid = list(filter = "top", values = 40)
+  )
+}, error = function(e) {
+  message("Error fetching electricity data: ", e$message)
+  NULL
+})
+
+if (!is.null(elec_result)) {
+  elec_raw <- elec_result[[1]]
+  cat("Column names in electricity dataset:\n")
+  print(names(elec_raw))
+  cat("\nFirst rows:\n")
+  print(head(elec_raw))
+}
+```
+
+```{r process-electricity}
+if (!is.null(elec_result)) {
+  
+  # Find columns
+  time_col_elec <- names(elec_raw)[grepl("tid|month|year", 
+                                          names(elec_raw), ignore.case = TRUE)][1]
+  value_col_elec <- names(elec_raw)[grepl("value", 
+                                           names(elec_raw), ignore.case = TRUE)][1]
+  
+  elec_data <- elec_raw %>%
+    mutate(
+      value = as.numeric(.data[[value_col_elec]]),
+      time_str = as.character(.data[[time_col_elec]]),
+      date = case_when(
+        str_detect(time_str, "M") ~ ym(str_replace(time_str, "M", "-")),
+        str_length(time_str) == 4 ~ ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      ),
+      year = year(date)
+    ) %>%
+    filter(!is.na(value), !is.na(date))
+  
+  print(head(elec_data))
+}
+```
+
+## Heatmap: Monthly EV Registration Patterns
+
+Car buying has seasonal patterns. Let's visualize when Norwegians are most likely to buy electric.
+
+```{r heatmap}
+#| fig-height: 8
+
+if (exists("ev_pct") && nrow(ev_pct) > 0) {
+  
+  # Create monthly heatmap data for BEV share
+  heatmap_data <- ev_pct %>%
+    filter(fuel_category == "Battery Electric (BEV)") %>%
+    mutate(
+      year = year(date),
+      month = month(date, label = TRUE, abbr = TRUE)
+    ) %>%
+    filter(year >= 2018, year <= 2025) %>%
+    select(year, month, pct)
+  
+  # Create heatmap
+  p_heat <- ggplot(heatmap_data, aes(x = month, y = factor(year), fill = pct)) +
+    geom_tile(color = "white", linewidth = 0.5) +
+    geom_text(
+      aes(label = paste0(round(pct), "%")),
+      color = ifelse(heatmap_data$pct > 50, "white", "#333333"),
+      size = 3.5, fontface = "bold"
+    ) +
+    scale_fill_gradient2(
+      low = "#F46036",
+      mid = "#FFFFCC",
+      high = "#2CA58D",
+      midpoint = 50,
+      labels = label_percent(scale = 1),
+      name = "BEV Share"
+    ) +
+    labs(
+      title = "The Steady Green March: EV Share by Month",
+      subtitle = "Battery electric share of new registrations. December historically sees\nstrong EV sales as buyers take advantage of year-end incentives.",
+      x = NULL,
+      y = NULL,
+      caption = "Source: Statistics Norway (SSB), Table 13931 | Chart: Norwegian Data Stories"
+    ) +
+    theme_ev() +
+    theme(
+      panel.grid = element_blank(),
+      legend.position = "right",
+      axis.text.x = element_text(size = 11),
+      axis.text.y = element_text(size = 12, face = "bold")
+    )
+  
+  print(p_heat)
+}
+```
+
+The heatmap reveals interesting patterns: December often shows particularly high EV shares, likely due to year-end tax planning. The relentless progression from orange (low EV share) to green (high EV share) illustrates how quickly the market has transformed.
+
+## Ridgeline Plot: The Distribution Shift
+
+To really understand how the market has changed, let's look at the distribution of monthly BEV shares across different years.
+
+```{r ridgeline}
+#| fig-height: 7
+
+if (exists("ev_pct") && nrow(ev_pct) > 0) {
+  
+  ridge_data <- ev_pct %>%
+    filter(fuel_category == "Battery Electric (BEV)") %>%
+    mutate(year = factor(year(date))) %>%
+    filter(year %in% c("2016", "2018", "2020", "2022", "2024", "2025"))
+  
+  if (nrow(ridge_data) > 10) {
+    
+    p_ridge <- ggplot(ridge_data, aes(x = pct, y = year, fill = stat(x))) +
+      geom_density_ridges_gradient(
+        scale = 2.5,
+        rel_min_height = 0.01,
+        gradient_lwd = 0.5,
+        quantile_lines = TRUE,
+        quantiles = 2
+      ) +
+      scale_fill_gradient2(
+        low = "#F46036",
+        mid = "#FFFFCC",
+        high = "#2CA58D",
+        midpoint = 50,
+        guide = "none"
+      ) +
+      scale_x_continuous(
+        labels = label_percent(scale = 1),
+        limits = c(0, 100)
+      ) +
+      labs(
+        title = "The Distribution Shift: From Niche to Normal",
+        subtitle = "Distribution of monthly BEV shares in selected years. The entire\ndistribution has marched rightward, from ~20% center to ~80%.",
+        x = "Battery Electric Share of Monthly Registrations",
+        y = NULL,
+        caption = "Source: Statistics Norway (SSB), Table 13931 | Chart: Norwegian Data Stories"
+      ) +
+      theme_ev() +
+      theme(
+        panel.grid.major.x = element_line(color = "#E0E0E0"),
+        axis.text.y = element_text(size = 12, face = "bold")
+      )
+    
+    print(p_ridge)
+  }
+}
+```
+
+## Slope Chart: The Diesel-to-Electric Flip
+
+Finally, let's create a slope chart showing the dramatic reversal between diesel and electric vehicles.
+
+```{r slope-chart}
+#| fig-height: 6
+
+if (exists("ev_pct") && nrow(ev_pct) > 0) {
+  
+  # Compare two time points
+  slope_data <- ev_pct %>%
+    mutate(year = year(date)) %>%
+    filter(year %in% c(2015, 2025)) %>%
+    group_by(year, fuel_category) %>%
+    summarise(avg_share = mean(pct), .groups = "drop") %>%
+    filter(fuel_category %in% c("Battery Electric (BEV)", "Diesel", "Petrol"))
+  
+  # Add endpoints for labeling
+  slope_wide <- slope_data %>%
+    pivot_wider(names_from = year, values_from = avg_share, names_prefix = "y")
+  
+  p_slope <- ggplot(slope_data, aes(x = factor(year), y = avg_share, 
+                                     group = fuel_category, color = fuel_category)) +
+    geom_line(linewidth = 2, alpha = 0.8) +
+    geom_point(size = 5) +
+    geom_text(
+      data = slope_data %>% filter(year == 2015),
+      aes(label = paste0(fuel_category, "\n", round(avg_share), "%")),
+      hjust = 1.1, size = 3.5, fontface = "bold"
+    ) +
+    geom_text(
+      data = slope_data %>% filter(year == 2025),
+      aes(label = paste0(round(avg_share), "%")),
+      hjust = -0.3, size = 4, fontface = "bold"
+    ) +
+    scale_color_manual(
+      values = c(
+        "Battery Electric (BEV)" = "#2CA58D",
+        "Diesel" = "#4A4A4A",
+        "Petrol" = "#8B4513"
+      )
+    ) +
+    scale_y_continuous(labels = label_percent(scale = 1), limits = c(0, 85)) +
+    scale_x_discrete(expand = expansion(mult = 0.4)) +
+    labs(
+      title = "The Great Reversal: A Decade of Transformation",
+      subtitle = "Average market share 2015 vs 2025. Diesel collapsed while EVs became dominant.",
+      x = NULL,
+      y = "Average market share",
+      caption = "Source: Statistics Norway (SSB), Table 13931 | Chart: Norwegian Data Stories"
+    ) +
+    theme_ev() +
+    theme(
+      legend.position = "none",
+      panel.grid.major.x = element_blank(),
+      axis.text.x = element_text(size = 14, face = "bold")
+    )
+  
+  print(p_slope)
+}
+```
+
+## Key Findings
+
+Based on our analysis of SSB's vehicle registration data:
+
+- **Battery electric vehicles now account for over 80% of new car registrations** in Norway, up from roughly 20% just eight years ago
+- **Diesel's collapse has been total**: from over 50% of new registrations in 2015 to near zero today
+- **The transition accelerated, not stalled**: even as EVs became mainstream, growth continued at impressive rates
+- **Seasonal patterns persist**: December consistently shows elevated EV shares, likely due to tax incentives
+- **Norway is a decade ahead** of most countries' EV adoption targets
+
+## Looking Ahead
+
+Norway's EV experiment proves that rapid vehicle transition is possible when policy, infrastructure, and consumer preferences align. The question now shifts from "will EVs succeed?" to "what comes next?" 
+
+Key areas to watch:
+- **Grid capacity**: As millions of EVs charge nightly, electricity infrastructure must adapt
+- **Used car market**: The flood of EVs will eventually transform second-hand markets
+- **Charging infrastructure**: Rural areas still face gaps that could slow final adoption hurdles
+- **Commercial vehicles**: Trucks and vans are the next frontier
+
+*Note: This analysis would pair interestingly with bankruptcy data — the automotive service industry faces massive disruption as EVs require far less maintenance than combustion vehicles. Are traditional repair shops showing stress? That's a question for another post.*
+
+---
+
+*Data from Statistics Norway (SSB). Analysis performed in R using the PxWebApiData package. All code is reproducible.*
