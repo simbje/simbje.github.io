@@ -1,5 +1,5 @@
 ---
-title: "🇳🇴 SSB Daily Analysis"
+title: "SSB Daily Analysis"
 subtitle: "A new AI-generated analysis of Norwegian statistics every morning"
 listing:
   contents: "posts"

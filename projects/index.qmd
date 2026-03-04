@@ -9,7 +9,7 @@ page-layout: full
 <div class="card-grid">
 
   <a class="project-card" href="trading-analytics.html">
-    <div class="card-icon">🚀</div>
+    
     <h3>Trading Analytics Platform</h3>
     <p>A comprehensive R Shiny application for systematic trade analysis, ML-driven strategy development, and portfolio risk management. Processes real trading data from Nordnet.</p>
     <div class="tech-tags">
@@ -23,7 +23,7 @@ page-layout: full
   </a>
 
   <a class="project-card" href="../ssb-daily/index.html">
-    <div class="card-icon">🇳🇴</div>
+    
     <h3>SSB Daily Dashboard</h3>
     <p>Automated daily analysis of Statistics Norway (SSB) economic data. Pulls key indicators from the SSB JSON-stat API each morning via GitHub Actions and renders a fresh Quarto report.</p>
     <div class="tech-tags">
@@ -35,7 +35,7 @@ page-layout: full
   </a>
 
   <a class="project-card" href="opportunity-scanner.html">
-    <div class="card-icon">🔍</div>
+    
     <h3>Opportunity Scanner</h3>
     <p>Cross-market ML signal scanner covering major indices. Uses ensemble predictions from multiple models with temporal cross-validation to avoid lookahead bias.</p>
     <div class="tech-tags">
@@ -47,7 +47,7 @@ page-layout: full
   </a>
 
   <a class="project-card" href="tidytuesday.html">
-    <div class="card-icon">📊</div>
+    
     <h3>TidyTuesday Analyses</h3>
     <p>Weekly data visualizations and analyses from the TidyTuesday community challenge. Showcasing ggplot2, R data wrangling, and creative visualization approaches.</p>
     <div class="tech-tags">

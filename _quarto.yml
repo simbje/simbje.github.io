@@ -16,9 +16,11 @@ website:
         href: projects/index.qmd
       - text: "Blog"
         href: blog/index.qmd
-      - text: "🇳🇴 SSB Daily"
+      - text: "SSB Daily"
         href: ssb-daily/index.qmd
     right:
+      - icon: linkedin
+        href: https://linkedin.com/in/simbje
       - icon: github
         href: https://github.com/simbje
       - icon: envelope

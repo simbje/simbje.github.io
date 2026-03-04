@@ -9,10 +9,10 @@ toc: false
   <h1>Simen Bjerkelund</h1>
   <p class="subtitle">Financial Analyst · Quantitative Researcher · Data Scientist</p>
   <div class="hero-badges">
-    <span class="badge">📊 Algorithmic Trading</span>
-    <span class="badge">🤖 Machine Learning</span>
-    <span class="badge">🇳🇴 Norwegian Markets</span>
-    <span class="badge">📈 Risk Analytics</span>
+    <span class="badge">Algorithmic Trading</span>
+    <span class="badge">Machine Learning</span>
+    <span class="badge">Norwegian Markets</span>
+    <span class="badge">Risk Analytics</span>
     <span class="badge">R · Python · Shiny</span>
   </div>
 </div>
@@ -50,7 +50,7 @@ I build my own analytics tools in R and Shiny — covering trade performance att
 ```{=html}
 <div class="card-grid">
   <a class="project-card" href="projects/trading-analytics.html">
-    <div class="card-icon">🚀</div>
+    
     <h3>Trading Analytics Platform</h3>
     <p>Comprehensive R Shiny app for trade performance analysis, ML-driven strategy development, and risk optimization. Processes data from Nordnet broker.</p>
     <div class="tech-tags">
@@ -62,7 +62,7 @@ I build my own analytics tools in R and Shiny — covering trade performance att
   </a>
 
   <a class="project-card" href="ssb-daily/index.html">
-    <div class="card-icon">🇳🇴</div>
+    
     <h3>SSB Daily Dashboard</h3>
     <p>Automated daily analysis of Statistics Norway (SSB) data — economic indicators, market trends, and macro signals — refreshed every morning via GitHub Actions.</p>
     <div class="tech-tags">
@@ -74,7 +74,7 @@ I build my own analytics tools in R and Shiny — covering trade performance att
   </a>
 
   <a class="project-card" href="projects/opportunity-scanner.html">
-    <div class="card-icon">🔍</div>
+    
     <h3>Opportunity Scanner</h3>
     <p>ML-powered scanner across major stock indices using adaptive filter indicators, temporal cross-validation, and ensemble predictions.</p>
     <div class="tech-tags">

@@ -540,8 +540,8 @@ qmd_raw <- gsub("\nimage: 'thumbnail.png'", "", qmd_raw, fixed = TRUE)
 # ── Write post file ───────────────────────────────────────────────────────────
 dir.create(POST_DIR, recursive = TRUE, showWarnings = FALSE)
 writeLines(qmd_raw, POST_FILE)
-message("✅ Post written to: ", POST_FILE)
+message("Post written to: ", POST_FILE)
 
 # ── Update compact topic index ────────────────────────────────────────────────
 append_topic_index(TOPIC_INDEX_FILE, POST_SLUG, meta_title, meta_datasets, meta_charts)
-message("📋 Topic index updated: ", meta_title, " | ", meta_datasets, " | ", meta_charts)
+message("Topic index updated: ", meta_title, " | ", meta_datasets, " | ", meta_charts)
