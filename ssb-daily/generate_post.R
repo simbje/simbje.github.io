@@ -354,8 +354,13 @@ analysis of Statistics Norway (SSB) data using R.
 - NEVER rely on implicit printing — it does not work reliably inside Quarto code chunks
 - Every plot chunk must end with print(p) or print(p1), print(p2) etc.
 - ALWAYS guard with if (!is.null(df)) {{ p <- ggplot(...); print(p) }}
-- Use fig-height and fig-width chunk options for good proportions, e.g.:
-  ```{{r plot-name, fig.height=5, fig.width=9}}
+- Use chunk options for every plot chunk like this:
+  ```{{r plot-name}}
+  #| fig-height: 5
+  #| fig-width: 9
+  #| fig-show: asis
+  #| dev: "png"
+- Never use the old knitr syntax fig.height=5 inside the backtick header — use #| options instead
 
 Correct pattern — always do this:
 
@@ -386,7 +391,6 @@ title: "COMPELLING TITLE"
 description: "ONE SENTENCE SUMMARY"
 date: "DATE_TODAY"
 categories: [SSB, category1, category2]
-image: "thumbnail.png"  
 ---
 ```
 
@@ -528,6 +532,10 @@ qmd_raw <- gsub(
   paste0('date: "', format(TODAY, "%Y-%m-%d"), '"'),
   qmd_raw
 )
+
+# Remove image: field — thumbnail.png never exists and breaks rendering
+qmd_raw <- gsub('\nimage: "thumbnail.png"', "", qmd_raw, fixed = TRUE)
+qmd_raw <- gsub("\nimage: 'thumbnail.png'", "", qmd_raw, fixed = TRUE)
 
 # ── Write post file ───────────────────────────────────────────────────────────
 dir.create(POST_DIR, recursive = TRUE, showWarnings = FALSE)
