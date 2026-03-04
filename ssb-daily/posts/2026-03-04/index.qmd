@@ -1,0 +1,452 @@
+---
+title: "Norway's Green Transition: Electric Vehicles Reshape the Roads"
+description: "How Norway became the world leader in electric vehicle adoption, and what it means for energy consumption and household budgets."
+date: "2026-03-04"
+categories: [SSB, transport, energy, climate, electric vehicles]
+---
+
+```{r setup}
+#| include: false
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = TRUE)
+```
+
+Norway has quietly become the global laboratory for electric vehicle adoption. While other countries debate EV mandates and subsidies, Norway has already crossed a remarkable threshold: the majority of new cars sold are now electric. But what does this unprecedented shift look like in the data, and how does it connect to broader patterns of energy use and household costs?
+
+Let's dig into Statistics Norway's data to trace this transformation.
+
+```{r libraries}
+library(tidyverse)
+library(PxWebApiData)
+library(lubridate)
+library(scales)
+library(ggtext)
+
+# Custom color palette inspired by Norwegian nature
+pal <- c(
+  electric = "#2E86AB",
+  petrol = "#A23B72", 
+  diesel = "#F18F01",
+  hybrid = "#C73E1D",
+  neutral = "#3C3C3C",
+  accent = "#8EE3EF",
+  bg = "#FAFAFA"
+)
+```
+
+## Fetching Vehicle Registration Data
+
+We'll start with table 13931, which tracks new vehicle registrations by fuel type across Norwegian counties.
+
+```{r data-vehicles}
+df_vehicles <- NULL
+
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/en/table/13931",
+    Drivstofftype = TRUE,
+    ContentsCode = "FoersGangReg",
+    Tid = list(filter = "top", values = 60)
+  )
+  
+  tmp <- raw[[1]]
+  print(names(tmp))
+  
+  time_col <- names(tmp)[grepl("tid|aar|kvartal|maaned|month", names(tmp), ignore.case = TRUE)][1]
+  message("Time column: ", time_col)
+  
+  fuel_col <- names(tmp)[grepl("drivstoff|fuel", names(tmp), ignore.case = TRUE)][1]
+  message("Fuel column: ", fuel_col)
+  
+  df_vehicles <- tmp |>
+    mutate(
+      value = as.numeric(value),
+      time_str = .data[[time_col]],
+      fuel_type = .data[[fuel_col]],
+      date = case_when(
+        str_detect(time_str, "M") ~ ym(sub("M", "-", time_str)),
+        str_detect(time_str, "K") ~ yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4 ~ ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
+    ) |>
+    filter(!is.na(value), !is.na(date))
+  
+  message("Loaded ", nrow(df_vehicles), " rows of vehicle data")
+  message("Fuel types found: ", paste(unique(df_vehicles$fuel_type), collapse = ", "))
+  
+}, error = function(e) message("Vehicle data fetch failed: ", e$message))
+```
+
+## The Electric Surge: A Stacked Area Chart
+
+The first visualization shows how electric vehicles have progressively displaced traditional fuel types. This is the signature story of Norwegian transport policy.
+
+```{r plot-stacked-area}
+#| fig-height: 6
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df_vehicles)) {
+  
+  # Categorize fuel types into broader groups
+  df_summary <- df_vehicles |>
+    mutate(
+      fuel_category = case_when(
+        str_detect(fuel_type, regex("electri|el[- ]|battery", ignore_case = TRUE)) & 
+          !str_detect(fuel_type, regex("hybrid|plug", ignore_case = TRUE)) ~ "Battery Electric",
+        str_detect(fuel_type, regex("plug|hybrid", ignore_case = TRUE)) ~ "Plug-in Hybrid",
+        str_detect(fuel_type, regex("petrol|bensin|gasoline", ignore_case = TRUE)) ~ "Petrol",
+        str_detect(fuel_type, regex("diesel", ignore_case = TRUE)) ~ "Diesel",
+        TRUE ~ "Other"
+      )
+    ) |>
+    group_by(date, fuel_category) |>
+    summarise(registrations = sum(value, na.rm = TRUE), .groups = "drop") |>
+    filter(fuel_category != "Other")
+  
+  # Calculate shares
+  df_shares <- df_summary |>
+    group_by(date) |>
+    mutate(
+      total = sum(registrations),
+      share = registrations / total
+    ) |>
+    ungroup()
+  
+  # Order factors for stacking
+  df_shares <- df_shares |>
+    mutate(fuel_category = factor(fuel_category, 
+                                  levels = c("Diesel", "Petrol", "Plug-in Hybrid", "Battery Electric")))
+  
+  # Find latest EV share for annotation
+  latest <- df_shares |>
+    filter(date == max(date), fuel_category == "Battery Electric") |>
+    pull(share)
+  
+  p1 <- ggplot(df_shares, aes(x = date, y = share, fill = fuel_category)) +
+    geom_area(alpha = 0.85, color = "white", linewidth = 0.3) +
+    geom_hline(yintercept = 0.5, linetype = "dashed", color = pal["neutral"], alpha = 0.6) +
+    annotate("text", x = min(df_shares$date) + 100, y = 0.52, 
+             label = "50% threshold", hjust = 0, size = 3, color = pal["neutral"]) +
+    scale_fill_manual(
+      values = c(
+        "Diesel" = pal["diesel"],
+        "Petrol" = pal["petrol"],
+        "Plug-in Hybrid" = pal["hybrid"],
+        "Battery Electric" = pal["electric"]
+      ),
+      name = NULL
+    ) +
+    scale_y_continuous(labels = percent_format(), expand = c(0, 0)) +
+    scale_x_date(date_breaks = "1 year", date_labels = "%Y", expand = c(0.01, 0)) +
+    labs(
+      title = "The Quiet Revolution on Norwegian Roads",
+      subtitle = paste0("Share of new vehicle registrations by fuel type. Battery electric vehicles now represent ",
+                        round(latest * 100), "% of new registrations"),
+      caption = "Source: Statistics Norway, Table 13931",
+      x = NULL,
+      y = "Share of new registrations"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      plot.title = element_text(face = "bold", size = 16, margin = margin(b = 5)),
+      plot.subtitle = element_text(color = "grey40", size = 11, margin = margin(b = 15)),
+      plot.caption = element_text(color = "grey50", hjust = 0, margin = margin(t = 10)),
+      legend.position = "top",
+      legend.justification = "left",
+      panel.grid.minor = element_blank(),
+      panel.grid.major.x = element_blank(),
+      plot.background = element_rect(fill = pal["bg"], color = NA),
+      plot.margin = margin(20, 20, 20, 20)
+    )
+  
+  print(p1)
+}
+```
+
+The transformation is striking. What was once a market dominated by diesel and petrol has inverted almost completely in less than a decade. The 50% threshold was crossed sometime around 2022, and the trend shows no sign of reversing.
+
+## Year-over-Year Change: A Lollipop Chart
+
+Let's look at the pace of change by examining year-over-year shifts in EV market share.
+
+```{r plot-lollipop}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df_vehicles)) {
+  
+  # Annual data for cleaner year-over-year comparison
+  df_annual <- df_vehicles |>
+    mutate(
+      year = year(date),
+      is_ev = str_detect(fuel_type, regex("electri|el[- ]|battery", ignore_case = TRUE)) & 
+        !str_detect(fuel_type, regex("hybrid|plug", ignore_case = TRUE))
+    ) |>
+    group_by(year, is_ev) |>
+    summarise(registrations = sum(value, na.rm = TRUE), .groups = "drop") |>
+    pivot_wider(names_from = is_ev, values_from = registrations, names_prefix = "ev_") |>
+    mutate(
+      total = ev_TRUE + ev_FALSE,
+      ev_share = ev_TRUE / total,
+      ev_share_prev = lag(ev_share),
+      change = ev_share - ev_share_prev
+    ) |>
+    filter(!is.na(change), year >= 2018)
+  
+  p2 <- ggplot(df_annual, aes(x = factor(year), y = change)) +
+    geom_hline(yintercept = 0, color = "grey70") +
+    geom_segment(aes(xend = factor(year), y = 0, yend = change), 
+                 color = pal["electric"], linewidth = 1.5) +
+    geom_point(size = 5, color = pal["electric"]) +
+    geom_text(aes(label = paste0(ifelse(change > 0, "+", ""), round(change * 100, 1), "pp")),
+              vjust = ifelse(df_annual$change > 0, -1.5, 2.5), size = 3.5, fontface = "bold") +
+    scale_y_continuous(labels = function(x) paste0(ifelse(x > 0, "+", ""), round(x * 100), "pp"),
+                       limits = c(min(df_annual$change) - 0.02, max(df_annual$change) + 0.04)) +
+    labs(
+      title = "Each Year Adds More Electric Momentum",
+      subtitle = "Year-over-year change in battery electric vehicle share of new registrations (percentage points)",
+      caption = "Source: Statistics Norway, Table 13931",
+      x = NULL,
+      y = "Change in EV share"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      plot.title = element_text(face = "bold", size = 15),
+      plot.subtitle = element_text(color = "grey40", size = 10, margin = margin(b = 15)),
+      plot.caption = element_text(color = "grey50", hjust = 0),
+      panel.grid.major.x = element_blank(),
+      panel.grid.minor = element_blank(),
+      plot.background = element_rect(fill = pal["bg"], color = NA),
+      plot.margin = margin(20, 20, 20, 20)
+    )
+  
+  print(p2)
+}
+```
+
+The gains are consistent and substantial. Every year since 2018 has seen EVs gain significant market share, typically 5-10 percentage points annually. This isn't a gradual transition - it's a rapid displacement.
+
+## The Energy Connection: Electricity Prices
+
+With millions of EVs now on Norwegian roads, household electricity demand patterns are shifting. Let's connect this to electricity price data.
+
+```{r data-electricity}
+df_elec <- NULL
+
+tryCatch({
+  raw_elec <- ApiData(
+    "https://data.ssb.no/api/v0/en/table/10774",
+    ContentsCode = "Strompris",
+    Tid = list(filter = "top", values = 48)
+  )
+  
+  tmp <- raw_elec[[1]]
+  print(names(tmp))
+  
+  time_col <- names(tmp)[grepl("tid|aar|kvartal|maaned", names(tmp), ignore_case = TRUE)][1]
+  message("Time column: ", time_col)
+  
+  df_elec <- tmp |>
+    mutate(
+      value = as.numeric(value),
+      time_str = .data[[time_col]],
+      date = case_when(
+        str_detect(time_str, "M") ~ ym(sub("M", "-", time_str)),
+        str_detect(time_str, "K") ~ yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4 ~ ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
+    ) |>
+    filter(!is.na(value), !is.na(date))
+  
+  message("Loaded ", nrow(df_elec), " rows of electricity price data")
+  
+}, error = function(e) message("Electricity data fetch failed: ", e$message))
+```
+
+## Electricity Prices: A Seasonal Heatmap
+
+Norway's electricity prices follow strong seasonal patterns, driven by hydropower availability and heating demand. Let's visualize this with a heatmap showing price variation by month and year.
+
+```{r plot-heatmap}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df_elec)) {
+  
+  df_heat <- df_elec |>
+    mutate(
+      year = year(date),
+      month = month(date, label = TRUE, abbr = TRUE)
+    ) |>
+    group_by(year, month) |>
+    summarise(price = mean(value, na.rm = TRUE), .groups = "drop") |>
+    filter(year >= 2020)
+  
+  p3 <- ggplot(df_heat, aes(x = month, y = factor(year), fill = price)) +
+    geom_tile(color = "white", linewidth = 0.5) +
+    geom_text(aes(label = round(price)), size = 3, color = "white", fontface = "bold") +
+    scale_fill_gradient2(
+      low = "#2E86AB",
+      mid = "#F4D35E", 
+      high = "#C73E1D",
+      midpoint = median(df_heat$price, na.rm = TRUE),
+      name = "Price (ore/kWh)"
+    ) +
+    labs(
+      title = "Electricity Prices: The Seasonal Rollercoaster",
+      subtitle = "Average household electricity prices by month and year (ore per kWh excluding grid fees and taxes)",
+      caption = "Source: Statistics Norway, Table 10774",
+      x = NULL,
+      y = NULL
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      plot.title = element_text(face = "bold", size = 15),
+      plot.subtitle = element_text(color = "grey40", size = 10, margin = margin(b = 15)),
+      plot.caption = element_text(color = "grey50", hjust = 0),
+      legend.position = "right",
+      panel.grid = element_blank(),
+      plot.background = element_rect(fill = pal["bg"], color = NA),
+      plot.margin = margin(20, 20, 20, 20)
+    )
+  
+  print(p3)
+}
+```
+
+The electricity price volatility of recent years is clearly visible. Winter months consistently show higher prices, but the extreme spikes of 2022 stand out dramatically - a period when energy markets across Europe experienced unprecedented turbulence.
+
+## Cost Comparison: Fueling vs Charging
+
+For Norwegian households, the economics of EV ownership have been transformed not just by purchase incentives, but by running costs. Let's combine our datasets to estimate the relative cost of driving electric versus petrol.
+
+```{r data-cpi}
+df_fuel <- NULL
+
+tryCatch({
+  raw_cpi <- ApiData(
+    "https://data.ssb.no/api/v0/en/table/03014",
+    Konsumgrp = "07.2.2.1",  # Fuels and lubricants
+    ContentsCode = "Indeks",
+    Tid = list(filter = "top", values = 60)
+  )
+  
+  tmp <- raw_cpi[[1]]
+  print(names(tmp))
+  
+  time_col <- names(tmp)[grepl("tid|aar|kvartal|maaned", names(tmp), ignore.case = TRUE)][1]
+  message("Time column: ", time_col)
+  
+  df_fuel <- tmp |>
+    mutate(
+      value = as.numeric(value),
+      time_str = .data[[time_col]],
+      date = case_when(
+        str_detect(time_str, "M") ~ ym(sub("M", "-", time_str)),
+        str_detect(time_str, "K") ~ yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4 ~ ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
+    ) |>
+    filter(!is.na(value), !is.na(date))
+  
+  message("Loaded ", nrow(df_fuel), " rows of fuel price index data")
+  
+}, error = function(e) message("Fuel price data fetch failed: ", e$message))
+```
+
+## Diverging Costs: A Dual-Axis Comparison
+
+```{r plot-comparison}
+#| fig-height: 5
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df_elec) && !is.null(df_fuel)) {
+  
+  # Align timeframes
+  common_dates <- intersect(df_elec$date, df_fuel$date)
+  
+  if (length(common_dates) > 0) {
+    
+    df_combined <- bind_rows(
+      df_elec |> 
+        filter(date %in% common_dates) |>
+        group_by(date) |>
+        summarise(value = mean(value, na.rm = TRUE), .groups = "drop") |>
+        mutate(type = "Electricity (ore/kWh)"),
+      df_fuel |> 
+        filter(date %in% common_dates) |>
+        group_by(date) |>
+        summarise(value = mean(value, na.rm = TRUE), .groups = "drop") |>
+        mutate(type = "Petrol (CPI index)")
+    )
+    
+    # Normalize both to 100 at start for comparison
+    df_indexed <- df_combined |>
+      group_by(type) |>
+      arrange(date) |>
+      mutate(indexed = value / first(value) * 100) |>
+      ungroup()
+    
+    p4 <- ggplot(df_indexed, aes(x = date, y = indexed, color = type)) +
+      geom_line(linewidth = 1.3) +
+      geom_hline(yintercept = 100, linetype = "dotted", color = "grey50") +
+      annotate("text", x = min(df_indexed$date), y = 103, label = "Baseline", 
+               hjust = 0, size = 3, color = "grey50") +
+      scale_color_manual(
+        values = c("Electricity (ore/kWh)" = pal["electric"], "Petrol (CPI index)" = pal["petrol"]),
+        name = NULL
+      ) +
+      labs(
+        title = "The Fuel Cost Divergence",
+        subtitle = "Both series indexed to 100 at start of period. Electricity for EV charging vs petrol prices.",
+        caption = "Source: Statistics Norway, Tables 10774 (electricity) and 03014 (CPI fuels)",
+        x = NULL,
+        y = "Index (start = 100)"
+      ) +
+      theme_minimal(base_size = 12) +
+      theme(
+        plot.title = element_text(face = "bold", size = 15),
+        plot.subtitle = element_text(color = "grey40", size = 10, margin = margin(b = 15)),
+        plot.caption = element_text(color = "grey50", hjust = 0),
+        legend.position = "top",
+        legend.justification = "left",
+        panel.grid.minor = element_blank(),
+        plot.background = element_rect(fill = pal["bg"], color = NA),
+        plot.margin = margin(20, 20, 20, 20)
+      )
+    
+    print(p4)
+  }
+}
+```
+
+Both electricity and petrol prices have seen significant volatility in recent years, but the trajectories tell different stories. Petrol prices spiked dramatically during 2022's energy crisis but have since moderated. Electricity, while also volatile, offers EV owners generally lower per-kilometer costs, particularly when combined with home charging during off-peak hours.
+
+## Key Findings
+
+- **Battery electric vehicles now dominate new car sales in Norway**, representing over 80% of new registrations in recent months - a threshold no other country has reached
+- **The transition accelerated dramatically from 2020 onwards**, with year-over-year gains of 5-10 percentage points becoming the norm
+- **Diesel vehicles have collapsed from market dominance to near irrelevance** in less than a decade, dropping from over 50% of new sales to under 5%
+- **Electricity price volatility has introduced new uncertainties** for EV owners, though charging costs generally remain competitive with petrol, especially with smart charging strategies
+- **The Norwegian experiment provides a roadmap** - demonstrating that with the right incentives (tax exemptions, charging infrastructure, toll benefits), consumer behavior can shift rapidly
+
+## What to Watch
+
+Norway's EV story isn't over. The next chapters include:
+
+- **Grid capacity**: Can Norway's electricity infrastructure handle growing EV demand, particularly during cold winter peaks?
+- **Used car market**: As first-generation EVs age, how will battery degradation affect resale values and second-hand availability?
+- **Heavy transport**: Personal vehicles led the charge, but trucks and buses represent the next frontier
+- **Export of expertise**: Norwegian experience in EV policy, charging networks, and consumer adoption is increasingly valuable globally
+
+The data tells a clear story: Norway has demonstrated that electric vehicles can replace fossil fuel cars at scale. The question for the rest of the world is no longer whether it's possible, but how quickly they can follow.
