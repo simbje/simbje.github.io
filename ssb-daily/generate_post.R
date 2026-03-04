@@ -257,7 +257,7 @@ library(PxWebApiData)
 
 # Fetch data
 result <- ApiData(
-  "https://data.ssb.no/api/v0/en/table/TABLE_ID",
+  "https://data.ssb.no/api/v0/no/table/TABLE_ID",
   ContentsCode = "CODE",          # the measure you want
   Tid = list(filter="top", values=40)  # last 40 periods
 )
@@ -358,7 +358,7 @@ MANDATORY first chunk for EVERY table you use — do this BEFORE any data fetchi
 ```{{r discover-params}}
 # Discover the actual parameter names and valid values for this table
 meta <- PxWebApiData::ApiData(
-  "https://data.ssb.no/api/v0/en/table/TABLE_ID",
+  "https://data.ssb.no/api/v0/no/table/TABLE_ID",
   returnMetaFrames = TRUE
 )
 
@@ -482,7 +482,7 @@ STEP 2 — Discovery chunk (MANDATORY for every table):
 ```r
 # Discover valid parameter names — NEVER guess them
 meta <- PxWebApiData::ApiData(
-  "https://data.ssb.no/api/v0/en/table/XXXXX",
+  "https://data.ssb.no/api/v0/no/table/XXXXX",
   returnMetaFrames = TRUE
 )
 cat("Valid parameters:\\n")
@@ -499,7 +499,7 @@ df <- NULL  # ALWAYS initialise to NULL outside
 
 tryCatch({{
   # Use the EXACT parameter names from the discovery step above
-  raw <- ApiData("https://data.ssb.no/api/v0/en/table/XXXXX",
+  raw <- ApiData("https://data.ssb.no/api/v0/no/table/XXXXX",
                  # e.g. if discovery showed "UtslpEnergivare" and "ContentsCode":
                  UtslpEnergivare = TRUE,
                  ContentsCode = TRUE,
