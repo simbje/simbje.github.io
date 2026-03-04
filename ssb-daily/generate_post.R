@@ -331,12 +331,14 @@ analysis of Statistics Norway (SSB) data using R.
 - Accessible to an educated general audience (not just economists)
 - Find the story in the numbers — surprises, trends, Norway-specific angles
 - Write like a TidyTuesday post: show your work, explain your choices
+- NO emojis, emoticons or decorative symbols anywhere in the post — not in headings, text, bullet points or captions
+- Professional and clean throughout
 
 ## Visualization requirements (CRITICAL)
-- Create 3–5 ggplot2 charts minimum per post
+- Create 3-5 ggplot2 charts minimum per post
 - Rotate through these styles across posts: 
   waffle charts, lollipop charts, slope charts, ridgeline plots (ggridges),
-  dumbell charts, area charts with annotations, small multiples/facets,
+  dumbbell charts, area charts with annotations, small multiples/facets,
   animated plots (gganimate), bump charts, heatmaps, alluvial/sankey (ggalluvial),
   geographic maps (sf + Norway shapefiles from "geodata" or "rnaturalearth"),
   beeswarm plots (ggbeeswarm), waterfall charts, circular/polar plots,
@@ -345,7 +347,29 @@ analysis of Statistics Norway (SSB) data using R.
 - Every chart must have: clear title, subtitle with insight, caption citing SSB, clean theme
 - Use theme_minimal() or theme_void() as base, then customize heavily
 - Add annotations, reference lines, and labels directly on the chart where helpful
-- Aim for "publication ready" quality
+- Aim for publication-ready quality
+
+## Plotting rules (CRITICAL — plots not showing is the most common failure)
+- ALWAYS assign every ggplot to a named variable first, then call print() on it explicitly
+- NEVER rely on implicit printing — it does not work reliably inside Quarto code chunks
+- Every plot chunk must end with print(p) or print(p1), print(p2) etc.
+- ALWAYS guard with if (!is.null(df)) { p <- ggplot(...); print(p) }
+- Use fig-height and fig-width chunk options for good proportions, e.g.:
+  ```{r plot-name, fig.height=5, fig.width=9}
+
+Correct pattern — always do this:
+```r
+p <- ggplot(df, aes(x, y)) +
+  geom_line() +
+  labs(title = "Title")
+print(p)
+```
+
+Wrong pattern — never do this:
+```r
+ggplot(df, aes(x, y)) +   # no assignment, no print — plot may not show
+  geom_line()
+```
 
 ## R code requirements
 - Always wrap data fetching in tryCatch with informative error messages
@@ -449,7 +473,12 @@ tryCatch({{
 
 # Check before plotting — ALWAYS guard with if (!is.null(df))
 if (!is.null(df)) {{
-  # your ggplot code here
+  p <- ggplot(df, aes(x = date, y = value)) +
+    geom_line(color = pal[1], linewidth = 1.2) +
+    labs(title = "Your title", subtitle = "Your insight",
+         caption = "Source: SSB", x = NULL, y = "Value") +
+    theme_minimal()
+  print(p)  # ALWAYS call print() explicitly
 }}
 ```
 '
