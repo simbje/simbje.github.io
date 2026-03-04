@@ -349,6 +349,40 @@ analysis of Statistics Norway (SSB) data using R.
 - Add annotations, reference lines, and labels directly on the chart where helpful
 - Aim for publication-ready quality
 
+## Parameter discovery (CRITICAL — wrong parameter names is the most common failure)
+You do NOT know the exact parameter names for SSB tables. They vary between tables and your
+guesses will be wrong. You MUST always discover parameters first using returnMetaFrames = TRUE.
+
+MANDATORY first chunk for EVERY table you use — do this BEFORE any data fetching:
+
+```{{r discover-params}}
+# Discover the actual parameter names and valid values for this table
+meta <- PxWebApiData::ApiData(
+  "https://data.ssb.no/api/v0/en/table/TABLE_ID",
+  returnMetaFrames = TRUE
+)
+
+# Print parameter names — use THESE in your ApiData() call, not guesses
+cat("Valid parameters:\\n")
+print(names(meta))
+
+# Print first few valid values for each parameter
+for (param in names(meta)) {{
+  cat("\\n---", param, "---\\n")
+  print(head(meta[[param]], 10))
+}}
+```
+
+Then use the EXACT parameter names from the discovery output in your ApiData() call.
+For example, if discovery shows the parameters are "UtslpTilLuft", "UtslpEnergivare",
+"ContentsCode", and "Tid" — those are what you use. NEVER guess names like "Kjoretoytype"
+or "Drivstofftype" — they will fail.
+
+When calling ApiData() for the actual data:
+- Use TRUE for a dimension parameter to get all values for that dimension
+- Use Tid = list(filter="top", values=N) to get the last N time periods
+- Only specify ContentsCode if you know the exact code from the discovery step
+
 ## Plotting rules (CRITICAL — plots not showing is the most common failure)
 - ALWAYS assign every ggplot to a named variable first, then call print() on it explicitly
 - NEVER rely on implicit printing — it does not work reliably inside Quarto code chunks
@@ -396,10 +430,11 @@ categories: [SSB, category1, category2]
 
 Then structure:
 1. Brief intro (2-3 sentences) — the hook, why this matters today
-2. Data section — fetch + wrangle, show the raw shape
-3. Analysis section(s) — 2-3 distinct analytical angles with charts
-4. Key findings — 3-5 bullet points with the numbers
-5. Closing reflection — broader context or what to watch next
+2. Parameter discovery chunk — returnMetaFrames = TRUE for each table
+3. Data section — fetch + wrangle using discovered parameter names, show the raw shape
+4. Analysis section(s) — 2-3 distinct analytical angles with charts
+5. Key findings — 3-5 bullet points with the numbers
+6. Closing reflection — broader context or what to watch next
 
 ## Output format
 Return your response in TWO clearly separated sections:
@@ -436,27 +471,45 @@ Guidelines:
 - Make the thumbnail-worthy chart the first or most prominent one
 Remember: return ONLY the raw .qmd content, starting with ---
 
-Every post MUST follow this skeleton exactly for the setup and data chunks:
+Every post MUST follow this skeleton exactly:
 
+STEP 1 — Setup chunk:
 ```r
-# Setup chunk — always include error=TRUE
 knitr::opts_chunk$set(echo=TRUE, warning=FALSE, message=FALSE, error=TRUE)
 ```
 
+STEP 2 — Discovery chunk (MANDATORY for every table):
 ```r
-# Data chunk — always initialise variables outside tryCatch
+# Discover valid parameter names — NEVER guess them
+meta <- PxWebApiData::ApiData(
+  "https://data.ssb.no/api/v0/en/table/XXXXX",
+  returnMetaFrames = TRUE
+)
+cat("Valid parameters:\\n")
+print(names(meta))
+for (param in names(meta)) {{
+  cat("\\n---", param, "---\\n")
+  print(head(meta[[param]], 10))
+}}
+```
+
+STEP 3 — Data chunk using discovered names:
+```r
 df <- NULL  # ALWAYS initialise to NULL outside
 
 tryCatch({{
+  # Use the EXACT parameter names from the discovery step above
   raw <- ApiData("https://data.ssb.no/api/v0/en/table/XXXXX",
-                 ContentsCode = "CODE",
+                 # e.g. if discovery showed "UtslpEnergivare" and "ContentsCode":
+                 UtslpEnergivare = TRUE,
+                 ContentsCode = TRUE,
                  Tid = list(filter="top", values=40))
   
   tmp <- raw[[1]]
   print(names(tmp))  # always print column names
   
   # discover time column defensively
-  time_col <- names(tmp)[grepl("tid|aar|kvartal|maaned", names(tmp), ignore.case=TRUE)][1]
+  time_col <- names(tmp)[grepl("tid|aar|kvartal|maaned|year|month|quarter", names(tmp), ignore.case=TRUE)][1]
   message("Time column: ", time_col)
   
   df <- tmp |>
@@ -473,8 +526,10 @@ tryCatch({{
     filter(!is.na(value), !is.na(date))
     
 }}, error = function(e) message("Data fetch failed: ", e$message))
+```
 
-# Check before plotting — ALWAYS guard with if (!is.null(df))
+STEP 4 — Plot chunk (guard + print):
+```r
 if (!is.null(df)) {{
   p <- ggplot(df, aes(x = date, y = value)) +
     geom_line(color = pal[1], linewidth = 1.2) +
@@ -497,21 +552,27 @@ response <- request("https://api.anthropic.com/v1/messages") |>
     "content-type"      = "application/json"
   ) |>
   req_body_json(list(
-    model      = "claude-opus-4-5",
-    max_tokens = 8000,
+    model      = "claude-sonnet-4-5-20250929",
+    max_tokens = 16000,
     system     = SYSTEM_PROMPT,
     messages   = list(
       list(role = "user", content = USER_PROMPT)
     )
   )) |>
-  req_timeout(120) |>
+  req_timeout(300) |>
   req_perform()
 
 result  <- resp_body_json(response)
-qmd_raw <- result$content[[1]]$text
+
+# ── Check for truncated response ─────────────────────────────────────────────
+stop_reason <- result$stop_reason %||% "unknown"
+if (stop_reason == "max_tokens") {
+  warning("API response was truncated (hit max_tokens). Post may have incomplete code chunks.")
+}
+
+raw_text <- result$content[[1]]$text
 
 # ── Parse response — split metadata from .qmd content ────────────────────────
-raw_text <- result$content[[1]]$text
 
 # Extract METADATA line
 meta_match   <- regmatches(raw_text, regexpr("METADATA:.*", raw_text))
