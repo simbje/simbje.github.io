@@ -353,23 +353,22 @@ analysis of Statistics Norway (SSB) data using R.
 - ALWAYS assign every ggplot to a named variable first, then call print() on it explicitly
 - NEVER rely on implicit printing — it does not work reliably inside Quarto code chunks
 - Every plot chunk must end with print(p) or print(p1), print(p2) etc.
-- ALWAYS guard with if (!is.null(df)) { p <- ggplot(...); print(p) }
+- ALWAYS guard with if (!is.null(df)) {{ p <- ggplot(...); print(p) }}
 - Use fig-height and fig-width chunk options for good proportions, e.g.:
-  ```{r plot-name, fig.height=5, fig.width=9}
+  ```{{r plot-name, fig.height=5, fig.width=9}}
 
 Correct pattern — always do this:
-```r
-p <- ggplot(df, aes(x, y)) +
-  geom_line() +
-  labs(title = "Title")
-print(p)
-```
+
+  p <- ggplot(df, aes(x, y)) +
+    geom_line() +
+    labs(title = \"Title\")
+  print(p)
 
 Wrong pattern — never do this:
-```r
-ggplot(df, aes(x, y)) +   # no assignment, no print — plot may not show
-  geom_line()
-```
+
+  ggplot(df, aes(x, y)) +   # no assignment, no print — plot may not show
+    geom_line()
+
 
 ## R code requirements
 - Always wrap data fetching in tryCatch with informative error messages
