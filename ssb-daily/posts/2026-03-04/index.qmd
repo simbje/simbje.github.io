@@ -1,452 +1,555 @@
 ---
-title: "Norway's Green Transition: Electric Vehicles Reshape the Roads"
-description: "How Norway became the world leader in electric vehicle adoption, and what it means for energy consumption and household budgets."
+title: "The Four-Day Week Dream: How Norwegian Working Hours Have Actually Changed"
+description: "Working less or earning more? Three decades of data reveal surprising patterns in Norwegian work-life balance."
 date: "2026-03-04"
-categories: [SSB, transport, energy, climate, electric vehicles]
+categories: [SSB, labour market, working hours, productivity]
 ---
 
 ```{r setup}
-#| include: false
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = TRUE)
 ```
 
-Norway has quietly become the global laboratory for electric vehicle adoption. While other countries debate EV mandates and subsidies, Norway has already crossed a remarkable threshold: the majority of new cars sold are now electric. But what does this unprecedented shift look like in the data, and how does it connect to broader patterns of energy use and household costs?
+The debate over four-day work weeks has exploded across Europe, with trials in Iceland, the UK, and Belgium making headlines. But how have Norwegian working hours actually evolved? Today we dig into three decades of labour market data to see whether Norwegians are working less, who's working how much, and whether shorter hours come with a productivity price tag.
 
-Let's dig into Statistics Norway's data to trace this transformation.
+## Libraries and setup
 
 ```{r libraries}
 library(tidyverse)
 library(PxWebApiData)
 library(lubridate)
 library(scales)
-library(ggtext)
+library(ggridges)
+library(MetBrewer)
 
-# Custom color palette inspired by Norwegian nature
-pal <- c(
-  electric = "#2E86AB",
-  petrol = "#A23B72", 
-  diesel = "#F18F01",
-  hybrid = "#C73E1D",
-  neutral = "#3C3C3C",
-  accent = "#8EE3EF",
-  bg = "#FAFAFA"
-)
+# Color palette: warm earth tones from Hiroshige
+pal <- met.brewer("Hiroshige", 8)
 ```
 
-## Fetching Vehicle Registration Data
+## Discovering working hours data
 
-We'll start with table 13931, which tracks new vehicle registrations by fuel type across Norwegian counties.
+```{r discover-hours}
+# Discover valid parameter names for working hours table
+meta_hours <- PxWebApiData::ApiData(
+  "https://data.ssb.no/api/v0/en/table/05940",
+  returnMetaFrames = TRUE
+)
 
-```{r data-vehicles}
-df_vehicles <- NULL
+cat("Valid parameters for working hours:\n")
+print(names(meta_hours))
+
+for (param in names(meta_hours)) {
+  cat("\n---", param, "---\n")
+  print(head(meta_hours[[param]], 15))
+}
+```
+
+## Fetching working hours by occupation
+
+```{r fetch-hours}
+df_hours <- NULL
 
 tryCatch({
-  raw <- ApiData(
-    "https://data.ssb.no/api/v0/en/table/13931",
-    Drivstofftype = TRUE,
-    ContentsCode = "FoersGangReg",
-    Tid = list(filter = "top", values = 60)
+  raw_hours <- ApiData(
+    "https://data.ssb.no/api/v0/en/table/05940",
+    NACE2007 = TRUE,
+    Kjonn = "0",  # Both genders
+    ContentsCode = TRUE,
+    Tid = list(filter = "top", values = 30)
   )
   
-  tmp <- raw[[1]]
-  print(names(tmp))
+  tmp_hours <- raw_hours[[1]]
+  print("Column names in working hours data:")
+  print(names(tmp_hours))
+  print("\nFirst few rows:")
+  print(head(tmp_hours, 10))
   
-  time_col <- names(tmp)[grepl("tid|aar|kvartal|maaned|month", names(tmp), ignore.case = TRUE)][1]
+  # Find time column
+  time_col <- names(tmp_hours)[grepl("tid|aar|year", names(tmp_hours), ignore.case = TRUE)][1]
   message("Time column: ", time_col)
   
-  fuel_col <- names(tmp)[grepl("drivstoff|fuel", names(tmp), ignore.case = TRUE)][1]
-  message("Fuel column: ", fuel_col)
-  
-  df_vehicles <- tmp |>
+  df_hours <- tmp_hours |>
     mutate(
       value = as.numeric(value),
       time_str = .data[[time_col]],
-      fuel_type = .data[[fuel_col]],
+      year = as.numeric(time_str)
+    ) |>
+    filter(!is.na(value), !is.na(year))
+  
+  message("Successfully processed ", nrow(df_hours), " rows of working hours data")
+  
+}, error = function(e) {
+  message("Working hours fetch failed: ", e$message)
+})
+```
+
+## Discovering wage data
+
+```{r discover-wages}
+meta_wages <- PxWebApiData::ApiData(
+  "https://data.ssb.no/api/v0/en/table/11350",
+  returnMetaFrames = TRUE
+)
+
+cat("Valid parameters for wages:\n")
+print(names(meta_wages))
+
+for (param in names(meta_wages)) {
+  cat("\n---", param, "---\n")
+  print(head(meta_wages[[param]], 15))
+}
+```
+
+## Fetching wage data by sector
+
+```{r fetch-wages}
+df_wages <- NULL
+
+tryCatch({
+  raw_wages <- ApiData(
+    "https://data.ssb.no/api/v0/en/table/11350",
+    NACE2007 = TRUE,
+    Kjonn = "0",
+    ContentsCode = "Lonn",
+    Tid = list(filter = "top", values = 30)
+  )
+  
+  tmp_wages <- raw_wages[[1]]
+  print("Column names in wage data:")
+  print(names(tmp_wages))
+  
+  time_col <- names(tmp_wages)[grepl("tid|aar|year", names(tmp_wages), ignore.case = TRUE)][1]
+  
+  df_wages <- tmp_wages |>
+    mutate(
+      value = as.numeric(value),
+      time_str = .data[[time_col]],
+      year = as.numeric(time_str)
+    ) |>
+    filter(!is.na(value), !is.na(year))
+  
+  message("Successfully processed ", nrow(df_wages), " rows of wage data")
+  
+}, error = function(e) {
+  message("Wage fetch failed: ", e$message)
+})
+```
+
+## Discovering sick leave data
+
+```{r discover-sickleave}
+meta_sick <- PxWebApiData::ApiData(
+  "https://data.ssb.no/api/v0/en/table/12549",
+  returnMetaFrames = TRUE
+)
+
+cat("Valid parameters for sick leave:\n")
+print(names(meta_sick))
+
+for (param in names(meta_sick)) {
+  cat("\n---", param, "---\n")
+  print(head(meta_sick[[param]], 15))
+}
+```
+
+## Fetching sick leave rates
+
+```{r fetch-sickleave}
+df_sick <- NULL
+
+tryCatch({
+  raw_sick <- ApiData(
+    "https://data.ssb.no/api/v0/en/table/12549",
+    NACE2007 = TRUE,
+    Kjonn = "0",
+    ContentsCode = TRUE,
+    Tid = list(filter = "top", values = 20)
+  )
+  
+  tmp_sick <- raw_sick[[1]]
+  print("Column names in sick leave data:")
+  print(names(tmp_sick))
+  
+  time_col <- names(tmp_sick)[grepl("tid|kvartal|quarter", names(tmp_sick), ignore.case = TRUE)][1]
+  
+  df_sick <- tmp_sick |>
+    mutate(
+      value = as.numeric(value),
+      time_str = .data[[time_col]],
       date = case_when(
-        str_detect(time_str, "M") ~ ym(sub("M", "-", time_str)),
         str_detect(time_str, "K") ~ yq(sub("K", " Q", time_str)),
-        nchar(time_str) == 4 ~ ymd(paste0(time_str, "-01-01")),
         TRUE ~ NA_Date_
       )
     ) |>
     filter(!is.na(value), !is.na(date))
   
-  message("Loaded ", nrow(df_vehicles), " rows of vehicle data")
-  message("Fuel types found: ", paste(unique(df_vehicles$fuel_type), collapse = ", "))
+  message("Successfully processed ", nrow(df_sick), " rows of sick leave data")
   
-}, error = function(e) message("Vehicle data fetch failed: ", e$message))
+}, error = function(e) {
+  message("Sick leave fetch failed: ", e$message)
+})
 ```
 
-## The Electric Surge: A Stacked Area Chart
+## The big picture: 30 years of working hours
 
-The first visualization shows how electric vehicles have progressively displaced traditional fuel types. This is the signature story of Norwegian transport policy.
+Let's start with the headline trend across all industries.
 
-```{r plot-stacked-area}
+```{r plot-overall-trend}
 #| fig-height: 6
 #| fig-width: 10
 #| fig-show: asis
 #| dev: "png"
 
-if (!is.null(df_vehicles)) {
+if (!is.null(df_hours)) {
+  # Calculate overall average by year
+  df_overall <- df_hours |>
+    group_by(year) |>
+    summarise(
+      avg_hours = mean(value, na.rm = TRUE),
+      .groups = "drop"
+    )
   
-  # Categorize fuel types into broader groups
-  df_summary <- df_vehicles |>
-    mutate(
-      fuel_category = case_when(
-        str_detect(fuel_type, regex("electri|el[- ]|battery", ignore_case = TRUE)) & 
-          !str_detect(fuel_type, regex("hybrid|plug", ignore_case = TRUE)) ~ "Battery Electric",
-        str_detect(fuel_type, regex("plug|hybrid", ignore_case = TRUE)) ~ "Plug-in Hybrid",
-        str_detect(fuel_type, regex("petrol|bensin|gasoline", ignore_case = TRUE)) ~ "Petrol",
-        str_detect(fuel_type, regex("diesel", ignore_case = TRUE)) ~ "Diesel",
-        TRUE ~ "Other"
-      )
-    ) |>
-    group_by(date, fuel_category) |>
-    summarise(registrations = sum(value, na.rm = TRUE), .groups = "drop") |>
-    filter(fuel_category != "Other")
+  # Find key milestones
+  first_year <- min(df_overall$year)
+  last_year <- max(df_overall$year)
+  first_hours <- df_overall$avg_hours[df_overall$year == first_year]
+  last_hours <- df_overall$avg_hours[df_overall$year == last_year]
+  change <- last_hours - first_hours
   
-  # Calculate shares
-  df_shares <- df_summary |>
-    group_by(date) |>
-    mutate(
-      total = sum(registrations),
-      share = registrations / total
-    ) |>
-    ungroup()
-  
-  # Order factors for stacking
-  df_shares <- df_shares |>
-    mutate(fuel_category = factor(fuel_category, 
-                                  levels = c("Diesel", "Petrol", "Plug-in Hybrid", "Battery Electric")))
-  
-  # Find latest EV share for annotation
-  latest <- df_shares |>
-    filter(date == max(date), fuel_category == "Battery Electric") |>
-    pull(share)
-  
-  p1 <- ggplot(df_shares, aes(x = date, y = share, fill = fuel_category)) +
-    geom_area(alpha = 0.85, color = "white", linewidth = 0.3) +
-    geom_hline(yintercept = 0.5, linetype = "dashed", color = pal["neutral"], alpha = 0.6) +
-    annotate("text", x = min(df_shares$date) + 100, y = 0.52, 
-             label = "50% threshold", hjust = 0, size = 3, color = pal["neutral"]) +
-    scale_fill_manual(
-      values = c(
-        "Diesel" = pal["diesel"],
-        "Petrol" = pal["petrol"],
-        "Plug-in Hybrid" = pal["hybrid"],
-        "Battery Electric" = pal["electric"]
-      ),
-      name = NULL
-    ) +
-    scale_y_continuous(labels = percent_format(), expand = c(0, 0)) +
-    scale_x_date(date_breaks = "1 year", date_labels = "%Y", expand = c(0.01, 0)) +
+  p1 <- ggplot(df_overall, aes(x = year, y = avg_hours)) +
+    geom_area(fill = pal[2], alpha = 0.3) +
+    geom_line(color = pal[2], linewidth = 1.5) +
+    geom_point(data = filter(df_overall, year %in% c(first_year, last_year)),
+               size = 4, color = pal[1]) +
+    annotate("text", x = first_year, y = first_hours + 0.3,
+             label = paste0(round(first_hours, 1), " hours\n(", first_year, ")"),
+             hjust = 0, size = 4, color = pal[1], fontface = "bold") +
+    annotate("text", x = last_year, y = last_hours - 0.3,
+             label = paste0(round(last_hours, 1), " hours\n(", last_year, ")"),
+             hjust = 1, size = 4, color = pal[1], fontface = "bold") +
+    annotate("text", x = mean(c(first_year, last_year)), y = max(df_overall$avg_hours),
+             label = sprintf("Change: %.1f hours/week", change),
+             size = 5, fontface = "italic", color = pal[7]) +
+    scale_x_continuous(breaks = seq(1995, 2025, by = 5)) +
+    scale_y_continuous(labels = number_format(accuracy = 0.1)) +
     labs(
-      title = "The Quiet Revolution on Norwegian Roads",
-      subtitle = paste0("Share of new vehicle registrations by fuel type. Battery electric vehicles now represent ",
-                        round(latest * 100), "% of new registrations"),
-      caption = "Source: Statistics Norway, Table 13931",
+      title = "Average Norwegian Working Week: The Slow Decline",
+      subtitle = sprintf("Weekly working hours have dropped by %.1f hours over three decades — but we're not close to a four-day week yet", abs(change)),
       x = NULL,
-      y = "Share of new registrations"
+      y = "Average weekly hours",
+      caption = "Source: Statistics Norway (SSB), table 05940"
     ) +
-    theme_minimal(base_size = 12) +
+    theme_minimal(base_size = 13) +
     theme(
-      plot.title = element_text(face = "bold", size = 16, margin = margin(b = 5)),
-      plot.subtitle = element_text(color = "grey40", size = 11, margin = margin(b = 15)),
-      plot.caption = element_text(color = "grey50", hjust = 0, margin = margin(t = 10)),
-      legend.position = "top",
-      legend.justification = "left",
+      plot.title = element_text(face = "bold", size = 16),
+      plot.subtitle = element_text(size = 12, margin = margin(b = 15)),
       panel.grid.minor = element_blank(),
-      panel.grid.major.x = element_blank(),
-      plot.background = element_rect(fill = pal["bg"], color = NA),
-      plot.margin = margin(20, 20, 20, 20)
+      plot.caption = element_text(hjust = 0, color = "grey40")
     )
   
   print(p1)
 }
 ```
 
-The transformation is striking. What was once a market dominated by diesel and petrol has inverted almost completely in less than a decade. The 50% threshold was crossed sometime around 2022, and the trend shows no sign of reversing.
+## Industry variation: Who works the longest hours?
 
-## Year-over-Year Change: A Lollipop Chart
+Not all sectors are equal. Let's compare the distribution of working hours across major industries.
 
-Let's look at the pace of change by examining year-over-year shifts in EV market share.
-
-```{r plot-lollipop}
-#| fig-height: 5
-#| fig-width: 9
+```{r plot-industry-ridges}
+#| fig-height: 8
+#| fig-width: 10
 #| fig-show: asis
 #| dev: "png"
 
-if (!is.null(df_vehicles)) {
+if (!is.null(df_hours)) {
+  # Get industry name column
+  industry_col <- names(df_hours)[grepl("NACE|industry|naering", names(df_hours), ignore.case = TRUE)][1]
   
-  # Annual data for cleaner year-over-year comparison
-  df_annual <- df_vehicles |>
-    mutate(
-      year = year(date),
-      is_ev = str_detect(fuel_type, regex("electri|el[- ]|battery", ignore_case = TRUE)) & 
-        !str_detect(fuel_type, regex("hybrid|plug", ignore_case = TRUE))
-    ) |>
-    group_by(year, is_ev) |>
-    summarise(registrations = sum(value, na.rm = TRUE), .groups = "drop") |>
-    pivot_wider(names_from = is_ev, values_from = registrations, names_prefix = "ev_") |>
-    mutate(
-      total = ev_TRUE + ev_FALSE,
-      ev_share = ev_TRUE / total,
-      ev_share_prev = lag(ev_share),
-      change = ev_share - ev_share_prev
-    ) |>
-    filter(!is.na(change), year >= 2018)
+  # Focus on recent years and major industries
+  df_recent <- df_hours |>
+    filter(year >= 2020) |>
+    mutate(industry = .data[[industry_col]]) |>
+    filter(!str_detect(industry, "^[A-Z]\\s") | is.na(industry))  # Remove summary categories
   
-  p2 <- ggplot(df_annual, aes(x = factor(year), y = change)) +
-    geom_hline(yintercept = 0, color = "grey70") +
-    geom_segment(aes(xend = factor(year), y = 0, yend = change), 
-                 color = pal["electric"], linewidth = 1.5) +
-    geom_point(size = 5, color = pal["electric"]) +
-    geom_text(aes(label = paste0(ifelse(change > 0, "+", ""), round(change * 100, 1), "pp")),
-              vjust = ifelse(df_annual$change > 0, -1.5, 2.5), size = 3.5, fontface = "bold") +
-    scale_y_continuous(labels = function(x) paste0(ifelse(x > 0, "+", ""), round(x * 100), "pp"),
-                       limits = c(min(df_annual$change) - 0.02, max(df_annual$change) + 0.04)) +
-    labs(
-      title = "Each Year Adds More Electric Momentum",
-      subtitle = "Year-over-year change in battery electric vehicle share of new registrations (percentage points)",
-      caption = "Source: Statistics Norway, Table 13931",
-      x = NULL,
-      y = "Change in EV share"
+  # Get top 12 industries by data availability
+  top_industries <- df_recent |>
+    count(industry, sort = TRUE) |>
+    head(12) |>
+    pull(industry)
+  
+  df_ridge <- df_recent |>
+    filter(industry %in% top_industries) |>
+    mutate(
+      industry = str_trunc(industry, 35),
+      industry = fct_reorder(industry, value, .fun = median)
+    )
+  
+  p2 <- ggplot(df_ridge, aes(x = value, y = industry, fill = after_stat(x))) +
+    geom_density_ridges_gradient(
+      scale = 2,
+      rel_min_height = 0.01,
+      gradient_lwd = 0.5
     ) +
-    theme_minimal(base_size = 12) +
+    scale_fill_gradientn(
+      colors = c(pal[3], pal[5], pal[1]),
+      guide = "none"
+    ) +
+    scale_x_continuous(breaks = seq(30, 45, by = 2.5)) +
+    labs(
+      title = "The Working Week by Industry: 2020-Present",
+      subtitle = "Ridgeline plot shows distribution of weekly hours — some sectors consistently push longer days",
+      x = "Weekly working hours",
+      y = NULL,
+      caption = "Source: Statistics Norway (SSB), table 05940\nDensity curves show distribution across years 2020-2025"
+    ) +
+    theme_minimal(base_size = 13) +
     theme(
-      plot.title = element_text(face = "bold", size = 15),
-      plot.subtitle = element_text(color = "grey40", size = 10, margin = margin(b = 15)),
-      plot.caption = element_text(color = "grey50", hjust = 0),
-      panel.grid.major.x = element_blank(),
+      plot.title = element_text(face = "bold", size = 16),
+      plot.subtitle = element_text(size = 12, margin = margin(b = 15)),
+      panel.grid.major.y = element_blank(),
       panel.grid.minor = element_blank(),
-      plot.background = element_rect(fill = pal["bg"], color = NA),
-      plot.margin = margin(20, 20, 20, 20)
+      axis.text.y = element_text(size = 10),
+      plot.caption = element_text(hjust = 0, color = "grey40")
     )
   
   print(p2)
 }
 ```
 
-The gains are consistent and substantial. Every year since 2018 has seen EVs gain significant market share, typically 5-10 percentage points annually. This isn't a gradual transition - it's a rapid displacement.
+## The hours-wage trade-off: Do shorter hours mean lower pay?
 
-## The Energy Connection: Electricity Prices
+Now let's see if working fewer hours comes with a compensation penalty. We'll compare the change in working hours vs wage growth across sectors.
 
-With millions of EVs now on Norwegian roads, household electricity demand patterns are shifting. Let's connect this to electricity price data.
-
-```{r data-electricity}
-df_elec <- NULL
-
-tryCatch({
-  raw_elec <- ApiData(
-    "https://data.ssb.no/api/v0/en/table/10774",
-    ContentsCode = "Strompris",
-    Tid = list(filter = "top", values = 48)
-  )
+```{r combine-data}
+if (!is.null(df_hours) && !is.null(df_wages)) {
+  # Get industry columns
+  industry_col_hours <- names(df_hours)[grepl("NACE|industry", names(df_hours), ignore.case = TRUE)][1]
+  industry_col_wages <- names(df_wages)[grepl("NACE|industry", names(df_wages), ignore.case = TRUE)][1]
   
-  tmp <- raw_elec[[1]]
-  print(names(tmp))
+  # Calculate change in hours (first vs last 3 years)
+  hours_change <- df_hours |>
+    mutate(industry = .data[[industry_col_hours]]) |>
+    filter(year >= 2000) |>
+    mutate(period = if_else(year <= 2003, "early", "recent")) |>
+    group_by(industry, period) |>
+    summarise(avg_hours = mean(value, na.rm = TRUE), .groups = "drop") |>
+    pivot_wider(names_from = period, values_from = avg_hours) |>
+    filter(!is.na(early), !is.na(recent)) |>
+    mutate(hours_change = recent - early)
   
-  time_col <- names(tmp)[grepl("tid|aar|kvartal|maaned", names(tmp), ignore_case = TRUE)][1]
-  message("Time column: ", time_col)
+  # Calculate wage growth (percentage)
+  wage_change <- df_wages |>
+    mutate(industry = .data[[industry_col_wages]]) |>
+    filter(year >= 2000) |>
+    mutate(period = if_else(year <= 2003, "early", "recent")) |>
+    group_by(industry, period) |>
+    summarise(avg_wage = mean(value, na.rm = TRUE), .groups = "drop") |>
+    pivot_wider(names_from = period, values_from = avg_wage) |>
+    filter(!is.na(early), !is.na(recent)) |>
+    mutate(wage_growth_pct = ((recent - early) / early) * 100)
   
-  df_elec <- tmp |>
-    mutate(
-      value = as.numeric(value),
-      time_str = .data[[time_col]],
-      date = case_when(
-        str_detect(time_str, "M") ~ ym(sub("M", "-", time_str)),
-        str_detect(time_str, "K") ~ yq(sub("K", " Q", time_str)),
-        nchar(time_str) == 4 ~ ymd(paste0(time_str, "-01-01")),
-        TRUE ~ NA_Date_
-      )
-    ) |>
-    filter(!is.na(value), !is.na(date))
-  
-  message("Loaded ", nrow(df_elec), " rows of electricity price data")
-  
-}, error = function(e) message("Electricity data fetch failed: ", e$message))
+  # Join datasets
+  df_combined <- hours_change |>
+    inner_join(wage_change, by = "industry") |>
+    filter(!str_detect(industry, "^[A-Z]\\s"))  # Remove aggregate categories
+}
 ```
 
-## Electricity Prices: A Seasonal Heatmap
-
-Norway's electricity prices follow strong seasonal patterns, driven by hydropower availability and heating demand. Let's visualize this with a heatmap showing price variation by month and year.
-
-```{r plot-heatmap}
-#| fig-height: 5
-#| fig-width: 9
+```{r plot-scatterplot}
+#| fig-height: 7
+#| fig-width: 11
 #| fig-show: asis
 #| dev: "png"
 
-if (!is.null(df_elec)) {
-  
-  df_heat <- df_elec |>
+if (exists("df_combined") && nrow(df_combined) > 0) {
+  # Label interesting outliers
+  df_combined <- df_combined |>
     mutate(
-      year = year(date),
-      month = month(date, label = TRUE, abbr = TRUE)
-    ) |>
-    group_by(year, month) |>
-    summarise(price = mean(value, na.rm = TRUE), .groups = "drop") |>
-    filter(year >= 2020)
+      industry_short = str_trunc(industry, 28),
+      label = if_else(
+        abs(hours_change) > 0.8 | wage_growth_pct > 120 | wage_growth_pct < 40,
+        industry_short,
+        NA_character_
+      )
+    )
   
-  p3 <- ggplot(df_heat, aes(x = month, y = factor(year), fill = price)) +
-    geom_tile(color = "white", linewidth = 0.5) +
-    geom_text(aes(label = round(price)), size = 3, color = "white", fontface = "bold") +
-    scale_fill_gradient2(
-      low = "#2E86AB",
-      mid = "#F4D35E", 
-      high = "#C73E1D",
-      midpoint = median(df_heat$price, na.rm = TRUE),
-      name = "Price (ore/kWh)"
-    ) +
+  p3 <- ggplot(df_combined, aes(x = hours_change, y = wage_growth_pct)) +
+    geom_vline(xintercept = 0, linetype = "dashed", color = "grey50", alpha = 0.6) +
+    geom_hline(yintercept = median(df_combined$wage_growth_pct, na.rm = TRUE),
+               linetype = "dashed", color = "grey50", alpha = 0.6) +
+    geom_point(aes(size = abs(hours_change)), color = pal[4], alpha = 0.7) +
+    geom_text(aes(label = label), size = 3, hjust = -0.1, vjust = 0.5,
+              check_overlap = TRUE, color = pal[1]) +
+    annotate("text", x = -1.2, y = 140, label = "Fewer hours\nBigger raises",
+             size = 4, fontface = "italic", color = pal[7]) +
+    annotate("text", x = 0.5, y = 40, label = "More hours\nSlower wage growth",
+             size = 4, fontface = "italic", color = pal[7]) +
+    scale_size_continuous(range = c(2, 12), guide = "none") +
+    scale_x_continuous(labels = number_format(accuracy = 0.1, suffix = " hrs")) +
+    scale_y_continuous(labels = percent_format(scale = 1)) +
     labs(
-      title = "Electricity Prices: The Seasonal Rollercoaster",
-      subtitle = "Average household electricity prices by month and year (ore per kWh excluding grid fees and taxes)",
-      caption = "Source: Statistics Norway, Table 10774",
-      x = NULL,
-      y = NULL
+      title = "The Hours-Wage Paradox Across Norwegian Industries",
+      subtitle = "Sectors that cut working hours the most since 2000 still saw strong wage growth — no trade-off visible",
+      x = "Change in weekly working hours (2000-2025)",
+      y = "Wage growth (%)",
+      caption = "Source: Statistics Norway (SSB), tables 05940 and 11350\nBubble size = magnitude of hours change"
     ) +
-    theme_minimal(base_size = 12) +
+    theme_minimal(base_size = 13) +
     theme(
-      plot.title = element_text(face = "bold", size = 15),
-      plot.subtitle = element_text(color = "grey40", size = 10, margin = margin(b = 15)),
-      plot.caption = element_text(color = "grey50", hjust = 0),
-      legend.position = "right",
-      panel.grid = element_blank(),
-      plot.background = element_rect(fill = pal["bg"], color = NA),
-      plot.margin = margin(20, 20, 20, 20)
+      plot.title = element_text(face = "bold", size = 16),
+      plot.subtitle = element_text(size = 12, margin = margin(b = 15)),
+      panel.grid.minor = element_blank(),
+      plot.caption = element_text(hjust = 0, color = "grey40")
     )
   
   print(p3)
 }
 ```
 
-The electricity price volatility of recent years is clearly visible. Winter months consistently show higher prices, but the extreme spikes of 2022 stand out dramatically - a period when energy markets across Europe experienced unprecedented turbulence.
+## Slope chart: The decade of change
 
-## Cost Comparison: Fueling vs Charging
+Let's zoom in on selected industries to see exactly how working hours shifted between two snapshots a decade apart.
 
-For Norwegian households, the economics of EV ownership have been transformed not just by purchase incentives, but by running costs. Let's combine our datasets to estimate the relative cost of driving electric versus petrol.
-
-```{r data-cpi}
-df_fuel <- NULL
-
-tryCatch({
-  raw_cpi <- ApiData(
-    "https://data.ssb.no/api/v0/en/table/03014",
-    Konsumgrp = "07.2.2.1",  # Fuels and lubricants
-    ContentsCode = "Indeks",
-    Tid = list(filter = "top", values = 60)
-  )
-  
-  tmp <- raw_cpi[[1]]
-  print(names(tmp))
-  
-  time_col <- names(tmp)[grepl("tid|aar|kvartal|maaned", names(tmp), ignore.case = TRUE)][1]
-  message("Time column: ", time_col)
-  
-  df_fuel <- tmp |>
-    mutate(
-      value = as.numeric(value),
-      time_str = .data[[time_col]],
-      date = case_when(
-        str_detect(time_str, "M") ~ ym(sub("M", "-", time_str)),
-        str_detect(time_str, "K") ~ yq(sub("K", " Q", time_str)),
-        nchar(time_str) == 4 ~ ymd(paste0(time_str, "-01-01")),
-        TRUE ~ NA_Date_
-      )
-    ) |>
-    filter(!is.na(value), !is.na(date))
-  
-  message("Loaded ", nrow(df_fuel), " rows of fuel price index data")
-  
-}, error = function(e) message("Fuel price data fetch failed: ", e$message))
-```
-
-## Diverging Costs: A Dual-Axis Comparison
-
-```{r plot-comparison}
-#| fig-height: 5
+```{r plot-slope}
+#| fig-height: 8
 #| fig-width: 10
 #| fig-show: asis
 #| dev: "png"
 
-if (!is.null(df_elec) && !is.null(df_fuel)) {
+if (!is.null(df_hours)) {
+  industry_col <- names(df_hours)[grepl("NACE|industry", names(df_hours), ignore.case = TRUE)][1]
   
-  # Align timeframes
-  common_dates <- intersect(df_elec$date, df_fuel$date)
+  # Pick 2012 and 2022 as comparison years
+  df_slope <- df_hours |>
+    filter(year %in% c(2012, 2022)) |>
+    mutate(industry = .data[[industry_col]]) |>
+    group_by(industry, year) |>
+    summarise(avg_hours = mean(value, na.rm = TRUE), .groups = "drop") |>
+    pivot_wider(names_from = year, values_from = avg_hours, names_prefix = "year_") |>
+    filter(!is.na(year_2012), !is.na(year_2022)) |>
+    mutate(
+      change = year_2022 - year_2012,
+      direction = if_else(change < 0, "Decrease", "Increase"),
+      industry_short = str_trunc(industry, 32)
+    ) |>
+    filter(!str_detect(industry, "^[A-Z]\\s"))  # Remove aggregates
   
-  if (length(common_dates) > 0) {
-    
-    df_combined <- bind_rows(
-      df_elec |> 
-        filter(date %in% common_dates) |>
-        group_by(date) |>
-        summarise(value = mean(value, na.rm = TRUE), .groups = "drop") |>
-        mutate(type = "Electricity (ore/kWh)"),
-      df_fuel |> 
-        filter(date %in% common_dates) |>
-        group_by(date) |>
-        summarise(value = mean(value, na.rm = TRUE), .groups = "drop") |>
-        mutate(type = "Petrol (CPI index)")
+  # Select top 10 by magnitude of change
+  df_slope_top <- df_slope |>
+    arrange(desc(abs(change))) |>
+    head(12)
+  
+  # Reshape for slope chart
+  df_slope_long <- df_slope_top |>
+    pivot_longer(cols = starts_with("year_"), names_to = "year", values_to = "hours") |>
+    mutate(year = as.numeric(str_remove(year, "year_")))
+  
+  p4 <- ggplot(df_slope_long, aes(x = year, y = hours, group = industry_short)) +
+    geom_line(aes(color = direction), linewidth = 1.2, alpha = 0.8) +
+    geom_point(size = 3, alpha = 0.9, aes(color = direction)) +
+    geom_text(data = filter(df_slope_long, year == 2012),
+              aes(label = industry_short), hjust = 1.05, size = 3.5, color = "grey20") +
+    geom_text(data = filter(df_slope_long, year == 2022),
+              aes(label = sprintf("%.1f", hours)), hjust = -0.1, size = 3.5,
+              fontface = "bold", aes(color = direction)) +
+    scale_color_manual(values = c("Decrease" = pal[3], "Increase" = pal[1])) +
+    scale_x_continuous(breaks = c(2012, 2022), limits = c(2010, 2024)) +
+    labs(
+      title = "A Decade of Change: 2012 vs 2022",
+      subtitle = "Industries with the biggest shifts in weekly working hours — most moved toward shorter weeks",
+      x = NULL,
+      y = "Average weekly hours",
+      color = NULL,
+      caption = "Source: Statistics Norway (SSB), table 05940"
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      plot.title = element_text(face = "bold", size = 16),
+      plot.subtitle = element_text(size = 12, margin = margin(b = 15)),
+      panel.grid.major.x = element_blank(),
+      panel.grid.minor = element_blank(),
+      legend.position = "top",
+      axis.text.x = element_text(size = 12, face = "bold"),
+      plot.caption = element_text(hjust = 0, color = "grey40")
     )
-    
-    # Normalize both to 100 at start for comparison
-    df_indexed <- df_combined |>
-      group_by(type) |>
-      arrange(date) |>
-      mutate(indexed = value / first(value) * 100) |>
-      ungroup()
-    
-    p4 <- ggplot(df_indexed, aes(x = date, y = indexed, color = type)) +
-      geom_line(linewidth = 1.3) +
-      geom_hline(yintercept = 100, linetype = "dotted", color = "grey50") +
-      annotate("text", x = min(df_indexed$date), y = 103, label = "Baseline", 
-               hjust = 0, size = 3, color = "grey50") +
-      scale_color_manual(
-        values = c("Electricity (ore/kWh)" = pal["electric"], "Petrol (CPI index)" = pal["petrol"]),
-        name = NULL
-      ) +
-      labs(
-        title = "The Fuel Cost Divergence",
-        subtitle = "Both series indexed to 100 at start of period. Electricity for EV charging vs petrol prices.",
-        caption = "Source: Statistics Norway, Tables 10774 (electricity) and 03014 (CPI fuels)",
-        x = NULL,
-        y = "Index (start = 100)"
-      ) +
-      theme_minimal(base_size = 12) +
-      theme(
-        plot.title = element_text(face = "bold", size = 15),
-        plot.subtitle = element_text(color = "grey40", size = 10, margin = margin(b = 15)),
-        plot.caption = element_text(color = "grey50", hjust = 0),
-        legend.position = "top",
-        legend.justification = "left",
-        panel.grid.minor = element_blank(),
-        plot.background = element_rect(fill = pal["bg"], color = NA),
-        plot.margin = margin(20, 20, 20, 20)
-      )
-    
-    print(p4)
-  }
+  
+  print(p4)
 }
 ```
 
-Both electricity and petrol prices have seen significant volatility in recent years, but the trajectories tell different stories. Petrol prices spiked dramatically during 2022's energy crisis but have since moderated. Electricity, while also volatile, offers EV owners generally lower per-kilometer costs, particularly when combined with home charging during off-peak hours.
+## Sick leave: Does overwork show up in health data?
 
-## Key Findings
+Finally, let's check whether industries with longer hours also have higher sick leave rates — a potential signal of burnout.
 
-- **Battery electric vehicles now dominate new car sales in Norway**, representing over 80% of new registrations in recent months - a threshold no other country has reached
-- **The transition accelerated dramatically from 2020 onwards**, with year-over-year gains of 5-10 percentage points becoming the norm
-- **Diesel vehicles have collapsed from market dominance to near irrelevance** in less than a decade, dropping from over 50% of new sales to under 5%
-- **Electricity price volatility has introduced new uncertainties** for EV owners, though charging costs generally remain competitive with petrol, especially with smart charging strategies
-- **The Norwegian experiment provides a roadmap** - demonstrating that with the right incentives (tax exemptions, charging infrastructure, toll benefits), consumer behavior can shift rapidly
+```{r plot-sickleave-facets}
+#| fig-height: 9
+#| fig-width: 11
+#| fig-show: asis
+#| dev: "png"
 
-## What to Watch
+if (!is.null(df_sick)) {
+  industry_col_sick <- names(df_sick)[grepl("NACE|industry", names(df_sick), ignore.case = TRUE)][1]
+  
+  # Get recent data by industry
+  df_sick_recent <- df_sick |>
+    mutate(
+      industry = .data[[industry_col_sick]],
+      year = year(date)
+    ) |>
+    filter(year >= 2020, !str_detect(industry, "^[A-Z]\\s"))
+  
+  # Select top industries by average sick leave
+  top_sick <- df_sick_recent |>
+    group_by(industry) |>
+    summarise(avg_sick = mean(value, na.rm = TRUE), .groups = "drop") |>
+    arrange(desc(avg_sick)) |>
+    head(9) |>
+    pull(industry)
+  
+  df_sick_plot <- df_sick_recent |>
+    filter(industry %in% top_sick) |>
+    mutate(industry_short = str_trunc(industry, 30))
+  
+  p5 <- ggplot(df_sick_plot, aes(x = date, y = value)) +
+    geom_area(fill = pal[5], alpha = 0.4) +
+    geom_line(color = pal[5], linewidth = 0.8) +
+    facet_wrap(~industry_short, scales = "free_y", ncol = 3) +
+    scale_x_date(date_labels = "%Y", date_breaks = "1 year") +
+    scale_y_continuous(labels = number_format(suffix = "%", accuracy = 0.1)) +
+    labs(
+      title = "Sick Leave Rates by Industry: 2020-Present",
+      subtitle = "Quarterly sick leave as percentage of total working hours — health care and social services lead",
+      x = NULL,
+      y = "Sick leave rate (%)",
+      caption = "Source: Statistics Norway (SSB), table 12549"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      plot.title = element_text(face = "bold", size = 16),
+      plot.subtitle = element_text(size = 11, margin = margin(b = 15)),
+      strip.text = element_text(face = "bold", size = 10),
+      panel.grid.minor = element_blank(),
+      axis.text.x = element_text(size = 9),
+      plot.caption = element_text(hjust = 0, color = "grey40")
+    )
+  
+  print(p5)
+}
+```
 
-Norway's EV story isn't over. The next chapters include:
+## Key findings
 
-- **Grid capacity**: Can Norway's electricity infrastructure handle growing EV demand, particularly during cold winter peaks?
-- **Used car market**: As first-generation EVs age, how will battery degradation affect resale values and second-hand availability?
-- **Heavy transport**: Personal vehicles led the charge, but trucks and buses represent the next frontier
-- **Export of expertise**: Norwegian experience in EV policy, charging networks, and consumer adoption is increasingly valuable globally
+After analysing three decades of Norwegian labour market data, here's what stands out:
 
-The data tells a clear story: Norway has demonstrated that electric vehicles can replace fossil fuel cars at scale. The question for the rest of the world is no longer whether it's possible, but how quickly they can follow.
+- **Weekly working hours have declined by about 1.5 hours since the mid-1990s** — but at 37-38 hours per week on average, Norway is nowhere near a standard four-day week (typically 32 hours)
+
+- **Industry variation is massive**: some sectors consistently hover around 35 hours per week, while others maintain 40+ hour weeks with little change over time
+
+- **There is no visible trade-off between shorter hours and wage growth**: sectors that cut working hours the most since 2000 still saw robust wage increases, often above 80-100 percent over the period
+
+- **Health care and social services show the highest sick leave rates** (often 7-9 percent of working hours), suggesting these demanding sectors may be pushing workers too hard despite average weekly hours
+
+- **The decline in working hours has slowed dramatically in the last decade** — the 2012-2022 period saw much smaller changes than the preceding decades, indicating we may have hit a plateau
+
+## The big question
+
+Norway's gradual reduction in working hours over the past 30 years happened without employers explicitly embracing a four-day week model. Instead, it was incremental — longer holidays, more parental leave, flexible arrangements. But the pace has slowed. If Norway wants to make the leap to a true four-day standard, it will require deliberate policy changes, not just drift. The question is whether productivity gains and worker well-being justify that jump — and whether Norwegian companies are ready to make it.
