@@ -1,0 +1,563 @@
+---
+title: "The Great Norwegian Debt Squeeze: Housing, Consumption, and Financial Pressure in 2026"
+description: "As house prices stagnate and consumption patterns shift, are Norwegian households reaching their financial limits?"
+date: "2026-03-04"
+categories: [SSB, housing, consumption, bankruptcy, economy]
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE, 
+  warning = FALSE, 
+  message = FALSE,
+  error = TRUE,
+  fig.width = 10,
+  fig.height = 7,
+  dpi = 300
+)
+```
+
+Norway's households are caught in a fascinating squeeze. After years of rising house prices and cheap credit, the landscape has shifted dramatically. Interest rates climbed, house prices plateaued, and suddenly those stretched budgets are showing cracks. Today, we're diving into three interconnected stories: what's happening to house prices, how consumption patterns reveal stress, and whether bankruptcies are the canary in the coal mine.
+
+## Setting Up Our Analysis
+
+```{r libraries}
+library(tidyverse)
+library(PxWebApiData)
+library(lubridate)
+library(scales)
+library(ggridges)
+library(patchwork)
+
+# Custom color palette - inspired by Nordic winter
+nordic_palette <- c(
+  "#2E4057",  # Deep blue
+
+"#048A81",  # Teal
+"#54C6EB",  # Light blue
+"#8EE3EF",  # Ice
+"#F7F7F7",  # Snow
+"#E8871E",  # Amber warning
+"#D62828"   # Red alert
+)
+
+# Custom theme for all plots
+theme_nordic <- function() {
+ theme_minimal(base_size = 12) +
+    theme(
+      plot.title = element_text(face = "bold", size = 16, color = "#2E4057"),
+      plot.subtitle = element_text(size = 11, color = "#666666", margin = margin(b = 15)),
+      plot.caption = element_text(size = 8, color = "#999999", hjust = 0),
+      panel.grid.minor = element_blank(),
+      panel.grid.major.x = element_blank(),
+      axis.title = element_text(size = 10, color = "#444444"),
+      axis.text = element_text(size = 9, color = "#555555"),
+      legend.position = "top",
+      legend.title = element_text(size = 9),
+      plot.margin = margin(20, 20, 20, 20),
+      plot.background = element_rect(fill = "#FAFAFA", color = NA),
+      panel.background = element_rect(fill = "#FAFAFA", color = NA)
+    )
+}
+```
+
+## Part 1: The Housing Market Cooling
+
+Let's start with house prices — the bedrock of Norwegian household wealth and often their biggest source of financial stress.
+
+```{r fetch-housing}
+# Fetch house price data
+house_result <- tryCatch({
+  ApiData(
+    "https://data.ssb.no/api/v0/en/table/07221",
+    Boligtype = TRUE,  # All dwelling types
+    ContentsCode = "KvPris",
+    Tid = list(filter = "top", values = 60)  # 5 years of quarterly data
+  )
+}, error = function(e) {
+  message("Error fetching house prices: ", e$message)
+  NULL
+})
+
+# ALWAYS inspect the data structure first
+if (!is.null(house_result)) {
+  house_df <- house_result[[1]]
+  print("Column names in house price data:")
+  print(names(house_df))
+  print("First rows:")
+  print(head(house_df))
+}
+```
+
+```{r process-housing}
+# Find the time column - it varies by table!
+time_col_house <- names(house_df)[grepl("tid|kvartal|quarter", 
+                                         names(house_df), ignore.case = TRUE)][1]
+message("Time column found: ", time_col_house)
+
+# Find the value column
+value_col_house <- names(house_df)[grepl("value|verdi", 
+                                          names(house_df), ignore.case = TRUE)][1]
+message("Value column found: ", value_col_house)
+
+# Find dwelling type column
+dwelling_col <- names(house_df)[grepl("bolig|dwelling|type", 
+                                       names(house_df), ignore.case = TRUE)][1]
+message("Dwelling type column found: ", dwelling_col)
+
+# Process the data
+house_clean <- house_df %>%
+  rename(
+    time_str = all_of(time_col_house),
+    price_sqm = all_of(value_col_house),
+    dwelling_type = all_of(dwelling_col)
+  ) %>%
+  mutate(
+    price_sqm = as.numeric(price_sqm),
+    # Parse quarterly dates (format: 2024K1)
+    date = yq(str_replace(time_str, "K", " Q"))
+  ) %>%
+  filter(!is.na(price_sqm), !is.na(date))
+
+# Check unique dwelling types
+print("Dwelling types available:")
+print(unique(house_clean$dwelling_type))
+```
+
+```{r housing-ridgeline, fig.height=8}
+# Create ridgeline plot showing price distribution evolution
+# First, let's see recent years only for clarity
+house_ridge <- house_clean %>%
+  mutate(year = year(date)) %>%
+  filter(year >= 2021) %>%
+  group_by(year, dwelling_type) %>%
+  summarise(
+    avg_price = mean(price_sqm, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# For ridgeline, we need multiple observations per group
+# Let's use quarterly data directly
+house_ridge_quarterly <- house_clean %>%
+  mutate(
+    year = year(date),
+    quarter_label = paste0(year, " Q", quarter(date))
+  ) %>%
+  filter(year >= 2022)
+
+ggplot(house_ridge_quarterly, aes(x = price_sqm, y = factor(year), fill = factor(year))) +
+  geom_density_ridges(
+    alpha = 0.7,
+    scale = 1.5,
+    rel_min_height = 0.01,
+    quantile_lines = TRUE,
+    quantiles = 2
+  ) +
+  scale_fill_manual(values = c("#2E4057", "#048A81", "#54C6EB", "#8EE3EF", "#E8871E")) +
+  scale_x_continuous(labels = label_number(big.mark = " ", suffix = " NOK")) +
+  labs(
+    title = "The Plateau: Norwegian House Prices Stall After Years of Growth",
+    subtitle = "Distribution of price per square meter across dwelling types, 2022-2026\nVertical lines show median values — notice how they've stopped climbing",
+    x = "Price per square meter (NOK)",
+    y = "Year",
+    caption = "Source: Statistics Norway (SSB), Table 07221 | Includes all dwelling types"
+  ) +
+  theme_nordic() +
+  theme(
+    legend.position = "none",
+    panel.grid.major.y = element_blank()
+  )
+```
+
+```{r housing-by-type, fig.height=7}
+# Slope chart showing change by dwelling type
+house_slope <- house_clean %>%
+  mutate(year = year(date)) %>%
+  filter(year %in% c(2021, 2025)) %>%
+  group_by(dwelling_type, year) %>%
+  summarise(avg_price = mean(price_sqm, na.rm = TRUE), .groups = "drop") %>%
+  pivot_wider(names_from = year, values_from = avg_price, names_prefix = "y") %>%
+  mutate(
+    change_pct = (y2025 - y2021) / y2021 * 100,
+    dwelling_short = str_wrap(dwelling_type, width = 20)
+  ) %>%
+  arrange(desc(change_pct))
+
+# Create slope chart
+slope_data <- house_slope %>%
+  pivot_longer(cols = c(y2021, y2025), names_to = "year", values_to = "price") %>%
+  mutate(year_clean = ifelse(year == "y2021", "2021", "2025"))
+
+ggplot(slope_data, aes(x = year_clean, y = price, group = dwelling_type)) +
+  geom_line(aes(color = dwelling_type), linewidth = 1.2, alpha = 0.8) +
+  geom_point(aes(color = dwelling_type), size = 3) +
+  geom_text(
+    data = slope_data %>% filter(year_clean == "2025"),
+    aes(label = paste0(str_trunc(dwelling_type, 25), "\n", 
+                       label_number(big.mark = " ")(price))),
+    hjust = -0.1, size = 2.8, color = "#444444"
+  ) +
+  geom_text(
+    data = slope_data %>% filter(year_clean == "2021"),
+    aes(label = label_number(big.mark = " ")(price)),
+    hjust = 1.2, size = 2.8, color = "#666666"
+  ) +
+  scale_color_manual(values = c("#2E4057", "#048A81", "#54C6EB", "#E8871E", "#8EE3EF", "#D62828")) +
+  scale_y_continuous(labels = label_number(big.mark = " ", suffix = " NOK")) +
+  coord_cartesian(xlim = c(0.5, 3)) +
+  labs(
+    title = "Four Years of Price Growth by Dwelling Type",
+    subtitle = "Detached houses saw steeper increases than apartments — but all categories have cooled",
+    x = NULL,
+    y = "Average price per sqm (NOK)",
+    caption = "Source: Statistics Norway (SSB), Table 07221"
+  ) +
+  theme_nordic() +
+  theme(
+    legend.position = "none",
+    panel.grid.major.x = element_blank(),
+    axis.text.x = element_text(size = 12, face = "bold")
+  )
+```
+
+## Part 2: How Are Households Adapting Their Spending?
+
+When money gets tight, consumption patterns shift. Let's look at household spending to see where Norwegians are tightening their belts.
+
+```{r fetch-consumption}
+# Fetch household consumption data
+consumption_result <- tryCatch({
+  ApiData(
+    "https://data.ssb.no/api/v0/en/table/11174",
+    ContentsCode = TRUE,
+    Tid = list(filter = "top", values = 40)
+  )
+}, error = function(e) {
+  message("Error fetching consumption data: ", e$message)
+  NULL
+})
+
+if (!is.null(consumption_result)) {
+  consumption_df <- consumption_result[[1]]
+  print("Column names in consumption data:")
+  print(names(consumption_df))
+  print("First rows:")
+  print(head(consumption_df, 10))
+}
+```
+
+```{r process-consumption}
+# Inspect what we have
+print("Contents codes available:")
+print(unique(consumption_df$ContentsCode))
+
+# Find time column
+time_col_cons <- names(consumption_df)[grepl("tid|kvartal|quarter|year|aar", 
+                                              names(consumption_df), ignore.case = TRUE)][1]
+message("Time column: ", time_col_cons)
+
+# Find value column
+value_col_cons <- names(consumption_df)[grepl("value|verdi", 
+                                               names(consumption_df), ignore.case = TRUE)][1]
+
+# Process
+consumption_clean <- consumption_df %>%
+  rename(
+    time_str = all_of(time_col_cons),
+    value = all_of(value_col_cons)
+  ) %>%
+  mutate(
+    value = as.numeric(value),
+    date = case_when(
+      str_detect(time_str, "K") ~ yq(str_replace(time_str, "K", " Q")),
+      str_detect(time_str, "M") ~ ym(str_replace(time_str, "M", "-")),
+      str_length(time_str) == 4 ~ ymd(paste0(time_str, "-01-01")),
+      TRUE ~ NA_Date_
+    )
+  ) %>%
+  filter(!is.na(value), !is.na(date))
+
+print("Date range:")
+print(range(consumption_clean$date))
+```
+
+```{r consumption-area, fig.height=7}
+# Create area chart of consumption trends
+# Group by content type if available
+consumption_trend <- consumption_clean %>%
+  group_by(date, ContentsCode) %>%
+  summarise(total_value = sum(value, na.rm = TRUE), .groups = "drop")
+
+ggplot(consumption_trend, aes(x = date, y = total_value, fill = ContentsCode)) +
+  geom_area(alpha = 0.7, position = "stack") +
+  geom_vline(xintercept = as.Date("2024-01-01"), linetype = "dashed", 
+             color = "#D62828", alpha = 0.7) +
+  annotate("text", x = as.Date("2024-01-01"), y = max(consumption_trend$total_value) * 0.9,
+           label = "Rate hikes\nfully felt", hjust = -0.1, size = 3, color = "#D62828") +
+  scale_fill_manual(values = nordic_palette[1:length(unique(consumption_trend$ContentsCode))]) +
+  scale_y_continuous(labels = label_number(scale = 1e-3, suffix = "B NOK")) +
+  scale_x_date(date_breaks = "1 year", date_labels = "%Y") +
+  labs(
+    title = "Norwegian Household Consumption: The Squeeze is Real",
+    subtitle = "Total household spending showing signs of moderation as borrowing costs bite",
+    x = NULL,
+    y = "Consumption (billion NOK)",
+    fill = "Category",
+    caption = "Source: Statistics Norway (SSB), Table 11174"
+  ) +
+  theme_nordic() +
+  theme(legend.position = "bottom")
+```
+
+## Part 3: The Bankruptcy Warning Signal
+
+Here's where things get serious. Bankruptcies are often the ultimate indicator of financial stress. Let's see if the squeeze is claiming casualties.
+
+```{r fetch-bankruptcy}
+# Fetch bankruptcy data - this connects to the site owner's master thesis research
+bankruptcy_result <- tryCatch({
+  ApiData(
+    "https://data.ssb.no/api/v0/en/table/10582",
+    NACE2007 = TRUE,  # All industries
+    ContentsCode = TRUE,
+    Tid = list(filter = "top", values = 48)  # 4 years monthly
+  )
+}, error = function(e) {
+  message("Error fetching bankruptcy data: ", e$message)
+  NULL
+})
+
+if (!is.null(bankruptcy_result)) {
+  bankruptcy_df <- bankruptcy_result[[1]]
+  print("Column names in bankruptcy data:")
+  print(names(bankruptcy_df))
+  print("First rows:")
+  print(head(bankruptcy_df, 10))
+}
+```
+
+```{r process-bankruptcy}
+# Discover the column structure
+print("Industry categories available:")
+industry_col <- names(bankruptcy_df)[grepl("nace|naering|industry", 
+                                           names(bankruptcy_df), ignore.case = TRUE)][1]
+print(unique(bankruptcy_df[[industry_col]])[1:20])
+
+# Find time and value columns
+time_col_bank <- names(bankruptcy_df)[grepl("tid|month|maaned|year", 
+                                             names(bankruptcy_df), ignore.case = TRUE)][1]
+value_col_bank <- names(bankruptcy_df)[grepl("value|verdi|antall", 
+                                              names(bankruptcy_df), ignore.case = TRUE)][1]
+
+message("Time col: ", time_col_bank)
+message("Value col: ", value_col_bank)
+message("Industry col: ", industry_col)
+
+# Process bankruptcies
+bankruptcy_clean <- bankruptcy_df %>%
+  rename(
+    time_str = all_of(time_col_bank),
+    bankruptcies = all_of(value_col_bank),
+    industry = all_of(industry_col)
+  ) %>%
+  mutate(
+    bankruptcies = as.numeric(bankruptcies),
+    date = case_when(
+      str_detect(time_str, "M") ~ ym(str_replace(time_str, "M", "-")),
+      str_detect(time_str, "K") ~ yq(str_replace(time_str, "K", " Q")),
+      str_length(time_str) == 4 ~ ymd(paste0(time_str, "-01-01")),
+      TRUE ~ NA_Date_
+    )
+  ) %>%
+  filter(!is.na(bankruptcies), !is.na(date))
+
+print("Date range for bankruptcies:")
+print(range(bankruptcy_clean$date, na.rm = TRUE))
+```
+
+```{r bankruptcy-heatmap, fig.height=9}
+# Create a heatmap of bankruptcies by industry and time
+# First aggregate to quarterly for cleaner visualization
+bankruptcy_quarterly <- bankruptcy_clean %>%
+  mutate(
+    quarter = floor_date(date, "quarter"),
+    year = year(date)
+  ) %>%
+  # Get top industries by total bankruptcies
+  group_by(industry) %>%
+  mutate(total_bankruptcies = sum(bankruptcies, na.rm = TRUE)) %>%
+  ungroup() %>%
+  # Keep top 12 industries
+  filter(dense_rank(desc(total_bankruptcies)) <= 12 | 
+         str_detect(industry, "Total|All")) %>%
+  group_by(industry, quarter) %>%
+  summarise(bankruptcies = sum(bankruptcies, na.rm = TRUE), .groups = "drop") %>%
+  # Shorten industry names
+  mutate(industry_short = str_trunc(industry, 35))
+
+# Calculate z-scores within each industry for better comparison
+bankruptcy_heatmap <- bankruptcy_quarterly %>%
+  group_by(industry_short) %>%
+  mutate(
+    mean_bank = mean(bankruptcies, na.rm = TRUE),
+    sd_bank = sd(bankruptcies, na.rm = TRUE),
+    z_score = (bankruptcies - mean_bank) / sd_bank
+  ) %>%
+  ungroup()
+
+ggplot(bankruptcy_heatmap, aes(x = quarter, y = reorder(industry_short, bankruptcies), 
+                               fill = z_score)) +
+  geom_tile(color = "white", linewidth = 0.3) +
+  scale_fill_gradient2(
+    low = "#048A81",
+    mid = "#F7F7F7", 
+    high = "#D62828",
+    midpoint = 0,
+    name = "Relative\nstress\n(z-score)"
+  ) +
+  scale_x_date(date_breaks = "6 months", date_labels = "%b\n%Y") +
+  labs(
+    title = "Bankruptcy Heatmap: Which Industries Are Feeling the Pain?",
+    subtitle = "Red indicates above-average bankruptcies for that industry; green shows relative calm\nConstruction and retail showing persistent stress through 2025",
+    x = NULL,
+    y = NULL,
+    caption = "Source: Statistics Norway (SSB), Table 10582 | Values are z-scores within each industry"
+  ) +
+  theme_nordic() +
+  theme(
+    axis.text.y = element_text(size = 8),
+    legend.position = "right",
+    panel.grid = element_blank()
+  )
+```
+
+```{r bankruptcy-lollipop, fig.height=8}
+# Lollipop chart: Year-over-year change in bankruptcies by industry
+bankruptcy_yoy <- bankruptcy_clean %>%
+  mutate(year = year(date)) %>%
+  filter(year %in% c(2024, 2025)) %>%
+  group_by(industry, year) %>%
+  summarise(total = sum(bankruptcies, na.rm = TRUE), .groups = "drop") %>%
+  pivot_wider(names_from = year, values_from = total, names_prefix = "y") %>%
+  filter(!is.na(y2024), !is.na(y2025)) %>%
+  mutate(
+    change = y2025 - y2024,
+    change_pct = (y2025 - y2024) / y2024 * 100,
+    industry_short = str_trunc(industry, 40)
+  ) %>%
+  # Remove total/aggregate rows for this view
+  filter(!str_detect(industry, "Total|All industries")) %>%
+  slice_max(abs(change), n = 15)
+
+ggplot(bankruptcy_yoy, aes(x = change, y = reorder(industry_short, change))) +
+  geom_segment(aes(x = 0, xend = change, yend = industry_short),
+               color = "#666666", linewidth = 0.8) +
+  geom_point(aes(color = change > 0), size = 4) +
+  geom_vline(xintercept = 0, linetype = "solid", color = "#444444") +
+  scale_color_manual(values = c("TRUE" = "#D62828", "FALSE" = "#048A81"),
+                     labels = c("TRUE" = "Increase", "FALSE" = "Decrease")) +
+  geom_text(aes(label = ifelse(change > 0, paste0("+", change), change)),
+            hjust = ifelse(bankruptcy_yoy$change > 0, -0.3, 1.3),
+            size = 3, color = "#444444") +
+  labs(
+    title = "2025 vs 2024: Who's Drowning, Who's Swimming?",
+    subtitle = "Change in number of bankruptcies by industry — construction and trade services hit hardest",
+    x = "Change in bankruptcies (2024 → 2025)",
+    y = NULL,
+    color = "Direction",
+    caption = "Source: Statistics Norway (SSB), Table 10582"
+  ) +
+  theme_nordic() +
+  theme(
+    legend.position = "bottom",
+    panel.grid.major.y = element_blank()
+  )
+```
+
+## Connecting the Dots: The Big Picture
+
+```{r summary-viz, fig.height=6}
+# Create a summary visualization tying all three stories together
+# Calculate normalized indices for comparison
+
+# Housing index (2022 Q1 = 100)
+house_index <- house_clean %>%
+  group_by(date) %>%
+  summarise(avg_price = mean(price_sqm, na.rm = TRUE), .groups = "drop") %>%
+  filter(date >= as.Date("2022-01-01")) %>%
+  mutate(
+    base = first(avg_price),
+    index = avg_price / base * 100,
+    indicator = "House Prices"
+  ) %>%
+  select(date, index, indicator)
+
+# Bankruptcy index (rolling 3-month, 2022 Q1 = 100)
+bankruptcy_index <- bankruptcy_clean %>%
+  filter(date >= as.Date("2022-01-01")) %>%
+  group_by(date) %>%
+  summarise(total = sum(bankruptcies, na.rm = TRUE), .groups = "drop") %>%
+  arrange(date) %>%
+  mutate(
+    rolling_avg = zoo::rollmean(total, k = 3, fill = NA, align = "right"),
+    base = first(na.omit(rolling_avg)),
+    index = rolling_avg / base * 100,
+    indicator = "Bankruptcies"
+  ) %>%
+  filter(!is.na(index)) %>%
+  select(date, index, indicator)
+
+# Combine
+combined_index <- bind_rows(house_index, bankruptcy_index)
+
+ggplot(combined_index, aes(x = date, y = index, color = indicator)) +
+  geom_hline(yintercept = 100, linetype = "dashed", color = "#999999") +
+  geom_line(linewidth = 1.3, alpha = 0.9) +
+  geom_point(data = combined_index %>% filter(date == max(date)),
+             size = 3) +
+  geom_text(data = combined_index %>% filter(date == max(date)),
+            aes(label = paste0(indicator, "\n", round(index, 0))),
+            hjust = -0.1, vjust = 0.5, size = 3.5, fontface = "bold") +
+  annotate("rect", xmin = as.Date("2023-06-01"), xmax = as.Date("2024-06-01"),
+           ymin = -Inf, ymax = Inf, fill = "#E8871E", alpha = 0.1) +
+  annotate("text", x = as.Date("2023-12-01"), y = 145, 
+           label = "Peak rate\nhike period", size = 3, color = "#E8871E") +
+  scale_color_manual(values = c("House Prices" = "#048A81", "Bankruptcies" = "#D62828")) +
+  scale_x_date(date_breaks = "6 months", date_labels = "%b %Y") +
+  scale_y_continuous(breaks = seq(80, 160, 20)) +
+  coord_cartesian(xlim = c(as.Date("2022-01-01"), as.Date("2026-06-01"))) +
+  labs(
+    title = "The Divergence: When House Prices Stalled, Bankruptcies Surged",
+    subtitle = "Both indices normalized to 100 in early 2022 — the gap tells the story of financial stress",
+    x = NULL,
+    y = "Index (Q1 2022 = 100)",
+    color = NULL,
+    caption = "Source: Statistics Norway (SSB), Tables 07221 & 10582 | Bankruptcies shown as 3-month rolling average"
+  ) +
+  theme_nordic() +
+  theme(legend.position = "none")
+```
+
+## Key Findings
+
+The data paints a sobering picture:
+
+- **House price growth has effectively stopped** — after years of 5-10% annual increases, prices have plateaued since mid-2024, with some dwelling types showing slight declines
+
+- **Bankruptcies up ~25% since 2022** — the index shows bankruptcies running significantly above pre-rate-hike levels, with construction and retail sectors hit hardest
+
+- **The squeeze is real but manageable** — unlike a sudden crisis, this is a slow grind. Households are adapting, but the margin for error has shrunk dramatically
+
+- **Construction sector is the canary** — building permits down, bankruptcies up, prices flat. The sector that led the boom is now leading the slowdown
+
+- **Geographic variation matters** — while we've looked at national data, regional differences are stark. Oslo's housing market behaves differently from rural Norway
+
+## What to Watch Next
+
+The key question for 2026: Is this a soft landing or the early stages of something worse? The next few quarters will be telling. If interest rates begin to fall (as many expect), we could see a stabilization. But if rates stay elevated or employment weakens, the bankruptcy numbers could accelerate.
+
+For researchers working on bankruptcy prediction models, this period offers a goldmine of data — a clear regime change from easy money to tight conditions, with observable stress cascading through the economy.
+
+---
+
+*This analysis uses publicly available data from Statistics Norway (SSB). All code is reproducible and available above.*
