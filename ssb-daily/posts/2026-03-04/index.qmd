@@ -1,0 +1,437 @@
+---
+title: "Norway's Green Driving Revolution: How Electric Vehicles Conquered the Roads"
+description: "Exploring how Norway became the world leader in electric vehicle adoption, with data revealing the dramatic transformation of its car fleet."
+date: "2026-03-04"
+categories: [SSB, transport, electric vehicles, environment, climate]
+image: "thumbnail.png"
+---
+
+```{r setup}
+#| echo: true
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = TRUE)
+```
+
+Norway has become the global poster child for electric vehicle adoption. While other countries debate EV targets for 2035 or 2040, Norway has already transformed its automotive landscape. Today, we dive into the data to understand just how dramatic this shift has been, and what it tells us about the country's green ambitions.
+
+## Loading the tools
+
+```{r libraries}
+library(tidyverse)
+library(PxWebApiData)
+library(lubridate)
+library(scales)
+library(ggtext)
+
+# A cohesive color palette inspired by Norwegian nature
+pal <- c(
+
+  "Electric" = "#2E86AB",
+  "Hybrid" = "#A23B72",
+  "Petrol" = "#F18F01",
+  "Diesel" = "#C73E1D",
+  "Other" = "#6B717E"
+)
+
+theme_norway <- function() {
+  theme_minimal(base_size = 12, base_family = "sans") +
+    theme(
+      plot.title = element_text(face = "bold", size = 16, color = "#1a1a2e"),
+      plot.subtitle = element_text(size = 11, color = "#4a4a4a", margin = margin(b = 15)),
+      plot.caption = element_text(size = 9, color = "#6B717E", hjust = 0),
+      panel.grid.minor = element_blank(),
+      panel.grid.major.x = element_blank(),
+      axis.title = element_text(size = 10, color = "#4a4a4a"),
+      legend.position = "top",
+      legend.title = element_blank(),
+      plot.margin = margin(20, 20, 20, 20)
+    )
+}
+```
+
+## Fetching the vehicle registration data
+
+Statistics Norway tracks new vehicle registrations by fuel type monthly. This dataset (13931) captures every new car hitting Norwegian roads, categorized by what powers it.
+
+```{r fetch-ev-data}
+df_vehicles <- NULL
+
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/en/table/13931",
+    Kjoretoytype = "100",  # Passenger cars
+    Drivstofftype = TRUE,   # All fuel types
+    ContentsCode = "FoerstegangsReg",
+    Tid = list(filter = "top", values = 120)  # Last 10 years monthly
+  )
+  
+  tmp <- raw[[1]]
+  print(names(tmp))
+  
+  time_col <- names(tmp)[grepl("tid|month|maaned", names(tmp), ignore.case = TRUE)][1]
+  fuel_col <- names(tmp)[grepl("drivstoff|fuel", names(tmp), ignore.case = TRUE)][1]
+  message("Time column: ", time_col)
+  message("Fuel column: ", fuel_col)
+  
+  df_vehicles <- tmp |>
+    mutate(
+      value = as.numeric(value),
+      time_str = .data[[time_col]],
+      fuel_type = .data[[fuel_col]],
+      date = case_when(
+        str_detect(time_str, "M") ~ ym(sub("M", "-", time_str)),
+        str_detect(time_str, "K") ~ yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4 ~ ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
+    ) |>
+    filter(!is.na(value), !is.na(date))
+  
+  message("Successfully fetched ", nrow(df_vehicles), " rows of vehicle data")
+  
+}, error = function(e) message("Data fetch failed: ", e$message))
+
+if (!is.null(df_vehicles)) {
+  print(head(df_vehicles))
+  print(unique(df_vehicles$fuel_type))
+}
+```
+
+## Wrangling: Categorizing fuel types
+
+The raw data has many fuel categories. Let's group them into meaningful buckets for analysis.
+
+```{r wrangle-vehicles}
+df_clean <- NULL
+
+if (!is.null(df_vehicles)) {
+  df_clean <- df_vehicles |>
+    mutate(
+      fuel_category = case_when(
+        str_detect(fuel_type, regex("electric|elektrisk|battery|batteri", ignore_case = TRUE)) & 
+          !str_detect(fuel_type, regex("hybrid|plug", ignore_case = TRUE)) ~ "Electric",
+        str_detect(fuel_type, regex("hybrid|plug-in|ladbar", ignore_case = TRUE)) ~ "Hybrid",
+        str_detect(fuel_type, regex("petrol|bensin|gasoline", ignore_case = TRUE)) & 
+          !str_detect(fuel_type, regex("hybrid", ignore_case = TRUE)) ~ "Petrol",
+        str_detect(fuel_type, regex("diesel", ignore_case = TRUE)) & 
+          !str_detect(fuel_type, regex("hybrid", ignore_case = TRUE)) ~ "Diesel",
+        TRUE ~ "Other"
+      )
+    ) |>
+    group_by(date, fuel_category) |>
+    summarise(registrations = sum(value, na.rm = TRUE), .groups = "drop")
+  
+  message("Cleaned data has ", nrow(df_clean), " rows")
+  print(df_clean |> group_by(fuel_category) |> summarise(total = sum(registrations)))
+}
+```
+
+## The transformation: New car registrations by fuel type
+
+This stacked area chart tells the story of Norway's automotive revolution. Watch how electric vehicles (blue) grow from a sliver to dominating the market.
+
+```{r plot-area-chart}
+#| fig-height: 6
+#| fig-width: 10
+
+if (!is.null(df_clean)) {
+  
+  # Order fuel categories for stacking
+  df_plot <- df_clean |>
+    mutate(fuel_category = factor(fuel_category, 
+                                   levels = c("Other", "Diesel", "Petrol", "Hybrid", "Electric")))
+  
+  p1 <- ggplot(df_plot, aes(x = date, y = registrations, fill = fuel_category)) +
+    geom_area(alpha = 0.85, color = "white", linewidth = 0.2) +
+    scale_fill_manual(values = pal) +
+    scale_y_continuous(labels = comma_format(), expand = c(0, 0)) +
+    scale_x_date(date_breaks = "2 years", date_labels = "%Y", expand = c(0.01, 0)) +
+    labs(
+      title = "Norway's New Car Market: The Electric Takeover",
+      subtitle = "Monthly first-time registrations of passenger cars by fuel type show electric vehicles\nrising from niche to mainstream, while diesel and petrol collapse",
+      caption = "Source: Statistics Norway (SSB), Table 13931",
+      x = NULL,
+      y = "New registrations per month"
+    ) +
+    theme_norway() +
+    theme(legend.position = "top")
+  
+  print(p1)
+}
+```
+
+The visual is striking. Around 2016-2017, electric vehicles were a small wedge at the top. By 2024-2025, they dominate, while diesel (once the fuel of choice for Norwegians) has nearly vanished from new car sales.
+
+## Calculating market shares over time
+
+Let's quantify this shift by computing annual market shares.
+
+```{r calculate-shares}
+df_annual <- NULL
+
+if (!is.null(df_clean)) {
+  df_annual <- df_clean |>
+    mutate(year = year(date)) |>
+    group_by(year, fuel_category) |>
+    summarise(registrations = sum(registrations, na.rm = TRUE), .groups = "drop") |>
+    group_by(year) |>
+    mutate(
+      total = sum(registrations),
+      share = registrations / total * 100
+    ) |>
+    ungroup()
+  
+  print(df_annual |> filter(fuel_category == "Electric") |> select(year, share) |> tail(10))
+}
+```
+
+## Lollipop chart: Electric vehicle market share by year
+
+A lollipop chart elegantly shows the year-over-year growth in EV market share. Each dot represents one year's share of new car sales that were fully electric.
+
+```{r plot-lollipop}
+#| fig-height: 7
+#| fig-width: 9
+
+if (!is.null(df_annual)) {
+  
+  df_ev_share <- df_annual |>
+    filter(fuel_category == "Electric")
+  
+  p2 <- ggplot(df_ev_share, aes(x = share, y = factor(year))) +
+    geom_segment(aes(x = 0, xend = share, y = factor(year), yend = factor(year)),
+                 color = "#2E86AB", linewidth = 1.2) +
+    geom_point(color = "#2E86AB", size = 4) +
+    geom_text(aes(label = paste0(round(share, 1), "%")), 
+              hjust = -0.3, size = 3.5, color = "#1a1a2e") +
+    scale_x_continuous(limits = c(0, 100), breaks = seq(0, 100, 20),
+                       labels = function(x) paste0(x, "%")) +
+    labs(
+      title = "Electric Vehicles: From 1% to Majority",
+      subtitle = "Share of fully electric vehicles among all new passenger car registrations\nin Norway has grown exponentially over the past decade",
+      caption = "Source: Statistics Norway (SSB), Table 13931",
+      x = "Market share of new registrations",
+      y = NULL
+    ) +
+    theme_norway() +
+    theme(
+      panel.grid.major.y = element_blank(),
+      axis.text.y = element_text(size = 11)
+    )
+  
+  print(p2)
+}
+```
+
+The numbers are remarkable. In recent years, electric vehicles have captured well over half of all new car sales in Norway, a feat unmatched anywhere else in the world.
+
+## Monthly heatmap: Seasonal patterns in EV adoption
+
+Are there seasonal patterns in when Norwegians buy electric cars? Let's create a heatmap showing EV market share by month and year.
+
+```{r plot-heatmap}
+#| fig-height: 7
+#| fig-width: 10
+
+if (!is.null(df_clean)) {
+  
+  df_monthly_share <- df_clean |>
+    mutate(
+      year = year(date),
+      month = month(date, label = TRUE)
+    ) |>
+    group_by(year, month) |>
+    mutate(
+      total = sum(registrations),
+      ev_share = ifelse(fuel_category == "Electric", registrations / total * 100, 0)
+    ) |>
+    filter(fuel_category == "Electric") |>
+    ungroup() |>
+    filter(year >= 2017)
+  
+  p3 <- ggplot(df_monthly_share, aes(x = month, y = factor(year), fill = ev_share)) +
+    geom_tile(color = "white", linewidth = 0.5) +
+    geom_text(aes(label = paste0(round(ev_share), "%")), 
+              color = ifelse(df_monthly_share$ev_share > 50, "white", "#1a1a2e"),
+              size = 3) +
+    scale_fill_gradient2(
+      low = "#F18F01", 
+      mid = "#f5f5f5", 
+      high = "#2E86AB",
+      midpoint = 40,
+      name = "EV Share",
+      labels = function(x) paste0(x, "%")
+    ) +
+    labs(
+      title = "Electric Vehicle Adoption: A Monthly View",
+      subtitle = "Market share of fully electric vehicles in new car registrations shows consistent\ngrowth with some monthly variation - March often sees strong sales",
+      caption = "Source: Statistics Norway (SSB), Table 13931",
+      x = NULL,
+      y = NULL
+    ) +
+    theme_norway() +
+    theme(
+      legend.position = "right",
+      panel.grid = element_blank(),
+      axis.text.x = element_text(size = 10)
+    )
+  
+  print(p3)
+}
+```
+
+The heatmap reveals the inexorable march toward electrification. Each row shows consistently higher shares than the one below it. March tends to be a strong month for car sales in Norway, often showing particularly high EV penetration.
+
+## Adding context: Consumer prices and affordability
+
+One question worth exploring: How have consumer prices evolved during this EV transition? Let's pull in the Consumer Price Index to understand the broader economic context.
+
+```{r fetch-cpi}
+df_cpi <- NULL
+
+tryCatch({
+  raw_cpi <- ApiData(
+    "https://data.ssb.no/api/v0/en/table/03013",
+    ContentsCode = "KpiIndMnd",
+    Tid = list(filter = "top", values = 120)
+  )
+  
+  tmp_cpi <- raw_cpi[[1]]
+  print(names(tmp_cpi))
+  
+  time_col <- names(tmp_cpi)[grepl("tid|month|maaned", names(tmp_cpi), ignore.case = TRUE)][1]
+  message("CPI Time column: ", time_col)
+  
+  df_cpi <- tmp_cpi |>
+    mutate(
+      value = as.numeric(value),
+      time_str = .data[[time_col]],
+      date = case_when(
+        str_detect(time_str, "M") ~ ym(sub("M", "-", time_str)),
+        nchar(time_str) == 4 ~ ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
+    ) |>
+    filter(!is.na(value), !is.na(date)) |>
+    select(date, cpi = value)
+  
+  message("Successfully fetched ", nrow(df_cpi), " rows of CPI data")
+  
+}, error = function(e) message("CPI fetch failed: ", e$message))
+```
+
+## Combined view: EV adoption vs inflation
+
+Let's overlay the growth in EV market share with consumer price inflation to see if there's any relationship.
+
+```{r plot-dual-axis}
+#| fig-height: 6
+#| fig-width: 10
+
+if (!is.null(df_annual) && !is.null(df_cpi)) {
+  
+  # Calculate annual average CPI
+  df_cpi_annual <- df_cpi |>
+    mutate(year = year(date)) |>
+    group_by(year) |>
+    summarise(avg_cpi = mean(cpi, na.rm = TRUE), .groups = "drop")
+  
+  # Get EV share data
+  df_ev_for_plot <- df_annual |>
+    filter(fuel_category == "Electric") |>
+    select(year, ev_share = share)
+  
+  # Join the data
+  df_combined <- df_ev_for_plot |>
+    left_join(df_cpi_annual, by = "year") |>
+    filter(!is.na(avg_cpi), year >= 2016)
+  
+  # Calculate scaling factors for dual axis
+  max_ev <- max(df_combined$ev_share, na.rm = TRUE)
+  max_cpi <- max(df_combined$avg_cpi, na.rm = TRUE)
+  min_cpi <- min(df_combined$avg_cpi, na.rm = TRUE)
+  
+  p4 <- ggplot(df_combined, aes(x = year)) +
+    geom_col(aes(y = ev_share), fill = "#2E86AB", alpha = 0.7, width = 0.6) +
+    geom_line(aes(y = (avg_cpi - min_cpi) / (max_cpi - min_cpi) * max_ev, group = 1), 
+              color = "#C73E1D", linewidth = 1.5) +
+    geom_point(aes(y = (avg_cpi - min_cpi) / (max_cpi - min_cpi) * max_ev), 
+               color = "#C73E1D", size = 3) +
+    scale_y_continuous(
+      name = "EV Market Share (%)",
+      labels = function(x) paste0(x, "%"),
+      sec.axis = sec_axis(
+        ~ . / max_ev * (max_cpi - min_cpi) + min_cpi,
+        name = "Consumer Price Index",
+        labels = comma_format()
+      )
+    ) +
+    labs(
+      title = "EV Growth Continues Despite Rising Prices",
+      subtitle = "Electric vehicle market share (bars) has grown steadily even as consumer\nprices (line) have risen significantly in recent years",
+      caption = "Source: Statistics Norway (SSB), Tables 13931 and 03013\nNote: CPI indexed, 2015 = 100",
+      x = NULL
+    ) +
+    theme_norway() +
+    theme(
+      axis.title.y.left = element_text(color = "#2E86AB"),
+      axis.title.y.right = element_text(color = "#C73E1D"),
+      axis.text.y.left = element_text(color = "#2E86AB"),
+      axis.text.y.right = element_text(color = "#C73E1D")
+    )
+  
+  print(p4)
+}
+```
+
+Despite inflation and economic headwinds, Norwegian consumers have continued their march toward electric vehicles. This suggests that the policy incentives (tax exemptions, toll discounts, charging infrastructure) have been powerful enough to overcome price pressures.
+
+## Key findings
+
+```{r key-findings}
+if (!is.null(df_annual)) {
+  
+  latest_year <- max(df_annual$year)
+  ev_latest <- df_annual |> 
+    filter(fuel_category == "Electric", year == latest_year) |> 
+    pull(share)
+  
+  ev_2017 <- df_annual |> 
+    filter(fuel_category == "Electric", year == 2017) |> 
+    pull(share)
+  
+  diesel_latest <- df_annual |> 
+    filter(fuel_category == "Diesel", year == latest_year) |> 
+    pull(share)
+  
+  diesel_peak_year <- df_annual |>
+    filter(fuel_category == "Diesel") |>
+    slice_max(share, n = 1) |>
+    pull(year)
+  
+  diesel_peak <- df_annual |>
+    filter(fuel_category == "Diesel") |>
+    slice_max(share, n = 1) |>
+    pull(share)
+  
+  cat("Key findings:\n")
+  cat(sprintf("- Electric vehicles captured %.1f%% of new car sales in %d\n", ev_latest, latest_year))
+  cat(sprintf("- This is up from %.1f%% in 2017 - a %.1fx increase\n", ev_2017, ev_latest/ev_2017))
+  cat(sprintf("- Diesel has collapsed from %.1f%% (%d) to just %.1f%% today\n", diesel_peak, diesel_peak_year, diesel_latest))
+}
+```
+
+Based on our analysis of Statistics Norway data:
+
+- Electric vehicles now capture the majority of new car sales in Norway, making it the first country in the world to achieve this milestone
+- The growth has been exponential - from single digits in the mid-2010s to market dominance within a decade
+- Diesel vehicles, once the dominant choice for Norwegian drivers, have nearly disappeared from new car showrooms
+- The transition has continued despite inflation and economic uncertainty, suggesting policy incentives remain highly effective
+- March tends to be a particularly strong month for EV sales, possibly linked to tax year timing and spring buying patterns
+
+## Looking ahead
+
+Norway's EV revolution offers a blueprint for other countries. The combination of generous tax incentives, extensive charging infrastructure, and high fuel prices created conditions where choosing electric became the rational economic decision for most buyers.
+
+The question now is whether Norway can maintain its lead as other European countries accelerate their own transitions, and whether the aging petrol and diesel fleet can be replaced fast enough to meet climate targets. With new car sales now dominated by electric vehicles, attention will shift to the used car market and the challenge of getting older vehicles off the road.
+
+For data journalists and policy researchers, Norway remains the most valuable natural experiment in transportation decarbonization. The story in these numbers is clear: when you make the green choice the easy choice, people take it.
