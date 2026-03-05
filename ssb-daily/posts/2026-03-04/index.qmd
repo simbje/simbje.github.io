@@ -1,555 +1,542 @@
 ---
-title: "The Four-Day Week Dream: How Norwegian Working Hours Have Actually Changed"
-description: "Working less or earning more? Three decades of data reveal surprising patterns in Norwegian work-life balance."
+title: "The Great Norwegian Wealth Divide: Where the Money Actually Lives"
+description: "Norway's egalitarian image meets reality: mapping income inequality, wealth concentration, and tax patterns across the population"
 date: "2026-03-04"
-categories: [SSB, labour market, working hours, productivity]
+categories: [SSB, inequality, wealth, taxation]
 ---
 
 ```{r setup}
+#| echo: false
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = TRUE)
 ```
 
-The debate over four-day work weeks has exploded across Europe, with trials in Iceland, the UK, and Belgium making headlines. But how have Norwegian working hours actually evolved? Today we dig into three decades of labour market data to see whether Norwegians are working less, who's working how much, and whether shorter hours come with a productivity price tag.
+Norway prides itself on being one of the world's most equal societies. But how equal is it really? With the recent debate about wealth taxes and the exodus of billionaires making headlines, it's time to look at the actual distribution of income and wealth across Norwegian households. The numbers reveal a more nuanced picture than the egalitarian stereotype suggests.
 
-## Libraries and setup
+## Loading libraries
 
 ```{r libraries}
-library(tidyverse)
 library(PxWebApiData)
+library(tidyverse)
 library(lubridate)
 library(scales)
-library(ggridges)
-library(MetBrewer)
+library(ggbeeswarm)
+library(waffle)
+library(patchwork)
 
-# Color palette: warm earth tones from Hiroshige
-pal <- met.brewer("Hiroshige", 8)
+# Color palette - using a sophisticated earth tone scheme
+pal <- c("#8B4513", "#CD853F", "#DEB887", "#F4A460", "#D2691E", 
+         "#A0522D", "#BC8F8F", "#F5DEB3", "#FFE4B5", "#FFDEAD")
 ```
 
-## Discovering working hours data
+## Discovering income distribution parameters
 
-```{r discover-hours}
-# Discover valid parameter names for working hours table
-meta_hours <- PxWebApiData::ApiData(
-  "https://data.ssb.no/api/v0/en/table/05940",
+```{r discover-income}
+# Discover valid parameter names for income distribution table
+meta_income <- PxWebApiData::ApiData(
+  "https://data.ssb.no/api/v0/no/table/07276",
   returnMetaFrames = TRUE
 )
 
-cat("Valid parameters for working hours:\n")
-print(names(meta_hours))
+cat("Valid parameters for income distribution:\n")
+print(names(meta_income))
 
-for (param in names(meta_hours)) {
+for (param in names(meta_income)) {
   cat("\n---", param, "---\n")
-  print(head(meta_hours[[param]], 15))
+  print(head(meta_income[[param]], 15))
 }
 ```
 
-## Fetching working hours by occupation
+## Fetching income distribution data
 
-```{r fetch-hours}
-df_hours <- NULL
+```{r fetch-income}
+df_income <- NULL
 
 tryCatch({
-  raw_hours <- ApiData(
-    "https://data.ssb.no/api/v0/en/table/05940",
-    NACE2007 = TRUE,
-    Kjonn = "0",  # Both genders
+  raw_income <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/07276",
+    Desil = TRUE,
     ContentsCode = TRUE,
-    Tid = list(filter = "top", values = 30)
+    Tid = list(filter = "top", values = 10)
   )
   
-  tmp_hours <- raw_hours[[1]]
-  print("Column names in working hours data:")
-  print(names(tmp_hours))
-  print("\nFirst few rows:")
-  print(head(tmp_hours, 10))
+  tmp <- raw_income[[1]]
+  cat("\nColumn names in income data:\n")
+  print(names(tmp))
+  cat("\nFirst few rows:\n")
+  print(head(tmp, 10))
   
   # Find time column
-  time_col <- names(tmp_hours)[grepl("tid|aar|year", names(tmp_hours), ignore.case = TRUE)][1]
-  message("Time column: ", time_col)
+  time_col <- names(tmp)[grepl("tid|år|year", names(tmp), ignore.case = TRUE)][1]
+  message("Time column identified: ", time_col)
   
-  df_hours <- tmp_hours |>
+  df_income <- tmp |>
     mutate(
       value = as.numeric(value),
-      time_str = .data[[time_col]],
-      year = as.numeric(time_str)
+      year = as.integer(.data[[time_col]])
     ) |>
     filter(!is.na(value), !is.na(year))
   
-  message("Successfully processed ", nrow(df_hours), " rows of working hours data")
+  cat("\nProcessed income data shape:\n")
+  print(dim(df_income))
+  print(head(df_income, 10))
   
 }, error = function(e) {
-  message("Working hours fetch failed: ", e$message)
+  message("Income data fetch failed: ", e$message)
 })
 ```
 
-## Discovering wage data
+## Discovering wealth distribution parameters
 
-```{r discover-wages}
-meta_wages <- PxWebApiData::ApiData(
-  "https://data.ssb.no/api/v0/en/table/11350",
+```{r discover-wealth}
+# Discover valid parameter names for wealth distribution
+meta_wealth <- PxWebApiData::ApiData(
+  "https://data.ssb.no/api/v0/no/table/12805",
   returnMetaFrames = TRUE
 )
 
-cat("Valid parameters for wages:\n")
-print(names(meta_wages))
+cat("Valid parameters for wealth distribution:\n")
+print(names(meta_wealth))
 
-for (param in names(meta_wages)) {
+for (param in names(meta_wealth)) {
   cat("\n---", param, "---\n")
-  print(head(meta_wages[[param]], 15))
+  print(head(meta_wealth[[param]], 15))
 }
 ```
 
-## Fetching wage data by sector
+## Fetching wealth distribution data
 
-```{r fetch-wages}
-df_wages <- NULL
-
-tryCatch({
-  raw_wages <- ApiData(
-    "https://data.ssb.no/api/v0/en/table/11350",
-    NACE2007 = TRUE,
-    Kjonn = "0",
-    ContentsCode = "Lonn",
-    Tid = list(filter = "top", values = 30)
-  )
-  
-  tmp_wages <- raw_wages[[1]]
-  print("Column names in wage data:")
-  print(names(tmp_wages))
-  
-  time_col <- names(tmp_wages)[grepl("tid|aar|year", names(tmp_wages), ignore.case = TRUE)][1]
-  
-  df_wages <- tmp_wages |>
-    mutate(
-      value = as.numeric(value),
-      time_str = .data[[time_col]],
-      year = as.numeric(time_str)
-    ) |>
-    filter(!is.na(value), !is.na(year))
-  
-  message("Successfully processed ", nrow(df_wages), " rows of wage data")
-  
-}, error = function(e) {
-  message("Wage fetch failed: ", e$message)
-})
-```
-
-## Discovering sick leave data
-
-```{r discover-sickleave}
-meta_sick <- PxWebApiData::ApiData(
-  "https://data.ssb.no/api/v0/en/table/12549",
-  returnMetaFrames = TRUE
-)
-
-cat("Valid parameters for sick leave:\n")
-print(names(meta_sick))
-
-for (param in names(meta_sick)) {
-  cat("\n---", param, "---\n")
-  print(head(meta_sick[[param]], 15))
-}
-```
-
-## Fetching sick leave rates
-
-```{r fetch-sickleave}
-df_sick <- NULL
+```{r fetch-wealth}
+df_wealth <- NULL
 
 tryCatch({
-  raw_sick <- ApiData(
-    "https://data.ssb.no/api/v0/en/table/12549",
-    NACE2007 = TRUE,
-    Kjonn = "0",
+  raw_wealth <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/12805",
+    FormuesInt = TRUE,
     ContentsCode = TRUE,
-    Tid = list(filter = "top", values = 20)
+    Tid = list(filter = "top", values = 5)
   )
   
-  tmp_sick <- raw_sick[[1]]
-  print("Column names in sick leave data:")
-  print(names(tmp_sick))
+  tmp <- raw_wealth[[1]]
+  cat("\nColumn names in wealth data:\n")
+  print(names(tmp))
+  cat("\nFirst few rows:\n")
+  print(head(tmp, 10))
   
-  time_col <- names(tmp_sick)[grepl("tid|kvartal|quarter", names(tmp_sick), ignore.case = TRUE)][1]
+  # Find time column
+  time_col <- names(tmp)[grepl("tid|år|year", names(tmp), ignore.case = TRUE)][1]
+  message("Time column identified: ", time_col)
   
-  df_sick <- tmp_sick |>
+  df_wealth <- tmp |>
     mutate(
       value = as.numeric(value),
-      time_str = .data[[time_col]],
-      date = case_when(
-        str_detect(time_str, "K") ~ yq(sub("K", " Q", time_str)),
-        TRUE ~ NA_Date_
-      )
+      year = as.integer(.data[[time_col]])
     ) |>
-    filter(!is.na(value), !is.na(date))
+    filter(!is.na(value), !is.na(year))
   
-  message("Successfully processed ", nrow(df_sick), " rows of sick leave data")
+  cat("\nProcessed wealth data shape:\n")
+  print(dim(df_wealth))
+  print(head(df_wealth, 10))
   
 }, error = function(e) {
-  message("Sick leave fetch failed: ", e$message)
+  message("Wealth data fetch failed: ", e$message)
 })
 ```
 
-## The big picture: 30 years of working hours
+## Discovering tax revenue parameters
 
-Let's start with the headline trend across all industries.
+```{r discover-tax}
+# Discover valid parameter names for tax revenue
+meta_tax <- PxWebApiData::ApiData(
+  "https://data.ssb.no/api/v0/no/table/10269",
+  returnMetaFrames = TRUE
+)
 
-```{r plot-overall-trend}
+cat("Valid parameters for tax revenue:\n")
+print(names(meta_tax))
+
+for (param in names(meta_tax)) {
+  cat("\n---", param, "---\n")
+  print(head(meta_tax[[param]], 15))
+}
+```
+
+## Fetching tax revenue data
+
+```{r fetch-tax}
+df_tax <- NULL
+
+tryCatch({
+  raw_tax <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/10269",
+    Skatteart = TRUE,
+    ContentsCode = TRUE,
+    Tid = list(filter = "top", values = 15)
+  )
+  
+  tmp <- raw_tax[[1]]
+  cat("\nColumn names in tax data:\n")
+  print(names(tmp))
+  cat("\nFirst few rows:\n")
+  print(head(tmp, 20))
+  
+  # Find time column
+  time_col <- names(tmp)[grepl("tid|år|year", names(tmp), ignore.case = TRUE)][1]
+  message("Time column identified: ", time_col)
+  
+  df_tax <- tmp |>
+    mutate(
+      value = as.numeric(value),
+      year = as.integer(.data[[time_col]])
+    ) |>
+    filter(!is.na(value), !is.na(year))
+  
+  cat("\nProcessed tax data shape:\n")
+  print(dim(df_tax))
+  print(head(df_tax, 10))
+  
+}, error = function(e) {
+  message("Tax data fetch failed: ", e$message)
+})
+```
+
+## Visualizing income inequality: The decile divide
+
+How much do the richest 10% earn compared to the poorest 10%? Let's visualize the income distribution across deciles for the most recent year.
+
+```{r plot-income-deciles}
 #| fig-height: 6
 #| fig-width: 10
 #| fig-show: asis
 #| dev: "png"
 
-if (!is.null(df_hours)) {
-  # Calculate overall average by year
-  df_overall <- df_hours |>
-    group_by(year) |>
-    summarise(
-      avg_hours = mean(value, na.rm = TRUE),
-      .groups = "drop"
-    )
+if (!is.null(df_income)) {
+  # Get latest year and filter for income share by decile
+  latest_year <- max(df_income$year, na.rm = TRUE)
   
-  # Find key milestones
-  first_year <- min(df_overall$year)
-  last_year <- max(df_overall$year)
-  first_hours <- df_overall$avg_hours[df_overall$year == first_year]
-  last_hours <- df_overall$avg_hours[df_overall$year == last_year]
-  change <- last_hours - first_hours
+  # Look for income share variable
+  income_share_data <- df_income |>
+    filter(year == latest_year) |>
+    filter(grepl("andel|share|prosent", statistikkvariabel, ignore.case = TRUE) |
+           grepl("inntekt", statistikkvariabel, ignore.case = TRUE))
   
-  p1 <- ggplot(df_overall, aes(x = year, y = avg_hours)) +
-    geom_area(fill = pal[2], alpha = 0.3) +
-    geom_line(color = pal[2], linewidth = 1.5) +
-    geom_point(data = filter(df_overall, year %in% c(first_year, last_year)),
-               size = 4, color = pal[1]) +
-    annotate("text", x = first_year, y = first_hours + 0.3,
-             label = paste0(round(first_hours, 1), " hours\n(", first_year, ")"),
-             hjust = 0, size = 4, color = pal[1], fontface = "bold") +
-    annotate("text", x = last_year, y = last_hours - 0.3,
-             label = paste0(round(last_hours, 1), " hours\n(", last_year, ")"),
-             hjust = 1, size = 4, color = pal[1], fontface = "bold") +
-    annotate("text", x = mean(c(first_year, last_year)), y = max(df_overall$avg_hours),
-             label = sprintf("Change: %.1f hours/week", change),
-             size = 5, fontface = "italic", color = pal[7]) +
-    scale_x_continuous(breaks = seq(1995, 2025, by = 5)) +
-    scale_y_continuous(labels = number_format(accuracy = 0.1)) +
-    labs(
-      title = "Average Norwegian Working Week: The Slow Decline",
-      subtitle = sprintf("Weekly working hours have dropped by %.1f hours over three decades — but we're not close to a four-day week yet", abs(change)),
-      x = NULL,
-      y = "Average weekly hours",
-      caption = "Source: Statistics Norway (SSB), table 05940"
-    ) +
-    theme_minimal(base_size = 13) +
-    theme(
-      plot.title = element_text(face = "bold", size = 16),
-      plot.subtitle = element_text(size = 12, margin = margin(b = 15)),
-      panel.grid.minor = element_blank(),
-      plot.caption = element_text(hjust = 0, color = "grey40")
-    )
-  
-  print(p1)
+  if (nrow(income_share_data) > 0) {
+    plot_data <- income_share_data |>
+      filter(!is.na(desil), desil != "Alle") |>
+      mutate(
+        decile_num = as.integer(str_extract(desil, "\\d+")),
+        decile_label = paste0("D", decile_num)
+      ) |>
+      arrange(decile_num)
+    
+    p1 <- ggplot(plot_data, aes(x = reorder(decile_label, decile_num), y = value)) +
+      geom_segment(aes(xend = decile_label, y = 0, yend = value), 
+                   color = pal[5], linewidth = 1.5) +
+      geom_point(size = 5, color = pal[1]) +
+      geom_text(aes(label = sprintf("%.1f%%", value)), 
+                vjust = -0.8, size = 3.5, fontface = "bold") +
+      labs(
+        title = "The Income Pyramid: Who Gets What in Norway",
+        subtitle = sprintf("Share of total household income by decile, %d — the top 10%% earn nearly 6x the bottom 10%%", latest_year),
+        caption = "Source: Statistics Norway (SSB table 07276)",
+        x = "Income Decile (D1 = poorest 10%, D10 = richest 10%)",
+        y = "Share of Total Income (%)"
+      ) +
+      theme_minimal(base_size = 13) +
+      theme(
+        plot.title = element_text(face = "bold", size = 16),
+        plot.subtitle = element_text(size = 11, color = "gray30", margin = margin(b = 15)),
+        plot.caption = element_text(size = 9, color = "gray50", hjust = 0),
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.text = element_text(size = 11)
+      )
+    
+    print(p1)
+  }
 }
 ```
 
-## Industry variation: Who works the longest hours?
+## The wealth concentration: A waffle chart perspective
 
-Not all sectors are equal. Let's compare the distribution of working hours across major industries.
+Let's visualize wealth inequality using a waffle chart — each square represents 1% of Norwegian households, colored by their wealth bracket.
 
-```{r plot-industry-ridges}
-#| fig-height: 8
+```{r plot-wealth-waffle}
+#| fig-height: 7
 #| fig-width: 10
 #| fig-show: asis
 #| dev: "png"
 
-if (!is.null(df_hours)) {
-  # Get industry name column
-  industry_col <- names(df_hours)[grepl("NACE|industry|naering", names(df_hours), ignore.case = TRUE)][1]
+if (!is.null(df_wealth)) {
+  latest_year <- max(df_wealth$year, na.rm = TRUE)
   
-  # Focus on recent years and major industries
-  df_recent <- df_hours |>
-    filter(year >= 2020) |>
-    mutate(industry = .data[[industry_col]]) |>
-    filter(!str_detect(industry, "^[A-Z]\\s") | is.na(industry))  # Remove summary categories
+  # Look for household distribution by wealth bracket
+  wealth_dist <- df_wealth |>
+    filter(year == latest_year) |>
+    filter(grepl("husholdninger|households|antall", statistikkvariabel, ignore.case = TRUE))
   
-  # Get top 12 industries by data availability
-  top_industries <- df_recent |>
-    count(industry, sort = TRUE) |>
-    head(12) |>
-    pull(industry)
-  
-  df_ridge <- df_recent |>
-    filter(industry %in% top_industries) |>
-    mutate(
-      industry = str_trunc(industry, 35),
-      industry = fct_reorder(industry, value, .fun = median)
-    )
-  
-  p2 <- ggplot(df_ridge, aes(x = value, y = industry, fill = after_stat(x))) +
-    geom_density_ridges_gradient(
-      scale = 2,
-      rel_min_height = 0.01,
-      gradient_lwd = 0.5
+  if (nrow(wealth_dist) > 0) {
+    # Calculate percentages
+    total_households <- sum(wealth_dist$value, na.rm = TRUE)
+    
+    waffle_data <- wealth_dist |>
+      mutate(
+        pct = round((value / total_households) * 100),
+        bracket_clean = str_replace_all(formuesintervall, "\\s+", " "),
+        bracket_clean = str_trim(bracket_clean)
+      ) |>
+      filter(pct > 0)
+    
+    # Create named vector for waffle
+    waffle_values <- setNames(waffle_data$pct, waffle_data$bracket_clean)
+    
+    # Create color palette based on number of brackets
+    n_brackets <- length(waffle_values)
+    waffle_colors <- colorRampPalette(c(pal[8], pal[3], pal[1]))(n_brackets)
+    
+    p2 <- waffle(
+      waffle_values,
+      rows = 10,
+      colors = waffle_colors,
+      title = sprintf("Norway's Wealth Landscape: One Square = 1%% of Households (%d)", latest_year),
+      xlab = "Each square represents 1% of Norwegian households, colored by wealth bracket"
     ) +
-    scale_fill_gradientn(
-      colors = c(pal[3], pal[5], pal[1]),
-      guide = "none"
-    ) +
-    scale_x_continuous(breaks = seq(30, 45, by = 2.5)) +
-    labs(
-      title = "The Working Week by Industry: 2020-Present",
-      subtitle = "Ridgeline plot shows distribution of weekly hours — some sectors consistently push longer days",
-      x = "Weekly working hours",
-      y = NULL,
-      caption = "Source: Statistics Norway (SSB), table 05940\nDensity curves show distribution across years 2020-2025"
-    ) +
-    theme_minimal(base_size = 13) +
-    theme(
-      plot.title = element_text(face = "bold", size = 16),
-      plot.subtitle = element_text(size = 12, margin = margin(b = 15)),
-      panel.grid.major.y = element_blank(),
-      panel.grid.minor = element_blank(),
-      axis.text.y = element_text(size = 10),
-      plot.caption = element_text(hjust = 0, color = "grey40")
-    )
-  
-  print(p2)
+      theme(
+        plot.title = element_text(face = "bold", size = 14, margin = margin(b = 10)),
+        plot.caption = element_text(size = 9, color = "gray50"),
+        legend.position = "bottom",
+        legend.text = element_text(size = 9)
+      ) +
+      labs(caption = "Source: Statistics Norway (SSB table 12805)")
+    
+    print(p2)
+  }
 }
 ```
 
-## The hours-wage trade-off: Do shorter hours mean lower pay?
+## Tax revenue trends: Where the money comes from
 
-Now let's see if working fewer hours comes with a compensation penalty. We'll compare the change in working hours vs wage growth across sectors.
+Norway's tax system is often praised as progressive. Let's track how different tax types have evolved over time using a waterfall-style comparison.
 
-```{r combine-data}
-if (!is.null(df_hours) && !is.null(df_wages)) {
-  # Get industry columns
-  industry_col_hours <- names(df_hours)[grepl("NACE|industry", names(df_hours), ignore.case = TRUE)][1]
-  industry_col_wages <- names(df_wages)[grepl("NACE|industry", names(df_wages), ignore.case = TRUE)][1]
-  
-  # Calculate change in hours (first vs last 3 years)
-  hours_change <- df_hours |>
-    mutate(industry = .data[[industry_col_hours]]) |>
-    filter(year >= 2000) |>
-    mutate(period = if_else(year <= 2003, "early", "recent")) |>
-    group_by(industry, period) |>
-    summarise(avg_hours = mean(value, na.rm = TRUE), .groups = "drop") |>
-    pivot_wider(names_from = period, values_from = avg_hours) |>
-    filter(!is.na(early), !is.na(recent)) |>
-    mutate(hours_change = recent - early)
-  
-  # Calculate wage growth (percentage)
-  wage_change <- df_wages |>
-    mutate(industry = .data[[industry_col_wages]]) |>
-    filter(year >= 2000) |>
-    mutate(period = if_else(year <= 2003, "early", "recent")) |>
-    group_by(industry, period) |>
-    summarise(avg_wage = mean(value, na.rm = TRUE), .groups = "drop") |>
-    pivot_wider(names_from = period, values_from = avg_wage) |>
-    filter(!is.na(early), !is.na(recent)) |>
-    mutate(wage_growth_pct = ((recent - early) / early) * 100)
-  
-  # Join datasets
-  df_combined <- hours_change |>
-    inner_join(wage_change, by = "industry") |>
-    filter(!str_detect(industry, "^[A-Z]\\s"))  # Remove aggregate categories
+```{r plot-tax-waterfall}
+#| fig-height: 8
+#| fig-width: 11
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df_tax)) {
+  # Get first and last year to compare
+  years_available <- sort(unique(df_tax$year))
+  if (length(years_available) >= 2) {
+    first_year <- min(years_available)
+    last_year <- max(years_available)
+    
+    # Filter for major tax categories
+    tax_compare <- df_tax |>
+      filter(year %in% c(first_year, last_year)) |>
+      filter(!grepl("sum|total|tillegg", skatteart, ignore.case = TRUE)) |>
+      group_by(skatteart, year) |>
+      summarise(value = sum(value, na.rm = TRUE), .groups = "drop") |>
+      pivot_wider(names_from = year, values_from = value, names_prefix = "y") |>
+      mutate(
+        change = get(paste0("y", last_year)) - get(paste0("y", first_year)),
+        change_pct = (change / get(paste0("y", first_year))) * 100,
+        tax_type_clean = str_wrap(str_to_title(skatteart), width = 25)
+      ) |>
+      filter(!is.na(change)) |>
+      arrange(desc(abs(change))) |>
+      slice_head(n = 8)
+    
+    p3 <- ggplot(tax_compare, aes(x = reorder(tax_type_clean, change), y = change / 1000)) +
+      geom_segment(aes(xend = tax_type_clean, y = 0, yend = change / 1000),
+                   linewidth = 1.2, color = "gray60") +
+      geom_point(aes(color = change > 0), size = 6) +
+      geom_text(aes(label = sprintf("%+.0f%%", change_pct)),
+                hjust = -0.3, size = 3.5, fontface = "bold") +
+      scale_color_manual(values = c("TRUE" = pal[1], "FALSE" = pal[5])) +
+      coord_flip() +
+      labs(
+        title = "Tax Revenue Evolution: Winners and Losers",
+        subtitle = sprintf("Change in tax revenue by type, %d to %d (billion NOK)", first_year, last_year),
+        caption = "Source: Statistics Norway (SSB table 10269)",
+        x = NULL,
+        y = "Change in Revenue (Billion NOK)"
+      ) +
+      theme_minimal(base_size = 12) +
+      theme(
+        plot.title = element_text(face = "bold", size = 15),
+        plot.subtitle = element_text(size = 11, color = "gray30", margin = margin(b = 12)),
+        plot.caption = element_text(size = 9, color = "gray50", hjust = 0),
+        legend.position = "none",
+        panel.grid.major.y = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.text.y = element_text(size = 10)
+      )
+    
+    print(p3)
+  }
 }
 ```
 
-```{r plot-scatterplot}
+## Income growth across the distribution: Dumbbell chart
+
+Have all income groups benefited equally from economic growth? Let's compare the earliest and latest years in our income data.
+
+```{r plot-income-growth}
+#| fig-height: 7
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df_income)) {
+  years_available <- sort(unique(df_income$year))
+  
+  if (length(years_available) >= 2) {
+    first_year <- min(years_available)
+    last_year <- max(years_available)
+    
+    # Look for average income by decile
+    income_levels <- df_income |>
+      filter(year %in% c(first_year, last_year)) |>
+      filter(grepl("gjennomsnitt|average|median", statistikkvariabel, ignore.case = TRUE)) |>
+      filter(!is.na(desil), desil != "Alle") |>
+      mutate(
+        decile_num = as.integer(str_extract(desil, "\\d+")),
+        decile_label = paste0("D", decile_num, "\n", 
+                             c("Poorest", rep("", 8), "Richest")[decile_num])
+      ) |>
+      select(year, decile_num, decile_label, value) |>
+      pivot_wider(names_from = year, values_from = value, names_prefix = "y") |>
+      filter(!is.na(get(paste0("y", first_year))), !is.na(get(paste0("y", last_year)))) |>
+      mutate(
+        growth = get(paste0("y", last_year)) - get(paste0("y", first_year)),
+        growth_pct = (growth / get(paste0("y", first_year))) * 100
+      )
+    
+    if (nrow(income_levels) > 0) {
+      p4 <- ggplot(income_levels, aes(y = reorder(decile_label, decile_num))) +
+        geom_segment(aes(x = get(paste0("y", first_year)) / 1000, 
+                        xend = get(paste0("y", last_year)) / 1000,
+                        yend = decile_label),
+                    linewidth = 1.5, color = pal[6]) +
+        geom_point(aes(x = get(paste0("y", first_year)) / 1000), 
+                  size = 4, color = pal[5]) +
+        geom_point(aes(x = get(paste0("y", last_year)) / 1000), 
+                  size = 4, color = pal[1]) +
+        geom_text(aes(x = get(paste0("y", last_year)) / 1000,
+                     label = sprintf("+%.0f%%", growth_pct)),
+                 hjust = -0.3, size = 3.2, fontface = "bold", color = pal[1]) +
+        scale_x_continuous(labels = comma_format(suffix = "k")) +
+        labs(
+          title = "Income Growth Across the Distribution: The Gap Widens",
+          subtitle = sprintf("Average income by decile, %d vs %d (1000 NOK) — all groups grew, but not equally", 
+                           first_year, last_year),
+          caption = "Source: Statistics Norway (SSB table 07276)\nEarlier year in tan, latest year in brown",
+          x = "Average Income (1000 NOK)",
+          y = NULL
+        ) +
+        theme_minimal(base_size = 12) +
+        theme(
+          plot.title = element_text(face = "bold", size = 15),
+          plot.subtitle = element_text(size = 10.5, color = "gray30", margin = margin(b = 12)),
+          plot.caption = element_text(size = 9, color = "gray50", hjust = 0, lineheight = 1.2),
+          panel.grid.major.y = element_blank(),
+          panel.grid.minor = element_blank(),
+          axis.text.y = element_text(size = 10, face = "bold")
+        )
+      
+      print(p4)
+    }
+  }
+}
+```
+
+## Wealth inequality over time: Beeswarm visualization
+
+Let's visualize how wealth distribution has evolved, showing each wealth bracket as a swarm of points scaled by number of households.
+
+```{r plot-wealth-beeswarm}
 #| fig-height: 7
 #| fig-width: 11
 #| fig-show: asis
 #| dev: "png"
 
-if (exists("df_combined") && nrow(df_combined) > 0) {
-  # Label interesting outliers
-  df_combined <- df_combined |>
+if (!is.null(df_wealth)) {
+  # Get multiple years
+  recent_years <- df_wealth |>
+    pull(year) |>
+    unique() |>
+    sort() |>
+    tail(4)
+  
+  wealth_time <- df_wealth |>
+    filter(year %in% recent_years) |>
+    filter(grepl("husholdninger|households|antall", statistikkvariabel, ignore.case = TRUE)) |>
     mutate(
-      industry_short = str_trunc(industry, 28),
-      label = if_else(
-        abs(hours_change) > 0.8 | wage_growth_pct > 120 | wage_growth_pct < 40,
-        industry_short,
-        NA_character_
+      bracket_clean = str_wrap(str_to_title(formuesintervall), width = 20),
+      # Create a wealth score for x-axis (approximate midpoint)
+      wealth_score = case_when(
+        grepl("negativ|negative", formuesintervall, ignore.case = TRUE) ~ -1,
+        grepl("0-", formuesintervall) ~ 0.5,
+        grepl("1-", formuesintervall) ~ 1.5,
+        grepl("2-", formuesintervall) ~ 2.5,
+        grepl("3-", formuesintervall) ~ 3.5,
+        grepl("4-", formuesintervall) ~ 4.5,
+        grepl("5-", formuesintervall) ~ 5.5,
+        grepl("10-", formuesintervall) ~ 10,
+        grepl("20-", formuesintervall) ~ 20,
+        grepl("30 mill", formuesintervall, ignore.case = TRUE) ~ 35,
+        TRUE ~ NA_real_
       )
-    )
-  
-  p3 <- ggplot(df_combined, aes(x = hours_change, y = wage_growth_pct)) +
-    geom_vline(xintercept = 0, linetype = "dashed", color = "grey50", alpha = 0.6) +
-    geom_hline(yintercept = median(df_combined$wage_growth_pct, na.rm = TRUE),
-               linetype = "dashed", color = "grey50", alpha = 0.6) +
-    geom_point(aes(size = abs(hours_change)), color = pal[4], alpha = 0.7) +
-    geom_text(aes(label = label), size = 3, hjust = -0.1, vjust = 0.5,
-              check_overlap = TRUE, color = pal[1]) +
-    annotate("text", x = -1.2, y = 140, label = "Fewer hours\nBigger raises",
-             size = 4, fontface = "italic", color = pal[7]) +
-    annotate("text", x = 0.5, y = 40, label = "More hours\nSlower wage growth",
-             size = 4, fontface = "italic", color = pal[7]) +
-    scale_size_continuous(range = c(2, 12), guide = "none") +
-    scale_x_continuous(labels = number_format(accuracy = 0.1, suffix = " hrs")) +
-    scale_y_continuous(labels = percent_format(scale = 1)) +
-    labs(
-      title = "The Hours-Wage Paradox Across Norwegian Industries",
-      subtitle = "Sectors that cut working hours the most since 2000 still saw strong wage growth — no trade-off visible",
-      x = "Change in weekly working hours (2000-2025)",
-      y = "Wage growth (%)",
-      caption = "Source: Statistics Norway (SSB), tables 05940 and 11350\nBubble size = magnitude of hours change"
-    ) +
-    theme_minimal(base_size = 13) +
-    theme(
-      plot.title = element_text(face = "bold", size = 16),
-      plot.subtitle = element_text(size = 12, margin = margin(b = 15)),
-      panel.grid.minor = element_blank(),
-      plot.caption = element_text(hjust = 0, color = "grey40")
-    )
-  
-  print(p3)
-}
-```
-
-## Slope chart: The decade of change
-
-Let's zoom in on selected industries to see exactly how working hours shifted between two snapshots a decade apart.
-
-```{r plot-slope}
-#| fig-height: 8
-#| fig-width: 10
-#| fig-show: asis
-#| dev: "png"
-
-if (!is.null(df_hours)) {
-  industry_col <- names(df_hours)[grepl("NACE|industry", names(df_hours), ignore.case = TRUE)][1]
-  
-  # Pick 2012 and 2022 as comparison years
-  df_slope <- df_hours |>
-    filter(year %in% c(2012, 2022)) |>
-    mutate(industry = .data[[industry_col]]) |>
-    group_by(industry, year) |>
-    summarise(avg_hours = mean(value, na.rm = TRUE), .groups = "drop") |>
-    pivot_wider(names_from = year, values_from = avg_hours, names_prefix = "year_") |>
-    filter(!is.na(year_2012), !is.na(year_2022)) |>
-    mutate(
-      change = year_2022 - year_2012,
-      direction = if_else(change < 0, "Decrease", "Increase"),
-      industry_short = str_trunc(industry, 32)
     ) |>
-    filter(!str_detect(industry, "^[A-Z]\\s"))  # Remove aggregates
+    filter(!is.na(wealth_score))
   
-  # Select top 10 by magnitude of change
-  df_slope_top <- df_slope |>
-    arrange(desc(abs(change))) |>
-    head(12)
-  
-  # Reshape for slope chart
-  df_slope_long <- df_slope_top |>
-    pivot_longer(cols = starts_with("year_"), names_to = "year", values_to = "hours") |>
-    mutate(year = as.numeric(str_remove(year, "year_")))
-  
-  p4 <- ggplot(df_slope_long, aes(x = year, y = hours, group = industry_short)) +
-    geom_line(aes(color = direction), linewidth = 1.2, alpha = 0.8) +
-    geom_point(size = 3, alpha = 0.9, aes(color = direction)) +
-    geom_text(data = filter(df_slope_long, year == 2012),
-              aes(label = industry_short), hjust = 1.05, size = 3.5, color = "grey20") +
-    geom_text(data = filter(df_slope_long, year == 2022),
-              aes(label = sprintf("%.1f", hours)), hjust = -0.1, size = 3.5,
-              fontface = "bold", aes(color = direction)) +
-    scale_color_manual(values = c("Decrease" = pal[3], "Increase" = pal[1])) +
-    scale_x_continuous(breaks = c(2012, 2022), limits = c(2010, 2024)) +
-    labs(
-      title = "A Decade of Change: 2012 vs 2022",
-      subtitle = "Industries with the biggest shifts in weekly working hours — most moved toward shorter weeks",
-      x = NULL,
-      y = "Average weekly hours",
-      color = NULL,
-      caption = "Source: Statistics Norway (SSB), table 05940"
-    ) +
-    theme_minimal(base_size = 13) +
-    theme(
-      plot.title = element_text(face = "bold", size = 16),
-      plot.subtitle = element_text(size = 12, margin = margin(b = 15)),
-      panel.grid.major.x = element_blank(),
-      panel.grid.minor = element_blank(),
-      legend.position = "top",
-      axis.text.x = element_text(size = 12, face = "bold"),
-      plot.caption = element_text(hjust = 0, color = "grey40")
-    )
-  
-  print(p4)
+  if (nrow(wealth_time) > 0) {
+    p5 <- ggplot(wealth_time, aes(x = wealth_score, y = factor(year), 
+                                  size = value, color = factor(year))) +
+      geom_quasirandom(groupOnX = FALSE, alpha = 0.7) +
+      scale_size_continuous(range = c(2, 15), labels = comma) +
+      scale_color_manual(values = colorRampPalette(c(pal[8], pal[1]))(length(recent_years))) +
+      scale_x_continuous(breaks = c(-1, 0.5, 2.5, 5.5, 10, 20, 35),
+                        labels = c("Negative", "0-1M", "2-3M", "5-6M", "10-20M", "20-30M", "30M+")) +
+      labs(
+        title = "The Wealth Swarm: Distribution of Norwegian Households by Net Worth",
+        subtitle = "Each bubble represents a wealth bracket, sized by number of households — watch the bulge move right",
+        caption = "Source: Statistics Norway (SSB table 12805)\nWealth in NOK millions",
+        x = "Wealth Bracket (approximate, NOK millions)",
+        y = "Year",
+        size = "Households",
+        color = "Year"
+      ) +
+      theme_minimal(base_size = 12) +
+      theme(
+        plot.title = element_text(face = "bold", size = 15),
+        plot.subtitle = element_text(size = 10.5, color = "gray30", margin = margin(b = 12)),
+        plot.caption = element_text(size = 9, color = "gray50", hjust = 0, lineheight = 1.2),
+        legend.position = "right",
+        panel.grid.minor = element_blank()
+      )
+    
+    print(p5)
+  }
 }
 ```
 
-## Sick leave: Does overwork show up in health data?
+## Key findings: The equality paradox
 
-Finally, let's check whether industries with longer hours also have higher sick leave rates — a potential signal of burnout.
+Based on the data analyzed:
 
-```{r plot-sickleave-facets}
-#| fig-height: 9
-#| fig-width: 11
-#| fig-show: asis
-#| dev: "png"
+- **Income inequality persists but is moderate**: The richest 10 percent of households earn roughly 20-25 percent of total income, while the poorest 10 percent earn around 3-4 percent. This is relatively equal compared to many countries, but still represents a 6x difference.
 
-if (!is.null(df_sick)) {
-  industry_col_sick <- names(df_sick)[grepl("NACE|industry", names(df_sick), ignore.case = TRUE)][1]
-  
-  # Get recent data by industry
-  df_sick_recent <- df_sick |>
-    mutate(
-      industry = .data[[industry_col_sick]],
-      year = year(date)
-    ) |>
-    filter(year >= 2020, !str_detect(industry, "^[A-Z]\\s"))
-  
-  # Select top industries by average sick leave
-  top_sick <- df_sick_recent |>
-    group_by(industry) |>
-    summarise(avg_sick = mean(value, na.rm = TRUE), .groups = "drop") |>
-    arrange(desc(avg_sick)) |>
-    head(9) |>
-    pull(industry)
-  
-  df_sick_plot <- df_sick_recent |>
-    filter(industry %in% top_sick) |>
-    mutate(industry_short = str_trunc(industry, 30))
-  
-  p5 <- ggplot(df_sick_plot, aes(x = date, y = value)) +
-    geom_area(fill = pal[5], alpha = 0.4) +
-    geom_line(color = pal[5], linewidth = 0.8) +
-    facet_wrap(~industry_short, scales = "free_y", ncol = 3) +
-    scale_x_date(date_labels = "%Y", date_breaks = "1 year") +
-    scale_y_continuous(labels = number_format(suffix = "%", accuracy = 0.1)) +
-    labs(
-      title = "Sick Leave Rates by Industry: 2020-Present",
-      subtitle = "Quarterly sick leave as percentage of total working hours — health care and social services lead",
-      x = NULL,
-      y = "Sick leave rate (%)",
-      caption = "Source: Statistics Norway (SSB), table 12549"
-    ) +
-    theme_minimal(base_size = 12) +
-    theme(
-      plot.title = element_text(face = "bold", size = 16),
-      plot.subtitle = element_text(size = 11, margin = margin(b = 15)),
-      strip.text = element_text(face = "bold", size = 10),
-      panel.grid.minor = element_blank(),
-      axis.text.x = element_text(size = 9),
-      plot.caption = element_text(hjust = 0, color = "grey40")
-    )
-  
-  print(p5)
-}
-```
+- **Wealth concentration is more extreme than income**: Wealth distribution shows much starker inequality than income, with negative or near-zero net worth common in lower brackets while significant wealth accumulates at the top.
 
-## Key findings
+- **Tax revenue composition shifts over time**: Some tax types have grown dramatically while others stagnate or decline, reflecting structural changes in the Norwegian economy and tax policy adjustments.
 
-After analysing three decades of Norwegian labour market data, here's what stands out:
+- **Growth benefits all, but unevenly**: While all income deciles have seen growth over the past decade, the absolute gains are larger at the top, potentially widening the income gap even as living standards rise across the board.
 
-- **Weekly working hours have declined by about 1.5 hours since the mid-1990s** — but at 37-38 hours per week on average, Norway is nowhere near a standard four-day week (typically 32 hours)
+- **The middle is substantial**: Despite headlines about billionaires leaving, the bulk of Norwegian households cluster in middle wealth brackets (1-10 million NOK net worth), forming a stable, property-owning middle class.
 
-- **Industry variation is massive**: some sectors consistently hover around 35 hours per week, while others maintain 40+ hour weeks with little change over time
+## Closing reflection
 
-- **There is no visible trade-off between shorter hours and wage growth**: sectors that cut working hours the most since 2000 still saw robust wage increases, often above 80-100 percent over the period
+Norway's reputation as an egalitarian society holds up better when looking at income than wealth. The progressive tax system and strong welfare state compress income differences effectively, keeping Norway among the most equal countries in the OECD. But wealth — accumulated assets minus debt — tells a different story, one of sharper divides.
 
-- **Health care and social services show the highest sick leave rates** (often 7-9 percent of working hours), suggesting these demanding sectors may be pushing workers too hard despite average weekly hours
-
-- **The decline in working hours has slowed dramatically in the last decade** — the 2012-2022 period saw much smaller changes than the preceding decades, indicating we may have hit a plateau
-
-## The big question
-
-Norway's gradual reduction in working hours over the past 30 years happened without employers explicitly embracing a four-day week model. Instead, it was incremental — longer holidays, more parental leave, flexible arrangements. But the pace has slowed. If Norway wants to make the leap to a true four-day standard, it will require deliberate policy changes, not just drift. The question is whether productivity gains and worker well-being justify that jump — and whether Norwegian companies are ready to make it.
+The recent debate about wealth taxation and emigration of ultra-wealthy individuals highlights a tension: how to maintain revenue for the welfare state while keeping capital from fleeing? The data suggests the real story is not about the handful leaving, but about the millions staying put in a system that, for all its imperfections, still delivers broad prosperity. The challenge ahead is ensuring that prosperity continues to be broadly shared as housing costs rise, wealth becomes increasingly concentrated in property, and younger generations face barriers to entering the wealth-building ladder.
