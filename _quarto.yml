@@ -18,13 +18,18 @@ website:
         href: blog/index.qmd
       - text: "SSB Daily"
         href: ssb-daily/index.qmd
+      - text: "Risk analysis and Machine Learning"
+        href: https://simen-bjerkelund.shinyapps.io/tradingstats_shiny_app/
     right:
       - icon: linkedin
-        href: https://linkedin.com/in/simbje
+        href: https://www.linkedin.com/in/simen-bjerkelund-428b07141/
       - icon: github
         href: https://github.com/simbje
       - icon: envelope
         href: mailto:simbje@gmail.com
+
+
+
 
   page-footer:
     left: "© 2025 Simen Bjerkelund · Built with [Quarto](https://quarto.org)"
