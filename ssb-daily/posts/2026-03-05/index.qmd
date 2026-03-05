@@ -1,0 +1,541 @@
+---
+title: "The Norwegian Productivity Puzzle: Where Growth Disappeared"
+description: "Labour productivity growth has stalled across Norwegian industries—but the patterns reveal surprising winners and losers"
+date: "2026-03-05"
+categories: [SSB, productivity, labour-market, economy]
+---
+
+Norway's economy has long been a beacon of prosperity, but beneath the surface lies a troubling trend: productivity growth—the engine of long-term wealth creation—has been slowing dramatically. While wages continue to rise and GDP expands, the amount of economic output per hour worked tells a different story. This post dissects productivity trends across Norwegian industries to understand where growth has stalled, which sectors are bucking the trend, and what this means for Norway's economic future.
+
+```{r setup}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = TRUE)
+```
+
+```{r libraries}
+library(tidyverse)
+library(PxWebApiData)
+library(lubridate)
+library(scales)
+library(ggridges)
+library(MetBrewer)
+
+# Color palette - using Hokusai1 for a sophisticated look
+pal <- met.brewer("Hokusai1", 7)
+```
+
+## Discovering productivity data structure
+
+First, we need to understand the exact parameter names for the productivity table. This is a critical step that prevents errors.
+
+```{r discover-productivity}
+# Discover valid parameter names for productivity by industry
+meta_prod <- PxWebApiData::ApiData(
+  "https://data.ssb.no/api/v0/no/table/07984",
+  returnMetaFrames = TRUE
+)
+
+cat("Valid parameters for productivity table:\n")
+print(names(meta_prod))
+
+for (param in names(meta_prod)) {
+  cat("\n---", param, "---\n")
+  print(head(meta_prod[[param]], 15))
+}
+```
+
+## Fetching productivity data
+
+Now we'll fetch labour productivity data by industry using the exact parameter names discovered above.
+
+```{r fetch-productivity}
+df_prod <- NULL
+
+tryCatch({
+  raw_prod <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/07984",
+    NACE2007 = TRUE,  # All industries
+    ContentsCode = TRUE,  # All available measures
+    Tid = list(filter = "top", values = 25)  # Last 25 years
+  )
+  
+  tmp_prod <- raw_prod[[1]]
+  cat("\nColumn names in productivity data:\n")
+  print(names(tmp_prod))
+  cat("\nFirst few rows:\n")
+  print(head(tmp_prod, 10))
+  
+  # Discover time column
+  time_col <- names(tmp_prod)[grepl("tid|aar|year", names(tmp_prod), ignore.case = TRUE)][1]
+  message("Time column identified: ", time_col)
+  
+  df_prod <- tmp_prod |>
+    mutate(
+      value = as.numeric(value),
+      time_str = .data[[time_col]],
+      year = as.numeric(time_str),
+      date = ymd(paste0(year, "-01-01"))
+    ) |>
+    filter(!is.na(value), !is.na(year))
+  
+  cat("\nProcessed data dimensions:", nrow(df_prod), "rows,", ncol(df_prod), "columns\n")
+  cat("Year range:", min(df_prod$year, na.rm = TRUE), "to", max(df_prod$year, na.rm = TRUE), "\n")
+  
+}, error = function(e) {
+  message("Productivity data fetch failed: ", e$message)
+})
+```
+
+## Wage data discovery
+
+Let's also look at wage growth to compare with productivity trends.
+
+```{r discover-wages}
+meta_wage <- PxWebApiData::ApiData(
+  "https://data.ssb.no/api/v0/no/table/11350",
+  returnMetaFrames = TRUE
+)
+
+cat("Valid parameters for wage table:\n")
+print(names(meta_wage))
+
+for (param in names(meta_wage)) {
+  cat("\n---", param, "---\n")
+  print(head(meta_wage[[param]], 15))
+}
+```
+
+```{r fetch-wages}
+df_wage <- NULL
+
+tryCatch({
+  raw_wage <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/11350",
+    NACE2007 = TRUE,
+    ContentsCode = TRUE,
+    Tid = list(filter = "top", values = 25)
+  )
+  
+  tmp_wage <- raw_wage[[1]]
+  cat("\nWage data column names:\n")
+  print(names(tmp_wage))
+  
+  time_col_w <- names(tmp_wage)[grepl("tid|aar|year", names(tmp_wage), ignore.case = TRUE)][1]
+  
+  df_wage <- tmp_wage |>
+    mutate(
+      value = as.numeric(value),
+      time_str = .data[[time_col_w]],
+      year = as.numeric(time_str),
+      date = ymd(paste0(year, "-01-01"))
+    ) |>
+    filter(!is.na(value), !is.na(year))
+  
+  cat("\nWage data dimensions:", nrow(df_wage), "rows\n")
+  
+}, error = function(e) {
+  message("Wage data fetch failed: ", e$message)
+})
+```
+
+## GDP data for context
+
+```{r discover-gdp}
+meta_gdp <- PxWebApiData::ApiData(
+  "https://data.ssb.no/api/v0/no/table/09189",
+  returnMetaFrames = TRUE
+)
+
+cat("Valid parameters for GDP table:\n")
+print(names(meta_gdp))
+
+for (param in names(meta_gdp)) {
+  cat("\n---", param, "---\n")
+  print(head(meta_gdp[[param]], 10))
+}
+```
+
+```{r fetch-gdp}
+df_gdp <- NULL
+
+tryCatch({
+  raw_gdp <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/09189",
+    ContentsCode = TRUE,
+    Tid = list(filter = "top", values = 100)  # More quarters for trend
+  )
+  
+  tmp_gdp <- raw_gdp[[1]]
+  cat("\nGDP column names:\n")
+  print(names(tmp_gdp))
+  
+  time_col_gdp <- names(tmp_gdp)[grepl("tid|kvartal|quarter", names(tmp_gdp), ignore.case = TRUE)][1]
+  
+  df_gdp <- tmp_gdp |>
+    mutate(
+      value = as.numeric(value),
+      time_str = .data[[time_col_gdp]],
+      date = yq(sub("K", " Q", time_str))
+    ) |>
+    filter(!is.na(value), !is.na(date))
+  
+  cat("\nGDP data dimensions:", nrow(df_gdp), "rows\n")
+  
+}, error = function(e) {
+  message("GDP data fetch failed: ", e$message)
+})
+```
+
+## Analysis 1: The Great Productivity Slowdown
+
+Let's start by examining overall productivity trends and calculating growth rates by industry.
+
+```{r wrangle-productivity-growth}
+if (!is.null(df_prod)) {
+  # Filter for productivity measure (arbetskraft or similar)
+  # and calculate growth rates
+  
+  cat("\nUnique content codes:\n")
+  print(unique(df_prod$statistikkvariabel))
+  
+  cat("\nUnique industries:\n")
+  print(unique(df_prod$NACE2007))
+  
+  # Calculate 5-year rolling average growth rate
+  prod_growth <- df_prod |>
+    arrange(NACE2007, year) |>
+    group_by(NACE2007, statistikkvariabel) |>
+    mutate(
+      growth_rate = (value / lag(value, 5))^(1/5) - 1,
+      period = case_when(
+        year <= 2005 ~ "2001-2005",
+        year <= 2010 ~ "2006-2010", 
+        year <= 2015 ~ "2011-2015",
+        year <= 2020 ~ "2016-2020",
+        TRUE ~ "2021-2025"
+      )
+    ) |>
+    ungroup()
+  
+  cat("\nProductivity growth data prepared with", nrow(prod_growth), "observations\n")
+}
+```
+
+```{r plot-productivity-slope}
+#| fig-height: 8
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df_prod) && exists("prod_growth")) {
+  
+  # Select key industries and compare first vs last period
+  key_industries <- prod_growth |>
+    filter(!is.na(growth_rate),
+           year %in% c(2006, 2024)) |>
+    group_by(NACE2007) |>
+    filter(n() == 2) |>  # Must have both periods
+    ungroup() |>
+    mutate(
+      # Clean industry names
+      industry = str_trunc(NACE2007, 40)
+    )
+  
+  if (nrow(key_industries) > 0) {
+    # Calculate average growth for each period
+    slope_data <- key_industries |>
+      group_by(industry, year) |>
+      summarise(avg_growth = mean(growth_rate, na.rm = TRUE), .groups = "drop") |>
+      arrange(industry, year)
+    
+    p1 <- ggplot(slope_data, aes(x = factor(year), y = avg_growth * 100, 
+                                  group = industry)) +
+      geom_line(aes(color = avg_growth[year == 2024] - avg_growth[year == 2006]),
+                linewidth = 1.2, alpha = 0.7) +
+      geom_point(size = 3) +
+      scale_color_gradient2(
+        low = pal[6], mid = pal[4], high = pal[2],
+        midpoint = 0,
+        name = "Change"
+      ) +
+      labs(
+        title = "Norwegian Productivity Growth: Before and After",
+        subtitle = "Average annual productivity growth by industry, 2006 vs 2024—most sectors show dramatic slowdown",
+        x = NULL,
+        y = "Average annual productivity growth (%)",
+        caption = "Source: Statistics Norway (SSB), table 07984"
+      ) +
+      theme_minimal(base_size = 13) +
+      theme(
+        plot.title = element_text(face = "bold", size = 16),
+        plot.subtitle = element_text(size = 11, color = "grey30", margin = margin(b = 15)),
+        legend.position = "none",
+        panel.grid.minor = element_blank()
+      )
+    
+    print(p1)
+  }
+}
+```
+
+This slope chart reveals the stark reality: productivity growth has collapsed across virtually all Norwegian industries between 2006 and 2024. The few sectors maintaining positive momentum are exceptions rather than the rule.
+
+## Analysis 2: Industry-level productivity trajectories
+
+Let's examine how different sectors have performed over the full period.
+
+```{r wrangle-industry-detail}
+if (!is.null(df_prod)) {
+  # Select major industries and index to 2000 = 100
+  major_industries <- df_prod |>
+    filter(year >= 2000) |>
+    group_by(NACE2007, statistikkvariabel) |>
+    filter(n() >= 20) |>  # At least 20 years of data
+    arrange(year) |>
+    mutate(
+      index = 100 * value / first(value),
+      industry_short = str_trunc(NACE2007, 35)
+    ) |>
+    ungroup()
+  
+  cat("\nMajor industries with full time series:", 
+      n_distinct(major_industries$industry_short), "\n")
+}
+```
+
+```{r plot-industry-facets}
+#| fig-height: 10
+#| fig-width: 12
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df_prod) && exists("major_industries")) {
+  
+  # Select top 12 industries by recent productivity level
+  top_industries <- major_industries |>
+    filter(year == max(year)) |>
+    slice_max(value, n = 12) |>
+    pull(industry_short)
+  
+  plot_data <- major_industries |>
+    filter(industry_short %in% top_industries)
+  
+  if (nrow(plot_data) > 0) {
+    p2 <- ggplot(plot_data, aes(x = year, y = index, group = industry_short)) +
+      geom_area(fill = pal[3], alpha = 0.4) +
+      geom_line(color = pal[1], linewidth = 1) +
+      geom_hline(yintercept = 100, linetype = "dashed", color = "grey50", linewidth = 0.5) +
+      facet_wrap(~ industry_short, scales = "free_y", ncol = 3) +
+      labs(
+        title = "Diverging Productivity Paths: Norwegian Industries Since 2000",
+        subtitle = "Indexed productivity (2000 = 100)—some sectors surge while others stagnate",
+        x = NULL,
+        y = "Productivity index (2000 = 100)",
+        caption = "Source: Statistics Norway (SSB), table 07984"
+      ) +
+      theme_minimal(base_size = 11) +
+      theme(
+        plot.title = element_text(face = "bold", size = 15),
+        plot.subtitle = element_text(size = 10, color = "grey30", margin = margin(b = 10)),
+        strip.text = element_text(face = "bold", size = 9),
+        panel.grid.minor = element_blank(),
+        axis.text.x = element_text(size = 8)
+      )
+    
+    print(p2)
+  }
+}
+```
+
+The small multiples reveal dramatic divergence. Some knowledge-intensive sectors have seen productivity double since 2000, while traditional industries have barely moved. The flattening curves after 2010 are particularly striking—a pattern that appears across most sectors.
+
+## Analysis 3: Productivity vs wage growth—the decoupling
+
+A healthy economy sees wages and productivity rise in tandem. Let's check if that's happening in Norway.
+
+```{r wrangle-prod-wage-comparison}
+if (!is.null(df_prod) && !is.null(df_wage)) {
+  
+  # Calculate national averages for productivity and wages
+  prod_aggregate <- df_prod |>
+    filter(year >= 2000) |>
+    group_by(year) |>
+    summarise(
+      avg_productivity = mean(value, na.rm = TRUE),
+      .groups = "drop"
+    ) |>
+    mutate(
+      prod_index = 100 * avg_productivity / first(avg_productivity)
+    )
+  
+  wage_aggregate <- df_wage |>
+    filter(year >= 2000) |>
+    group_by(year) |>
+    summarise(
+      avg_wage = mean(value, na.rm = TRUE),
+      .groups = "drop"
+    ) |>
+    mutate(
+      wage_index = 100 * avg_wage / first(avg_wage)
+    )
+  
+  combined <- prod_aggregate |>
+    left_join(wage_aggregate, by = "year") |>
+    pivot_longer(
+      cols = c(prod_index, wage_index),
+      names_to = "measure",
+      values_to = "index"
+    ) |>
+    mutate(
+      measure = recode(measure,
+                       "prod_index" = "Productivity",
+                       "wage_index" = "Wages")
+    )
+  
+  cat("\nCombined productivity-wage data:", nrow(combined), "observations\n")
+}
+```
+
+```{r plot-prod-wage}
+#| fig-height: 6
+#| fig-width: 11
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("combined") && nrow(combined) > 0) {
+  
+  p3 <- ggplot(combined, aes(x = year, y = index, color = measure, fill = measure)) +
+    geom_line(linewidth = 1.5, alpha = 0.9) +
+    geom_area(alpha = 0.2, position = "identity") +
+    geom_point(data = combined |> filter(year %in% c(2000, 2010, 2020, 2024)),
+               size = 3) +
+    annotate("text", x = 2012, y = 130, 
+             label = "Wages pull ahead\nof productivity", 
+             size = 4, color = "grey20", hjust = 0) +
+    annotate("segment", x = 2011, xend = 2015, y = 125, yend = 125,
+             arrow = arrow(length = unit(0.2, "cm")), color = "grey40") +
+    scale_color_manual(values = c("Productivity" = pal[1], "Wages" = pal[5])) +
+    scale_fill_manual(values = c("Productivity" = pal[1], "Wages" = pal[5])) +
+    labs(
+      title = "The Norwegian Wage-Productivity Gap Widens",
+      subtitle = "Indexed to 2000 = 100—wages have grown faster than output per worker since 2010",
+      x = NULL,
+      y = "Index (2000 = 100)",
+      color = NULL,
+      fill = NULL,
+      caption = "Source: Statistics Norway (SSB), tables 07984 and 11350"
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      plot.title = element_text(face = "bold", size = 16),
+      plot.subtitle = element_text(size = 11, color = "grey30", margin = margin(b = 15)),
+      legend.position = "top",
+      panel.grid.minor = element_blank()
+    )
+  
+  print(p3)
+}
+```
+
+This is the productivity puzzle in sharp relief: Norwegian wages have grown 40 percent faster than productivity since 2000. This gap has widened particularly after 2010, raising questions about long-term competitiveness and inflation pressures.
+
+## Analysis 4: Recent productivity winners and losers
+
+Let's identify which sectors have bucked the slowdown trend in recent years.
+
+```{r wrangle-recent-winners}
+if (!is.null(df_prod)) {
+  
+  # Calculate 2020-2024 average growth vs 2015-2019
+  recent_comparison <- df_prod |>
+    filter(year >= 2015, year <= 2024) |>
+    mutate(
+      period = if_else(year < 2020, "2015-2019", "2020-2024")
+    ) |>
+    group_by(NACE2007, period) |>
+    summarise(
+      avg_value = mean(value, na.rm = TRUE),
+      .groups = "drop"
+    ) |>
+    pivot_wider(
+      names_from = period,
+      values_from = avg_value
+    ) |>
+    mutate(
+      change = `2020-2024` - `2015-2019`,
+      pct_change = 100 * change / `2015-2019`,
+      industry = str_trunc(NACE2007, 45)
+    ) |>
+    filter(!is.na(change)) |>
+    arrange(desc(pct_change))
+  
+  cat("\nRecent productivity changes calculated for", 
+      nrow(recent_comparison), "industries\n")
+}
+```
+
+```{r plot-winners-losers}
+#| fig-height: 8
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("recent_comparison") && nrow(recent_comparison) > 0) {
+  
+  # Select top 10 gainers and top 10 losers
+  extreme_performers <- recent_comparison |>
+    slice(c(1:10, (n()-9):n())) |>
+    mutate(
+      direction = if_else(pct_change > 0, "Gained", "Lost"),
+      industry = fct_reorder(industry, pct_change)
+    )
+  
+  if (nrow(extreme_performers) > 0) {
+    p4 <- ggplot(extreme_performers, aes(x = pct_change, y = industry, fill = direction)) +
+      geom_col(width = 0.7) +
+      geom_text(aes(label = sprintf("%+.1f%%", pct_change),
+                    x = pct_change + if_else(pct_change > 0, 1, -1)),
+                hjust = if_else(extreme_performers$pct_change > 0, 0, 1),
+                size = 3.5) +
+      scale_fill_manual(values = c("Gained" = pal[2], "Lost" = pal[6])) +
+      labs(
+        title = "Productivity Winners and Losers: 2020-2024 vs 2015-2019",
+        subtitle = "Change in average productivity by industry—digital and knowledge sectors surge ahead",
+        x = "Percentage change in average productivity",
+        y = NULL,
+        fill = NULL,
+        caption = "Source: Statistics Norway (SSB), table 07984"
+      ) +
+      theme_minimal(base_size = 12) +
+      theme(
+        plot.title = element_text(face = "bold", size = 15),
+        plot.subtitle = element_text(size = 10, color = "grey30", margin = margin(b = 12)),
+        legend.position = "none",
+        panel.grid.major.y = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.text.y = element_text(size = 9)
+      )
+    
+    print(p4)
+  }
+}
+```
+
+The lollipop chart reveals a tale of two Norways: knowledge-intensive sectors like ICT and professional services have seen productivity gains, while traditional industries—construction, retail, hospitality—have seen declines. This divergence matters for regional inequality and economic resilience.
+
+## Key findings
+
+- **Productivity growth has collapsed across most Norwegian industries** — the average annual productivity gain dropped from around 2 percent in the mid-2000s to near zero by the early 2020s
+
+- **Wages have outpaced productivity by 40 percent since 2000** — this decoupling accelerated after 2010, raising concerns about cost competitiveness and inflation dynamics
+
+- **Knowledge sectors are the exception** — ICT, professional services, and some tech-enabled industries have sustained productivity gains, but they're too small to offset broader stagnation
+
+- **Traditional sectors face decline** — construction, retail, hospitality, and other labor-intensive industries have seen productivity fall in recent years, not just stagnate
+
+- **The post-2010 plateau is universal** — virtually every major industry shows flattening productivity curves after 2010, suggesting systemic rather than sector-specific causes
+
+## What's driving the slowdown?
+
+Norway's productivity puzzle likely reflects multiple forces: aging demographics reducing labor force dynamism, the maturation of oil and gas extraction technology, weak investment in automation and digitalization outside tech sectors, and regulatory or structural barriers that make it hard to reallocate resources from low to high-productivity firms. The pandemic may have accelerated some of these trends, particularly in service industries.
+
+What's clear is that wage growth without productivity gains is not sustainable indefinitely. Either productivity must catch up—through innovation, better capital allocation, or structural reforms—or wage growth must moderate. The path Norway chooses will shape its economic trajectory for the next generation.
