@@ -34,220 +34,87 @@ if (dir.exists(POST_DIR)) {
 SSB_CATALOGUE <- '
 ## Available SSB datasets (PxWebApiData)
 
+IMPORTANT: Since the script always discovers parameters with returnMetaFrames = TRUE 
+before fetching data, Claude should feel free to explore ANY 5-digit SSB table — 
+the discovery step will reveal if a table exists and what parameters it has. 
+The tables below are verified starting points, but Claude can also try nearby 
+table IDs or search SSB Statbank (https://www.ssb.no/en/statbank) for more.
+
 ### Economy & Prices
-- **03013** — Consumer Price Index (KPI), monthly. ContentsCode="KpiAar"
-- **03014** — CPI by expenditure group (food, housing, transport etc.)
-- **10235** — Producer Price Index. ContentsCode="PrisIndeks"
-- **09189** — GDP quarterly (Nasjonalregnskap). ContentsCode="BNPB"
+- **03013** — Consumer Price Index (KPI) by consumption group, monthly (2015=100). Note: being replaced by **14700** in 2026.
+- **03014** — Consumer Price Index (KPI) 12-month rate, by consumption group, monthly
+- **09170** — GDP and related measures, quarterly (Nasjonalregnskap)
+- **09174** — Wages, employment and productivity by industry, annual (Nasjonalregnskap)
+- **09189** — National accounts, quarterly main figures
 - **09190** — GDP by industry, quarterly
-- **11174** — Household consumption by category
-- **10948** — Government revenue and expenditure
+- **11174** — Household final consumption expenditure
+- **10948** — General government revenue and expenditure, annual
 - **12880** — National accounts, annual main figures
-- **10714** — Household saving rate
-- **07197** — Wage share of GDP
-- **10269** — Interest rates, Norges Bank key policy rate
 
 ### Labour Market
-- **05111** — AKU unemployment rate (%). Kjonn="0", ArbStyrkStatus="04", ContentsCode="AKULedigProsent"
-- **07459** — Employed persons by industry (NACE)
-- **11350** — Average monthly earnings by sector. ContentsCode="Lonn"
-- **08536** — Registered unemployment by county (NAV)
-- **11615** — Part-time employment by gender and sector
-- **07984** — Labour productivity by industry
-- **12549** — Sick leave rates by industry and gender
-- **05940** — Working hours per week by occupation
-- **13425** — Job vacancies by industry
-- **11441** — Employees on temporary contracts
-- **09174** — Strike days lost per year
+- **05111** — Population by labour force status, age and sex, annual (AKU)
+- **05110** — Population by labour force status, age and sex, quarterly (AKU)
+- **13760** — Labour force, employment, unemployment — seasonally adjusted, monthly
+- **11350** — Average monthly earnings by industry (SIC2007) and sector
+- **08536** — Registered unemployed by age and county (NAV monthly)
+- **07984** — R&D personnel and FTE in business enterprise sector
+- **08771** — Job vacancies by major industry division (SIC2007)
+- **03629** — Work stoppages, wage earners involved and working days lost
+- **12549** — Sickness absence, by industry and type of absence
 
 ### Housing & Construction
-- **07221** — House prices per sqm by dwelling type. ContentsCode="KvPris"
-- **06265** — Building permits granted by type
+- **07221** — House price index, existing dwellings
+- **06265** — Building activity — dwellings started, under construction, completed
 - **05889** — New dwellings completed by county
-- **08655** — Housing starts vs completions
-- **07276** — Average housing size by household type
-- **09313** — Rental prices by city
-- **12805** — Households by tenure (own vs rent)
-- **10748** — Mortgage debt by age group
 
 ### Demographics & Population
-- **09481** — Population by municipality, quarterly
-- **05803** — Births, deaths and natural change
-- **09817** — Immigration and emigration by country of origin
-- **10211** — Population projections to 2100
-- **05196** — Fertility rate by age of mother
-- **08771** — Life expectancy at birth by gender
-- **09599** — Population density by municipality
+- **07459** — Population by region (municipality), sex, age and year
+- **05810** — Population by age, sex and year (national)
+- **04861** — Area and population of urban settlements
+- **05803** — Births, by mothers age
+- **09817** — Immigration and emigration by citizenship and country
+- **05196** — Fertility rates
 - **10634** — Marriages and divorces
-- **12255** — Household size distribution
-- **07459** — Population by age group and gender
-- **10618** — Internal migration between counties
+- **09481** — Population changes, quarterly
 
 ### Energy & Environment
-- **10315** — Electricity production and consumption. ContentsCode="KWhProd"
-- **03321** — Greenhouse gas emissions by source (CO2 equiv)
-- **13931** — Electric vehicle registrations by county
-- **09383** — Energy consumption by industry
-- **11813** — Renewable energy share of total production
-- **10774** — Electricity prices for households
-- **07580** — Oil and gas production on the Norwegian shelf
-- **09287** — District heating production
-- **12880** — Energy intensity of the economy
-- **13165** — Solar panel installations
-- **08940** — Waste generation and recycling rates
-- **10478** — Air pollution emissions by sector
+- **08307** — Electricity balance, monthly (production, consumption, exports, imports)
+- **13931** — First-time registered vehicles by fuel type and county
+- **09288** — Energy balance for Norway, by energy product
+- **03321** — Greenhouse gas emissions by source
 
 ### Education
 - **09429** — Students in higher education by field of study
-- **12886** — Completed education levels by age group
-- **08956** — Upper secondary school completion rates
-- **09429** — University graduates by field, annual
-- **12535** — Student loans and grants (Lånekassen)
-- **07184** — Kindergarten coverage rate by municipality
-- **09429** — International students in Norway
-- **10840** — School results (national tests) by county
-- **12890** — Adult education participation
+- **08956** — Upper secondary completion rates
+- **07184** — Kindergartens — children, staff, operating expenses
 
-### Health & Social
-- **04861** — Causes of death by diagnosis group
-- **06913** — Hospital admissions by diagnosis (DRG)
-- **11843** — Mental health outpatient visits
-- **09550** — Disability benefit recipients by age
-- **12140** — Social assistance recipients
-- **08655** — Alcohol consumption per capita
-- **08756** — Smoking rates by age and gender
-- **09937** — Obesity rates by county
-- **11721** — GP consultations per capita
-- **10440** — Waiting times for specialist treatment
-- **07902** — Long-term sick leave by diagnosis
+### Health
+- **06913** — Activities in somatic hospitals — patient statistics
 
 ### Business & Industry
-- **07196** — Number of enterprises by industry (NACE)
-- **10582** — Bankruptcies by industry, quarterly
-- **08419** — Retail trade volume index, monthly
-- **11721** — Industrial production index
-- **10714** — Business investment by industry
-- **09174** — Company profit margins by sector
-- **12430** — New business registrations (Brønnøysund)
-- **07459** — Turnover in service industries
-- **08800** — Tourism nights by nationality
-- **10259** — Restaurant and hotel revenue index
-- **13050** — E-commerce turnover
-- **11440** — R&D expenditure by sector
-- **09023** — Patent applications by industry
-
-### KOSTRA — Municipality Data (kommune-level, annual)
-KOSTRA covers all 356 Norwegian municipalities. Published 15 March (preliminary) and 15 June (final).
-Use Region = "EAK" for national average, or codes: "0301" (Oslo), "3024" (Baerum), "1103" (Stavanger), "5001" (Trondheim), "4601" (Bergen).
-Use Region = TRUE for all municipalities. Time = annual 4-digit year.
-
-#### Barnehage (Kindergarten)
-- **12370** — Barnehage key figures per kommune (coverage rate, staff per child, cost per child)
-- **12568** — Share of children in barnehage by age group and kommune
-- **12369** — Expenditure per child in barnehage per kommune
-
-#### Grunnskole (Primary School)
-- **12215** — Grunnskole key figures: expenditure per pupil, teacher density, special education
-- **12216** — Teacher density by grade and kommune
-- **12220** — Share of pupils receiving special education per kommune
-
-#### Pleie og omsorg (Elderly Care)
-- **12006** — Elderly care key figures: expenditure per resident 80+, nursing home coverage
-- **12007** — Nursing home places per 1000 residents 80+ per kommune
-- **12008** — Expenditure on elderly care per resident per kommune
-
-#### Sosialtjeneste (Social Services)
-- **11133** — Number of social assistance recipients per kommune
-- **11134** — Average duration of social assistance per kommune
-- **11135** — Social assistance expenditure per resident per kommune
-
-#### Barnevern (Child Welfare)
-- **12359** — Child welfare key figures per kommune
-- **09051** — Children with investigations or measures per 1000 residents aged 0-17
-- **09052** — Child welfare expenditure per resident per kommune
-
-#### Kommuneokonomi (Municipal Finance)
-- **12163** — Municipal financial key figures: net operating result, debt, reserves
-- **12164** — Net operating result as pct of gross operating income per kommune
-- **12165** — Long-term debt per resident per kommune
-- **12166** — Discretionary fund as pct of gross operating income per kommune
-- **12167** — Free income per resident (tax + block grant) per kommune
-
-#### Tekniske tjenester (Water, Waste, Roads)
-- **12559** — Water and sewage key figures: fees, pipe network per kommune
-- **12560** — Waste collection: source sorting rate, fees per kommune
-- **12561** — Municipal roads: maintenance cost, length per resident
-
-#### Kultur og idrett (Culture and Sport)
-- **12557** — Culture key figures: expenditure per resident, library, music school
-- **11940** — Library: loans per resident, opening hours per kommune
-- **11941** — Music school: pupils per 1000 residents aged 6-15 per kommune
-- **12558** — Sport: municipal sports facilities, expenditure per resident
-
-#### Plan og bygg (Planning and Building)
-- **12572** — Planning and building: processing time, building permits per kommune
-- **12388** — Municipal roads and public transport key figures
-- **12389** — Walking and cycling paths per resident per kommune
-
-### International Trade & Shipping
-- **08800** — Exports by product group (oil, gas, fish, metals)
-- **08807** — Imports by product group
-- **09174** — Trade balance monthly
-- **10890** — Fish exports by species and destination country
-- **07580** — Oil and gas export volumes and values
-- **11350** — Shipping earnings (Norwegian merchant fleet)
-- **12109** — Foreign direct investment stocks
-- **08940** — Container throughput at Norwegian ports
-
-### Transport & Infrastructure
-- **13931** — Vehicle registrations by fuel type
-- **08567** — Road traffic volume index
-- **10384** — Aviation passengers by airport
-- **09023** — Rail passenger journeys
-- **07984** — Cycling infrastructure length by municipality
-- **12799** — Traffic accidents by severity and county
-- **11440** — Electric scooter registrations
-- **09383** — Public transport usage by mode
-
-### Agriculture & Fisheries
-- **10890** — Fish landings by species and port
-- **08655** — Agricultural land use by crop type
-- **09174** — Farm income and subsidies
-- **07580** — Aquaculture production (salmon, trout, etc.)
-- **12140** — Food price index at farm gate
-- **08771** — Number of farms and farm sizes
-- **10315** — Forestry harvest volumes
+- **07196** — Enterprises by industry (NACE) and organisational form
+- **10582** — Bankruptcies opened, by industry, quarterly
+- **08419** — Retail trade index, monthly (volume and value)
+- **08800** — Overnight stays by nationality and accommodation type
 
 ### Crime & Justice
-- **08406** — Reported crimes by type (theft, violence, fraud)
-- **09594** — Prosecutions and convictions
-- **10258** — Prison population by offence type
-- **12655** — Domestic violence reports
-- **09023** — Cybercrime incidents
-- **10890** — Drug offences by county
-- **08567** — Traffic offences (speeding, DUI)
+- **08406** — Offences reported to the police by type of offence
 
-### Culture & Leisure
-- **08419** — Cinema admissions and revenue
-- **10714** — Museum visits by institution type
-- **09550** — Library loans and visits
-- **11843** — Sports club membership by sport
-- **12535** — Lottery and gambling expenditure
-- **07902** — Newspaper readership trends
-- **13050** — Streaming service usage
-- **09937** — Holiday and travel patterns
+### KOSTRA — Municipality Data (kommune-level, annual)
+KOSTRA covers Norwegian municipalities. Published 15 March (preliminary) and 15 June (final).
+Use Region = "EAK" for national average, or municipality codes like "3001" (Halden), "0301"/"3005" (Oslo), etc.
+Use Region = TRUE for all municipalities. Tid = annual 4-digit year.
+KOSTRA tables are numbered 12xxx–13xxx. The discovery step will reveal exact parameters.
+Example KOSTRA tables to try:
+- **12362** — Barnehage (kindergarten) key figures
+- **12215** — Grunnskole (primary school) key figures  
+- **12006** — Pleie og omsorg (elderly care) key figures
+- **12163** — Municipal financial key figures
+- **12559** — Water and sewage key figures
 
-### Public Finances & Welfare
-- **10948** — Central government budget by ministry
-- **09189** — Municipal finances and debt
-- **12880** — Pension fund (Oljefondet / GPFG) flows
-- **10269** — Tax revenue by type
-- **08940** — Social security expenditure by benefit type
-- **11721** — Child benefit recipients
-- **10440** — Parental leave take-up by gender
-- **07276** — Income distribution and Gini coefficient
-- **09313** — Poverty rates by household type
-- **12805** — Wealth distribution by percentile
+### International Trade
+- **08800** — (also used under Business — tourism nights)
+- **08807** — External trade in goods — imports and exports
 
 ---
 
