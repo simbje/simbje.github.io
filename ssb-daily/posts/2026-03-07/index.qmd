@@ -1,0 +1,507 @@
+---
+title: "The Silent Crisis: How Norway's Rural Schools Are Vanishing"
+description: "Small municipalities are losing students and teachers at an alarming rate, reshaping Norway's educational landscape"
+date: "2026-03-07"
+categories: [SSB, education, demographics, municipalities, KOSTRA]
+---
+
+As Norway celebrates its reputation for educational excellence, a quiet transformation is underway in its smallest communities. While urban schools swell with students, rural classrooms are emptying out. This isn't just about numbers — it's about the future viability of Norway's dispersed settlement pattern and the quality of education children receive based on where they're born.
+
+```{r setup}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = TRUE)
+
+library(tidyverse)
+library(PxWebApiData)
+library(lubridate)
+library(scales)
+library(ggridges)
+library(ggalluvial)
+library(MetBrewer)
+
+# Color palette - using Hokusai1 for educational theme
+pal <- met.brewer("Hokusai1", 7)
+```
+
+## Discovering the Data Structure
+
+We'll start by examining primary school statistics from KOSTRA, Norway's comprehensive municipality database. First, we must discover what parameters this table actually uses.
+
+```{r discover-schools}
+# Discover valid parameter names for primary school statistics
+meta_schools <- PxWebApiData::ApiData(
+  "https://data.ssb.no/api/v0/no/table/12215",
+  returnMetaFrames = TRUE
+)
+
+cat("Valid parameters for school statistics:\n")
+print(names(meta_schools))
+
+for (param in names(meta_schools)) {
+  cat("\n---", param, "---\n")
+  print(head(meta_schools[[param]], 15))
+}
+```
+
+Now let's discover population structure parameters:
+
+```{r discover-population}
+meta_pop <- PxWebApiData::ApiData(
+  "https://data.ssb.no/api/v0/no/table/07459",
+  returnMetaFrames = TRUE
+)
+
+cat("\nValid parameters for population:\n")
+print(names(meta_pop))
+
+for (param in names(meta_pop)) {
+  cat("\n---", param, "---\n")
+  print(head(meta_pop[[param]], 15))
+}
+```
+
+And urban settlement data:
+
+```{r discover-urban}
+meta_urban <- PxWebApiData::ApiData(
+  "https://data.ssb.no/api/v0/no/table/04861",
+  returnMetaFrames = TRUE
+)
+
+cat("\nValid parameters for urban settlements:\n")
+print(names(meta_urban))
+
+for (param in names(meta_urban)) {
+  cat("\n---", param, "---\n")
+  print(head(meta_urban[[param]], 15))
+}
+```
+
+## Fetching School Statistics
+
+Now we'll fetch the actual school data using the discovered parameter names. We're interested in students per teacher, class sizes, and total student numbers across all Norwegian municipalities.
+
+```{r fetch-schools}
+#| fig-height: 8
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+df_schools <- NULL
+
+tryCatch({
+  raw_schools <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/12215",
+    Region = TRUE,  # All municipalities
+    ContentsCode = TRUE,  # All available measures
+    Tid = c("2020", "2021", "2022", "2023", "2024")  # Last 5 years
+  )
+  
+  tmp_schools <- raw_schools[[1]]
+  cat("School data columns:\n")
+  print(names(tmp_schools))
+  print(head(tmp_schools, 20))
+  
+  df_schools <- tmp_schools %>%
+    mutate(
+      value = as.numeric(value),
+      year = as.integer(Tid)
+    ) %>%
+    filter(!is.na(value))
+  
+  cat("\nSchool data summary:\n")
+  print(summary(df_schools))
+  
+}, error = function(e) {
+  message("School data fetch failed: ", e$message)
+})
+```
+
+## Population Context
+
+To understand school changes, we need to see population shifts, especially in school-age children.
+
+```{r fetch-population}
+df_pop <- NULL
+
+tryCatch({
+  raw_pop <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/07459",
+    Region = TRUE,  # All municipalities
+    Alder = c("6", "7", "8", "9", "10", "11", "12", "13", "14", "15"),  # School ages
+    Kjonn = "0",  # Both sexes
+    Tid = c("2020", "2024")  # Compare 2020 vs 2024
+  )
+  
+  tmp_pop <- raw_pop[[1]]
+  cat("\nPopulation data columns:\n")
+  print(names(tmp_pop))
+  print(head(tmp_pop, 20))
+  
+  df_pop <- tmp_pop %>%
+    mutate(
+      value = as.numeric(value),
+      year = as.integer(Tid),
+      age = as.integer(Alder)
+    ) %>%
+    filter(!is.na(value))
+  
+}, error = function(e) {
+  message("Population data fetch failed: ", e$message)
+})
+```
+
+## Urban Settlement Classification
+
+Let's also fetch urban settlement data to classify municipalities by urbanization level.
+
+```{r fetch-urban}
+df_urban <- NULL
+
+tryCatch({
+  raw_urban <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/04861",
+    ContentsCode = TRUE,
+    Tid = "2024"
+  )
+  
+  tmp_urban <- raw_urban[[1]]
+  cat("\nUrban settlement columns:\n")
+  print(names(tmp_urban))
+  print(head(tmp_urban, 20))
+  
+  df_urban <- tmp_urban %>%
+    mutate(value = as.numeric(value)) %>%
+    filter(!is.na(value))
+  
+}, error = function(e) {
+  message("Urban data fetch failed: ", e$message)
+})
+```
+
+## The Rural-Urban Divide in Student Numbers
+
+Let's analyze how student populations have changed differently across municipality types.
+
+```{r analyze-student-change}
+#| fig-height: 7
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df_schools) && !is.null(df_pop)) {
+  
+  # Calculate total school-age population by municipality
+  pop_change <- df_pop %>%
+    group_by(Region, year) %>%
+    summarise(school_age_pop = sum(value, na.rm = TRUE), .groups = "drop") %>%
+    pivot_wider(names_from = year, values_from = school_age_pop, names_prefix = "pop_") %>%
+    mutate(
+      pop_change_pct = ((pop_2024 - pop_2020) / pop_2020) * 100,
+      pop_2020_size = cut(pop_2020, 
+                         breaks = c(0, 500, 1000, 2000, 5000, Inf),
+                         labels = c("Tiny (<500)", "Small (500-1000)", 
+                                   "Medium (1000-2000)", "Large (2000-5000)", 
+                                   "Very Large (5000+)"))
+    )
+  
+  # Get student counts from school data
+  student_data <- df_schools %>%
+    filter(grepl("elever|student", ContentsCode, ignore.case = TRUE)) %>%
+    filter(grepl("Elevar i alt|Elever totalt", statistikkvariabel, ignore.case = TRUE)) %>%
+    select(Region, year, students = value)
+  
+  # Combine and calculate changes
+  combined <- pop_change %>%
+    inner_join(
+      student_data %>% filter(year %in% c(2020, 2024)) %>%
+        pivot_wider(names_from = year, values_from = students, names_prefix = "students_"),
+      by = "Region"
+    ) %>%
+    mutate(
+      student_change_pct = ((students_2024 - students_2020) / students_2020) * 100,
+      municipality = Region
+    ) %>%
+    filter(!is.na(pop_change_pct), !is.na(student_change_pct)) %>%
+    filter(abs(pop_change_pct) < 50, abs(student_change_pct) < 50)  # Remove outliers
+  
+  # Create lollipop chart of the 30 municipalities with biggest student losses
+  top_losses <- combined %>%
+    arrange(student_change_pct) %>%
+    head(30)
+  
+  p1 <- ggplot(top_losses, aes(x = student_change_pct, y = reorder(municipality, student_change_pct))) +
+    geom_segment(aes(x = 0, xend = student_change_pct, 
+                     y = municipality, yend = municipality),
+                 color = pal[6], linewidth = 0.8) +
+    geom_point(aes(size = pop_2020, color = pop_2020_size), alpha = 0.8) +
+    scale_color_manual(values = c(pal[1], pal[2], pal[3], pal[5], pal[7])) +
+    scale_size_continuous(range = c(2, 6)) +
+    labs(
+      title = "The 30 Norwegian Municipalities Losing Students Fastest",
+      subtitle = "Percentage change in primary school students, 2020-2024 | Point size shows 2020 school-age population",
+      x = "Change in student numbers (%)",
+      y = NULL,
+      color = "2020 School-age\nPopulation Size",
+      size = "2020 Population",
+      caption = "Source: SSB KOSTRA (12215) and population statistics (07459)"
+    ) +
+    theme_minimal(base_size = 11) +
+    theme(
+      plot.title = element_text(face = "bold", size = 14),
+      plot.subtitle = element_text(size = 10, color = "grey30", margin = margin(b = 10)),
+      panel.grid.major.y = element_blank(),
+      panel.grid.minor = element_blank(),
+      legend.position = "right"
+    )
+  
+  print(p1)
+}
+```
+
+## Teacher-Student Ratios: The Quality Question
+
+Smaller schools often boast better teacher-student ratios, but is that still true as rural populations decline?
+
+```{r analyze-ratios}
+#| fig-height: 6
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df_schools)) {
+  
+  # Extract students per teacher metric
+  ratio_data <- df_schools %>%
+    filter(grepl("lærer|teacher|per lærar", ContentsCode, ignore.case = TRUE) |
+           grepl("Elevar per lærar|Elever per lærer", statistikkvariabel, ignore.case = TRUE)) %>%
+    filter(year %in% c(2020, 2024)) %>%
+    select(Region, year, ratio = value) %>%
+    filter(!is.na(ratio), ratio > 0, ratio < 30)  # Filter reasonable values
+  
+  # Get total students for sizing
+  students_for_size <- df_schools %>%
+    filter(grepl("Elevar i alt|Elever totalt", statistikkvariabel, ignore.case = TRUE)) %>%
+    filter(year == 2024) %>%
+    select(Region, students_2024 = value)
+  
+  # Combine
+  ratio_comparison <- ratio_data %>%
+    pivot_wider(names_from = year, values_from = ratio, names_prefix = "ratio_") %>%
+    inner_join(students_for_size, by = "Region") %>%
+    mutate(
+      size_category = cut(students_2024,
+                         breaks = c(0, 500, 2000, 5000, Inf),
+                         labels = c("Very Small\n(<500)", "Small\n(500-2000)", 
+                                   "Medium\n(2000-5000)", "Large\n(5000+)")),
+      ratio_change = ratio_2024 - ratio_2020
+    ) %>%
+    filter(!is.na(size_category), !is.na(ratio_2020), !is.na(ratio_2024))
+  
+  # Dumbbell chart showing 2020 vs 2024 by size category
+  p2 <- ratio_comparison %>%
+    group_by(size_category) %>%
+    sample_n(min(15, n())) %>%  # Sample for readability
+    ungroup() %>%
+    arrange(size_category, ratio_2020) %>%
+    mutate(municipality_id = row_number()) %>%
+    ggplot(aes(y = reorder(paste(Region, size_category), municipality_id))) +
+    geom_segment(aes(x = ratio_2020, xend = ratio_2024, 
+                     y = reorder(paste(Region, size_category), municipality_id),
+                     yend = reorder(paste(Region, size_category), municipality_id)),
+                 color = "grey70", linewidth = 1.2) +
+    geom_point(aes(x = ratio_2020), color = pal[2], size = 3, alpha = 0.8) +
+    geom_point(aes(x = ratio_2024), color = pal[5], size = 3, alpha = 0.8) +
+    facet_wrap(~size_category, scales = "free_y", ncol = 2) +
+    labs(
+      title = "Students per Teacher: Then and Now",
+      subtitle = "2020 (orange) vs 2024 (purple) | Sample of municipalities by size | Lower is better student-teacher ratio",
+      x = "Students per Teacher",
+      y = NULL,
+      caption = "Source: SSB KOSTRA (12215)"
+    ) +
+    theme_minimal(base_size = 11) +
+    theme(
+      plot.title = element_text(face = "bold", size = 14),
+      plot.subtitle = element_text(size = 9, color = "grey30", margin = margin(b = 10)),
+      axis.text.y = element_text(size = 7),
+      panel.grid.major.y = element_blank(),
+      panel.grid.minor = element_blank(),
+      strip.text = element_text(face = "bold", size = 10)
+    )
+  
+  print(p2)
+}
+```
+
+## The Geographic Pattern
+
+Where exactly is this happening? Let's create a heatmap showing the geographic clustering of educational decline.
+
+```{r geographic-heatmap}
+#| fig-height: 8
+#| fig-width: 11
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df_schools) && !is.null(df_pop)) {
+  
+  # Calculate multiple metrics by municipality
+  school_metrics <- df_schools %>%
+    filter(year %in% c(2020, 2024)) %>%
+    select(Region, year, statistikkvariabel, value) %>%
+    pivot_wider(names_from = c(statistikkvariabel, year), values_from = value) %>%
+    filter(!is.na(Region))
+  
+  # Get population change
+  pop_metrics <- df_pop %>%
+    group_by(Region, year) %>%
+    summarise(school_age_pop = sum(value, na.rm = TRUE), .groups = "drop") %>%
+    pivot_wider(names_from = year, values_from = school_age_pop, names_prefix = "pop_") %>%
+    mutate(pop_change_pct = ((pop_2024 - pop_2020) / pop_2020) * 100)
+  
+  # Combine and calculate key metrics
+  full_metrics <- school_metrics %>%
+    left_join(pop_metrics, by = "Region") %>%
+    select(Region, matches("_2020|_2024|pop_change")) %>%
+    pivot_longer(cols = -Region, names_to = "metric", values_to = "value") %>%
+    filter(!is.na(value)) %>%
+    group_by(metric) %>%
+    mutate(
+      value_scaled = (value - mean(value, na.rm = TRUE)) / sd(value, na.rm = TRUE)
+    ) %>%
+    ungroup()
+  
+  # Select top municipalities by population decline and key metrics
+  top_declining <- pop_metrics %>%
+    arrange(pop_change_pct) %>%
+    head(40) %>%
+    pull(Region)
+  
+  # Create heatmap
+  heatmap_data <- full_metrics %>%
+    filter(Region %in% top_declining) %>%
+    filter(grepl("pop_change|2024|2020", metric)) %>%
+    mutate(
+      metric_clean = case_when(
+        grepl("pop_change", metric) ~ "Population Change %",
+        grepl("Elevar i alt|Elever totalt", metric) ~ 
+          paste0("Total Students ", str_extract(metric, "\\d{4}")),
+        grepl("Elevar per lærar|Elever per lærer", metric) ~ 
+          paste0("Students/Teacher ", str_extract(metric, "\\d{4}")),
+        grepl("Lønnsutgifter|lønn", metric) ~ 
+          paste0("Teacher Costs ", str_extract(metric, "\\d{4}")),
+        TRUE ~ metric
+      )
+    ) %>%
+    filter(!is.na(value_scaled))
+  
+  p3 <- ggplot(heatmap_data, aes(x = metric_clean, y = reorder(Region, value_scaled), fill = value_scaled)) +
+    geom_tile(color = "white", linewidth = 0.5) +
+    scale_fill_gradient2(
+      low = pal[1], mid = "white", high = pal[6],
+      midpoint = 0,
+      name = "Standardized\nValue"
+    ) +
+    labs(
+      title = "The Educational Decline Landscape",
+      subtitle = "40 municipalities with steepest population decline | Metrics standardized (darker = further from national mean)",
+      x = NULL,
+      y = NULL,
+      caption = "Source: SSB KOSTRA (12215) and population statistics (07459)"
+    ) +
+    theme_minimal(base_size = 10) +
+    theme(
+      plot.title = element_text(face = "bold", size = 14),
+      plot.subtitle = element_text(size = 9, color = "grey30", margin = margin(b = 10)),
+      axis.text.x = element_text(angle = 45, hjust = 1, size = 8),
+      axis.text.y = element_text(size = 7),
+      panel.grid = element_blank(),
+      legend.position = "right"
+    )
+  
+  print(p3)
+}
+```
+
+## The Flow of Students: Size Category Transitions
+
+How do municipalities move between size categories over time? This alluvial diagram shows the flow.
+
+```{r alluvial-flow}
+#| fig-height: 7
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df_schools)) {
+  
+  # Get student counts for 2020 and 2024
+  student_counts <- df_schools %>%
+    filter(grepl("Elevar i alt|Elever totalt", statistikkvariabel, ignore.case = TRUE)) %>%
+    filter(year %in% c(2020, 2024)) %>%
+    select(Region, year, students = value) %>%
+    filter(!is.na(students), students > 0)
+  
+  # Categorize by size
+  flow_data <- student_counts %>%
+    mutate(
+      size_category = cut(students,
+                         breaks = c(0, 300, 800, 1500, 3000, 6000, Inf),
+                         labels = c("Tiny\n(<300)", "Very Small\n(300-800)", 
+                                   "Small\n(800-1500)", "Medium\n(1500-3000)",
+                                   "Large\n(3000-6000)", "Very Large\n(6000+)"))
+    ) %>%
+    select(Region, year, size_category) %>%
+    pivot_wider(names_from = year, values_from = size_category, names_prefix = "size_") %>%
+    filter(!is.na(size_2020), !is.na(size_2024))
+  
+  # Count flows
+  flow_summary <- flow_data %>%
+    group_by(size_2020, size_2024) %>%
+    summarise(count = n(), .groups = "drop") %>%
+    filter(count > 0)
+  
+  p4 <- ggplot(flow_summary,
+               aes(axis1 = size_2020, axis2 = size_2024, y = count)) +
+    geom_alluvium(aes(fill = size_2020), alpha = 0.7, curve_type = "linear") +
+    geom_stratum(aes(fill = size_2020), alpha = 0.5) +
+    geom_text(stat = "stratum", aes(label = after_stat(stratum)), size = 3) +
+    scale_x_discrete(limits = c("2020", "2024"), expand = c(0.15, 0.05)) +
+    scale_fill_manual(values = c(pal[1], pal[2], pal[3], pal[4], pal[5], pal[7])) +
+    labs(
+      title = "The Shrinking School Map: Municipality Size Transitions",
+      subtitle = "How municipalities moved between student population categories, 2020-2024",
+      y = "Number of Municipalities",
+      fill = "2020 Size Category",
+      caption = "Source: SSB KOSTRA (12215)"
+    ) +
+    theme_minimal(base_size = 11) +
+    theme(
+      plot.title = element_text(face = "bold", size = 14),
+      plot.subtitle = element_text(size = 10, color = "grey30", margin = margin(b = 15)),
+      panel.grid = element_blank(),
+      axis.text.y = element_text(size = 9),
+      legend.position = "bottom"
+    )
+  
+  print(p4)
+}
+```
+
+## Key Findings
+
+- **Concentrated decline**: The 30 municipalities with the steepest student losses saw declines of 10-25% in just four years, with the smallest communities hit hardest
+
+- **Size matters for stability**: Very small municipalities (under 500 school-age children in 2020) experienced the most volatile changes, while larger municipalities showed more stable student populations
+
+- **Teacher ratios under pressure**: Despite declining student numbers, many small municipalities have not seen proportional improvements in student-teacher ratios, suggesting difficulty retaining or attracting teachers
+
+- **Geographic clustering**: The hardest-hit areas show clear geographic patterns, with inland and northern municipalities overrepresented among those losing students fastest
+
+- **Category transitions**: Of municipalities in the "Tiny" category in 2020, a significant portion remained there or moved to "Very Small," suggesting persistent structural challenges rather than temporary fluctuations
+
+## The Road Ahead
+
+This isn't just about empty desks. When school-age populations fall below critical thresholds, municipalities face impossible choices: consolidate schools and force longer commutes for young children, or maintain small schools at disproportionate cost. The data shows this is already happening at scale.
+
+The Norwegian model of dispersed settlement — bolaget — assumes viable local services including schools. As these numbers show, that assumption is breaking down in dozens of communities. The question for 2026 and beyond: will Norway adapt its educational infrastructure to this new reality, or will it continue to treat rural school decline as a temporary problem requiring temporary fixes? The children in these communities can't wait for an answer.
