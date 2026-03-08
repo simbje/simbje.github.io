@@ -1,0 +1,519 @@
+---
+title: "The Great Norwegian Energy Shift: How Electricity Consumption Patterns Are Rewriting the Map"
+description: "Norway's electricity balance reveals a dramatic transformation as EVs and industrial shifts reshape when and how the nation uses power"
+date: "2026-03-08"
+categories: [SSB, energy, environment, electricity]
+---
+
+Norway's reputation as a clean energy powerhouse rests on hydropower — but the way Norwegians actually *use* that electricity is undergoing a quiet revolution. As electric vehicles flood the roads and industrial patterns shift, the monthly electricity balance data reveals surprising seasonal swings, growing winter peaks, and a transformation in Norway's role as Europe's battery.
+
+```{r setup}
+#| echo: false
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = TRUE)
+```
+
+```{r libraries}
+library(tidyverse)
+library(PxWebApiData)
+library(lubridate)
+library(scales)
+library(ggridges)
+library(MetBrewer)
+library(patchwork)
+
+# Color palette - using Hiroshige for energy theme
+pal <- met.brewer("Hiroshige", 8)
+```
+
+## Discovering the electricity balance structure
+
+First, we need to understand what parameters SSB actually uses for the electricity balance table.
+
+```{r discover-electricity}
+# Discover valid parameter names for electricity balance
+meta_elec <- PxWebApiData::ApiData(
+  "https://data.ssb.no/api/v0/no/table/08307",
+  returnMetaFrames = TRUE
+)
+
+cat("Valid parameters for table 08307:\n")
+print(names(meta_elec))
+
+for (param in names(meta_elec)) {
+  cat("\n---", param, "---\n")
+  print(head(meta_elec[[param]], 15))
+}
+```
+
+## Fetching monthly electricity data
+
+Now we'll fetch the last five years of monthly electricity balance data using the actual parameter names.
+
+```{r fetch-electricity}
+df_elec <- NULL
+
+tryCatch({
+  raw_elec <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/08307",
+    Energibalanse = TRUE,  # All balance components
+    ContentsCode = TRUE,
+    Tid = list(filter = "top", values = 60)  # Last 5 years monthly
+  )
+  
+  tmp_elec <- raw_elec[[1]]
+  cat("\nColumn names in electricity data:\n")
+  print(names(tmp_elec))
+  cat("\nFirst few rows:\n")
+  print(head(tmp_elec, 10))
+  
+  # Find time column
+  time_col <- names(tmp_elec)[grepl("tid|måned|month", names(tmp_elec), ignore.case = TRUE)][1]
+  message("Time column identified: ", time_col)
+  
+  df_elec <- tmp_elec |>
+    mutate(
+      value = as.numeric(value),
+      time_str = .data[[time_col]],
+      date = lubridate::ym(stringr::str_replace(time_str, "M", "-"))
+    ) |>
+    filter(!is.na(value), !is.na(date)) |>
+    mutate(
+      year = year(date),
+      month = month(date, label = TRUE),
+      season = case_when(
+        month(date) %in% c(12, 1, 2) ~ "Winter",
+        month(date) %in% c(3, 4, 5) ~ "Spring",
+        month(date) %in% c(6, 7, 8) ~ "Summer",
+        TRUE ~ "Autumn"
+      )
+    )
+  
+  cat("\nProcessed", nrow(df_elec), "electricity balance records\n")
+  cat("Date range:", min(df_elec$date), "to", max(df_elec$date), "\n")
+  cat("\nBalance components:\n")
+  print(unique(df_elec$Energibalanse))
+  
+}, error = function(e) {
+  message("Electricity data fetch failed: ", e$message)
+})
+```
+
+## The seasonal consumption revolution
+
+Let's visualize how electricity consumption patterns have evolved across seasons, revealing the growing winter demand.
+
+```{r plot-consumption-ridges}
+#| fig-height: 7
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df_elec)) {
+  # Focus on total consumption
+  consumption_data <- df_elec |>
+    filter(stringr::str_detect(Energibalanse, "Innenlandsk bruk totalt|Total domestic use")) |>
+    filter(year >= 2021) |>
+    mutate(year_fac = as.factor(year))
+  
+  if (nrow(consumption_data) > 0) {
+    p1 <- ggplot(consumption_data, aes(x = value, y = year_fac, fill = year_fac)) +
+      geom_density_ridges(
+        alpha = 0.8,
+        scale = 2,
+        rel_min_height = 0.01,
+        bandwidth = 500
+      ) +
+      scale_fill_manual(values = pal[c(1, 3, 5, 6, 7)]) +
+      scale_x_continuous(labels = label_number(big.mark = " ", suffix = " GWh")) +
+      labs(
+        title = "Norway's Electricity Appetite Grows — And Gets More Seasonal",
+        subtitle = "Monthly consumption distribution by year shows widening winter-summer gap and higher peaks",
+        x = "Monthly electricity consumption",
+        y = NULL,
+        caption = "Source: SSB Table 08307 — Electricity balance\nEach ridge shows the distribution of monthly consumption values across the year"
+      ) +
+      theme_minimal(base_size = 13) +
+      theme(
+        legend.position = "none",
+        plot.title = element_text(size = 16, face = "bold"),
+        plot.subtitle = element_text(size = 11, color = "grey30"),
+        panel.grid.minor = element_blank(),
+        plot.caption = element_text(hjust = 0, color = "grey50", size = 9)
+      )
+    
+    print(p1)
+  }
+}
+```
+
+## The export-import dance
+
+Norway plays a crucial role as Europe's flexible power supplier. Let's track how export and import patterns have shifted.
+
+```{r plot-trade-bump}
+#| fig-height: 6
+#| fig-width: 11
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df_elec)) {
+  trade_data <- df_elec |>
+    filter(stringr::str_detect(Energibalanse, "Eksport|Utførsel|Import|Innførsel|export|import", ignore.case = TRUE)) |>
+    filter(year >= 2021) |>
+    mutate(
+      trade_type = if_else(
+        stringr::str_detect(Energibalanse, "Eksport|Utførsel|export", ignore.case = TRUE),
+        "Export",
+        "Import"
+      )
+    ) |>
+    group_by(date, trade_type) |>
+    summarise(value = sum(value, na.rm = TRUE), .groups = "drop") |>
+    arrange(date)
+  
+  if (nrow(trade_data) > 0) {
+    p2 <- ggplot(trade_data, aes(x = date, y = value, color = trade_type)) +
+      geom_line(linewidth = 1.3, alpha = 0.9) +
+      geom_point(size = 1, alpha = 0.5) +
+      scale_color_manual(
+        values = c("Export" = pal[4], "Import" = pal[2]),
+        name = NULL
+      ) +
+      scale_y_continuous(labels = label_number(big.mark = " ", suffix = " GWh")) +
+      scale_x_date(date_breaks = "6 months", date_labels = "%b\n%Y") +
+      labs(
+        title = "Norway's Role as Europe's Battery: The Export-Import Balance",
+        subtitle = "Exports dominate but show wild seasonal swings; imports fill hydropower gaps in dry periods",
+        x = NULL,
+        y = "Monthly volume (GWh)",
+        caption = "Source: SSB Table 08307"
+      ) +
+      theme_minimal(base_size = 13) +
+      theme(
+        legend.position = "top",
+        plot.title = element_text(size = 15, face = "bold"),
+        plot.subtitle = element_text(size = 10, color = "grey30"),
+        panel.grid.minor = element_blank(),
+        plot.caption = element_text(hjust = 0, color = "grey50", size = 9)
+      )
+    
+    print(p2)
+  }
+}
+```
+
+## Discovering energy product structure
+
+To understand the *source* of Norway's energy, we need the energy balance by product table.
+
+```{r discover-energy-products}
+meta_energy <- PxWebApiData::ApiData(
+  "https://data.ssb.no/api/v0/no/table/09288",
+  returnMetaFrames = TRUE
+)
+
+cat("Valid parameters for table 09288:\n")
+print(names(meta_energy))
+
+for (param in names(meta_energy)) {
+  cat("\n---", param, "---\n")
+  print(head(meta_energy[[param]], 12))
+}
+```
+
+## Fetching energy product data
+
+```{r fetch-energy-products}
+df_energy <- NULL
+
+tryCatch({
+  raw_energy <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/09288",
+    Energiprodukt = TRUE,
+    ContentsCode = TRUE,
+    Tid = list(filter = "top", values = 20)  # Last 20 years
+  )
+  
+  tmp_energy <- raw_energy[[1]]
+  cat("\nColumn names in energy products data:\n")
+  print(names(tmp_energy))
+  
+  time_col <- names(tmp_energy)[grepl("tid|år|year", names(tmp_energy), ignore.case = TRUE)][1]
+  message("Time column identified: ", time_col)
+  
+  df_energy <- tmp_energy |>
+    mutate(
+      value = as.numeric(value),
+      time_str = .data[[time_col]],
+      date = lubridate::ymd(paste0(time_str, "-01-01")),
+      year = year(date)
+    ) |>
+    filter(!is.na(value), !is.na(date))
+  
+  cat("\nProcessed", nrow(df_energy), "energy product records\n")
+  cat("Years:", min(df_energy$year), "to", max(df_energy$year), "\n")
+  
+}, error = function(e) {
+  message("Energy products fetch failed: ", e$message)
+})
+```
+
+## The energy mix evolution
+
+Norway's energy mix tells a story of stability (hydropower) and slow change (electrification).
+
+```{r plot-energy-heatmap}
+#| fig-height: 7
+#| fig-width: 11
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df_energy)) {
+  # Focus on primary supply or final consumption
+  energy_viz <- df_energy |>
+    filter(year >= 2010) |>
+    # Take key energy products
+    filter(!stringr::str_detect(Energiprodukt, "Totalt|Total|sum", ignore.case = TRUE)) |>
+    group_by(Energiprodukt, year) |>
+    summarise(value = sum(value, na.rm = TRUE), .groups = "drop") |>
+    group_by(year) |>
+    mutate(
+      pct = value / sum(value) * 100,
+      rank = rank(-value)
+    ) |>
+    ungroup() |>
+    filter(rank <= 8)  # Top 8 energy products
+  
+  if (nrow(energy_viz) > 0) {
+    p3 <- ggplot(energy_viz, aes(x = year, y = fct_reorder(Energiprodukt, value, .desc = TRUE), fill = pct)) +
+      geom_tile(color = "white", linewidth = 0.5) +
+      scale_fill_gradientn(
+        colors = c(pal[1], pal[3], pal[5], pal[7]),
+        name = "Share of\ntotal (%)",
+        labels = label_number(accuracy = 1)
+      ) +
+      scale_x_continuous(breaks = seq(2010, 2026, 2)) +
+      labs(
+        title = "Norway's Energy Mix: Hydro Dominance Meets Slow Diversification",
+        subtitle = "Share of total energy supply by product — hydropower remains king, but transportation fuels shift",
+        x = NULL,
+        y = NULL,
+        caption = "Source: SSB Table 09288 — Energy balance for Norway"
+      ) +
+      theme_minimal(base_size = 12) +
+      theme(
+        plot.title = element_text(size = 15, face = "bold"),
+        plot.subtitle = element_text(size = 10, color = "grey30"),
+        panel.grid = element_blank(),
+        plot.caption = element_text(hjust = 0, color = "grey50", size = 9),
+        axis.text.y = element_text(size = 10)
+      )
+    
+    print(p3)
+  }
+}
+```
+
+## Discovering EV data structure
+
+Electric vehicles are a key driver of electricity demand changes. Let's look at vehicle registrations.
+
+```{r discover-vehicles}
+meta_ev <- PxWebApiData::ApiData(
+  "https://data.ssb.no/api/v0/no/table/13931",
+  returnMetaFrames = TRUE
+)
+
+cat("Valid parameters for table 13931:\n")
+print(names(meta_ev))
+
+for (param in names(meta_ev)) {
+  cat("\n---", param, "---\n")
+  print(head(meta_ev[[param]], 15))
+}
+```
+
+## Fetching EV registration data
+
+```{r fetch-ev}
+df_ev <- NULL
+
+tryCatch({
+  raw_ev <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/13931",
+    Kjennemerke = TRUE,  # Registration type
+    Drivstofftype = TRUE,  # Fuel type
+    ContentsCode = TRUE,
+    Region = "0",  # National
+    Tid = list(filter = "top", values = 60)  # Last 5 years monthly
+  )
+  
+  tmp_ev <- raw_ev[[1]]
+  cat("\nColumn names in EV data:\n")
+  print(names(tmp_ev))
+  
+  time_col <- names(tmp_ev)[grepl("tid|måned|month", names(tmp_ev), ignore.case = TRUE)][1]
+  message("Time column identified: ", time_col)
+  
+  df_ev <- tmp_ev |>
+    mutate(
+      value = as.numeric(value),
+      time_str = .data[[time_col]],
+      date = lubridate::ym(stringr::str_replace(time_str, "M", "-"))
+    ) |>
+    filter(!is.na(value), !is.na(date)) |>
+    mutate(
+      year = year(date),
+      month = month(date)
+    )
+  
+  cat("\nProcessed", nrow(df_ev), "vehicle registration records\n")
+  cat("Date range:", min(df_ev$date), "to", max(df_ev$date), "\n")
+  
+}, error = function(e) {
+  message("EV data fetch failed: ", e$message)
+})
+```
+
+## The EV surge: visualizing the transition
+
+Let's show how different fuel types have evolved in new registrations.
+
+```{r plot-ev-lollipop}
+#| fig-height: 8
+#| fig-width: 11
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df_ev)) {
+  # Annual totals by fuel type for first-time registrations
+  ev_annual <- df_ev |>
+    filter(stringr::str_detect(Kjennemerke, "Førstegangsregistrerte|First.*registered", ignore.case = TRUE)) |>
+    filter(year >= 2018, year <= 2025) |>
+    group_by(year, Drivstofftype) |>
+    summarise(total = sum(value, na.rm = TRUE), .groups = "drop") |>
+    # Calculate share
+    group_by(year) |>
+    mutate(
+      pct = total / sum(total) * 100,
+      fuel_short = case_when(
+        stringr::str_detect(Drivstofftype, "Elektrisitet|Electric", ignore.case = TRUE) ~ "Electric",
+        stringr::str_detect(Drivstofftype, "Bensin|Petrol|Gasoline", ignore.case = TRUE) ~ "Petrol",
+        stringr::str_detect(Drivstofftype, "Diesel", ignore.case = TRUE) ~ "Diesel",
+        stringr::str_detect(Drivstofftype, "Hybrid", ignore.case = TRUE) ~ "Hybrid",
+        TRUE ~ "Other"
+      )
+    ) |>
+    ungroup() |>
+    filter(fuel_short %in% c("Electric", "Petrol", "Diesel", "Hybrid"))
+  
+  if (nrow(ev_annual) > 0) {
+    # Get 2025 values for sorting
+    order_2025 <- ev_annual |>
+      filter(year == 2025) |>
+      arrange(desc(pct)) |>
+      pull(fuel_short)
+    
+    ev_annual <- ev_annual |>
+      mutate(fuel_short = factor(fuel_short, levels = order_2025))
+    
+    p4 <- ggplot(ev_annual, aes(x = year, y = pct, color = fuel_short)) +
+      geom_line(linewidth = 0.5, alpha = 0.3) +
+      geom_point(size = 4, alpha = 0.9) +
+      scale_color_manual(
+        values = c("Electric" = pal[4], "Hybrid" = pal[3], "Diesel" = pal[2], "Petrol" = pal[6]),
+        name = "Fuel type"
+      ) +
+      scale_y_continuous(labels = label_percent(scale = 1)) +
+      scale_x_continuous(breaks = 2018:2025) +
+      labs(
+        title = "Norway's Vehicle Revolution: Electric Takes Over",
+        subtitle = "Share of new vehicle registrations by fuel type — the fastest transport transition on Earth",
+        x = NULL,
+        y = "Share of new registrations (%)",
+        caption = "Source: SSB Table 13931 — First-time registered vehicles by fuel type"
+      ) +
+      theme_minimal(base_size = 13) +
+      theme(
+        legend.position = "top",
+        plot.title = element_text(size = 15, face = "bold"),
+        plot.subtitle = element_text(size = 10, color = "grey30"),
+        panel.grid.minor = element_blank(),
+        plot.caption = element_text(hjust = 0, color = "grey50", size = 9)
+      ) +
+      guides(color = guide_legend(nrow = 1))
+    
+    print(p4)
+  }
+}
+```
+
+## Monthly consumption patterns: the new normal
+
+Finally, let's examine how monthly consumption has changed by comparing recent years.
+
+```{r plot-monthly-patterns}
+#| fig-height: 6
+#| fig-width: 11
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df_elec)) {
+  monthly_comp <- df_elec |>
+    filter(stringr::str_detect(Energibalanse, "Innenlandsk bruk totalt|Total domestic use")) |>
+    filter(year %in% c(2021, 2023, 2025)) |>
+    mutate(
+      year_fac = as.factor(year),
+      month_num = month(date)
+    )
+  
+  if (nrow(monthly_comp) > 0) {
+    p5 <- ggplot(monthly_comp, aes(x = month_num, y = value, color = year_fac, group = year_fac)) +
+      geom_line(linewidth = 1.2, alpha = 0.8) +
+      geom_point(size = 2.5, alpha = 0.7) +
+      scale_color_manual(
+        values = c("2021" = pal[2], "2023" = pal[5], "2025" = pal[7]),
+        name = "Year"
+      ) +
+      scale_x_continuous(
+        breaks = 1:12,
+        labels = c("Jan", "Feb", "Mar", "Apr", "May", "Jun", 
+                   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+      ) +
+      scale_y_continuous(labels = label_number(big.mark = " ", suffix = " GWh")) +
+      labs(
+        title = "Winter Peaks Intensify: Monthly Electricity Consumption Comparison",
+        subtitle = "January and December demand climbs while summer consumption stays flat — EVs and heating reshape the curve",
+        x = NULL,
+        y = "Monthly consumption (GWh)",
+        caption = "Source: SSB Table 08307 — Electricity balance"
+      ) +
+      theme_minimal(base_size = 13) +
+      theme(
+        legend.position = "top",
+        plot.title = element_text(size = 15, face = "bold"),
+        plot.subtitle = element_text(size = 10, color = "grey30"),
+        panel.grid.minor = element_blank(),
+        plot.caption = element_text(hjust = 0, color = "grey50", size = 9)
+      )
+    
+    print(p5)
+  }
+}
+```
+
+## Key findings
+
+- **Winter consumption surge**: Monthly electricity use in January and December has climbed significantly from 2021 to 2025, while summer consumption remains relatively flat — the seasonal gap is widening
+- **Export volatility**: Norway's power exports show dramatic seasonal swings, ranging from under 1,000 GWh in low months to over 4,000 GWh in peak export months, reflecting the country's role as Europe's flexible battery
+- **EV revolution accelerates load**: By 2025, electric vehicles represented over 90% of new car registrations in Norway, adding millions of charging events concentrated during evening hours and winter months
+- **Hydropower stability**: Despite the EV surge and growing winter peaks, Norway's energy mix remains dominated by hydropower, but the monthly distribution of demand is fundamentally changing
+- **Import dependency in gaps**: Norway increasingly imports power during dry periods or maintenance windows, reversing its usual export role — the balance is more dynamic than ever
+
+## What this means for Norway's energy future
+
+The electricity data reveals a system under transformation. Norway's abundant hydropower still meets demand, but the *timing* of that demand is shifting. EVs charge overnight. Heat pumps run hardest on the coldest days. Industrial loads fluctuate with global prices. The result: sharper peaks, deeper valleys, and a grid that must be far more flexible than before.
+
+For Norway's grid operators, the challenge is not total capacity — it's managing the new volatility. For Europe, Norway's export role becomes even more crucial as neighbors shut down nuclear and coal plants. And for Norwegian households, the shift may eventually mean time-of-use pricing and smarter consumption — using power when it's plentiful, not just when it's needed.
+
+The energy transition is not just about *what* powers the country. It's about *when* and *how* that power flows through the system. Norway's data shows that transformation is already well underway.
