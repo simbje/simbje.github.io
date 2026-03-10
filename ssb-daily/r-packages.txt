@@ -26,3 +26,5 @@ rnaturalearthdata
 gt
 gtExtras
 knitr
+htmltools
+here
