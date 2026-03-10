@@ -5,8 +5,6 @@ listing:
   type: default
   sort: "date desc"
   fields: [title, description, date, categories]
-  exclude:
-    - "index.qmd"
 ---
 
 Longer-form data analysis projects exploring publicly available datasets.
