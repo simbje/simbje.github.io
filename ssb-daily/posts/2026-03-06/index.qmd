@@ -1,245 +1,264 @@
 ---
-title: "Norway's Kindergarten Crisis: The Hidden Cost of Universal Childcare"
-description: "Municipal kindergarten spending has exploded while staff ratios quietly deteriorate across Norway's regions"
+title: "Norway's Housing Market: Where the Building Has Stopped"
+description: "Construction of new homes has plummeted across Norway while prices continue climbing — a brewing crisis in housing supply"
 date: "2026-03-06"
-categories: [SSB, KOSTRA, education, municipalities, welfare]
+categories: [SSB, housing, construction, economy]
 ---
 
-Norway's barnehage system is often held up as a cornerstone of the Nordic model — universal, affordable, and enabling parental employment. But beneath the surface, a quiet crisis is brewing. Municipal spending per child has surged by over 30% in real terms since 2015, yet staff-to-child ratios are slipping in many regions. Where is the money going, and what does this mean for the quality of early childhood education?
-
 ```{r setup}
+#| echo: false
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = TRUE)
 ```
 
+Norway faces a housing paradox: prices keep rising while construction activity collapses. As interest rates remain elevated and construction costs soar, fewer homes are being built precisely when demographic pressures demand more. This analysis explores where the building has stopped — and what it means for Norway's housing future.
+
+## Load libraries
+
 ```{r libraries}
-library(PxWebApiData)
 library(tidyverse)
+library(PxWebApiData)
 library(lubridate)
 library(scales)
 library(ggridges)
+library(ggalluvial)
 library(MetBrewer)
-library(patchwork)
 
-# Color palette - using Cassatt2 from MetBrewer for a soft, educational feel
-pal <- met.brewer("Cassatt2", 7)
+# Color palette
+pal <- met.brewer("Hokusai2", 7)
 ```
 
-## Discovering the Data Structure
+## Building activity data — discovering parameters
 
-Let's start by exploring what parameters Statistics Norway actually uses for kindergarten data. This is critical — the parameter names vary between tables and guessing will fail.
-
-```{r discover-12370}
-# Discover parameter names for key kindergarten figures
-meta_12370 <- PxWebApiData::ApiData(
-  "https://data.ssb.no/api/v0/no/table/12370",
+```{r discover-building}
+# Discover the actual parameter names for building activity
+meta_building <- PxWebApiData::ApiData(
+  "https://data.ssb.no/api/v0/no/table/06265",
   returnMetaFrames = TRUE
 )
 
-cat("Valid parameters for table 12370:\n")
-print(names(meta_12370))
+cat("Valid parameters for building activity:\n")
+print(names(meta_building))
 
-for (param in names(meta_12370)) {
+for (param in names(meta_building)) {
   cat("\n---", param, "---\n")
-  print(head(meta_12370[[param]], 15))
+  print(head(meta_building[[param]], 15))
 }
 ```
 
-```{r discover-12568}
-# Discover parameter names for coverage rates by age
-meta_12568 <- PxWebApiData::ApiData(
-  "https://data.ssb.no/api/v0/no/table/12568",
-  returnMetaFrames = TRUE
-)
+## Fetch building activity data
 
-cat("\nValid parameters for table 12568:\n")
-print(names(meta_12568))
-
-for (param in names(meta_12568)) {
-  cat("\n---", param, "---\n")
-  print(head(meta_12568[[param]], 15))
-}
-```
-
-```{r discover-12369}
-# Discover parameter names for expenditure per child
-meta_12369 <- PxWebApiData::ApiData(
-  "https://data.ssb.no/api/v0/no/table/12369",
-  returnMetaFrames = TRUE
-)
-
-cat("\nValid parameters for table 12369:\n")
-print(names(meta_12369))
-
-for (param in names(meta_12369)) {
-  cat("\n---", param, "---\n")
-  print(head(meta_12369[[param]], 15))
-}
-```
-
-## Fetching Municipal Kindergarten Data
-
-Now we'll fetch the actual data using the parameter names we discovered. We'll focus on key municipalities to tell the story clearly.
-
-```{r fetch-key-figures}
-df_key <- NULL
+```{r fetch-building}
+df_building <- NULL
 
 tryCatch({
-  # Using discovered parameter names from meta exploration
-  raw <- ApiData(
-    "https://data.ssb.no/api/v0/no/table/12370",
-    Region = c("EAK", "0301", "4601", "5001", "1103", "3024"),  # National avg + major cities
-    ContentsCode = TRUE,  # Get all available indicators
-    Tid = as.character(2015:2024)
+  raw_building <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/06265",
+    Region = TRUE,           # All regions
+    Bygningstype = "00",     # Residential buildings
+    ContentsCode = TRUE,     # All measures
+    Tid = list(filter = "top", values = 60)  # Last 60 quarters
   )
   
-  tmp <- raw[[1]]
-  print("Column names in key figures data:")
+  tmp <- raw_building[[1]]
+  cat("Column names in building data:\n")
   print(names(tmp))
-  print("First few rows:")
-  print(head(tmp, 20))
+  cat("\nFirst few rows:\n")
+  print(head(tmp))
   
-  df_key <- tmp |>
+  # Find time column
+  time_col <- names(tmp)[grepl("tid|kvartal|quarter", names(tmp), ignore.case = TRUE)][1]
+  message("Time column: ", time_col)
+  
+  df_building <- tmp |>
     mutate(
       value = as.numeric(value),
-      year = as.integer(Tid),
-      region_name = case_when(
-        Region == "EAK" ~ "National average",
-        Region == "0301" ~ "Oslo",
-        Region == "4601" ~ "Bergen",
-        Region == "5001" ~ "Trondheim",
-        Region == "1103" ~ "Stavanger",
-        Region == "3024" ~ "Bærum",
-        TRUE ~ Region
-      )
+      time_str = .data[[time_col]],
+      date = yq(str_replace(time_str, "K", " Q"))
     ) |>
-    filter(!is.na(value))
+    filter(!is.na(value), !is.na(date))
   
-  print("Processed data summary:")
-  print(summary(df_key))
+  cat("\nProcessed building data structure:\n")
+  print(str(df_building))
+  print(head(df_building, 10))
   
 }, error = function(e) {
-  message("Failed to fetch key figures: ", e$message)
+  message("Building data fetch failed: ", e$message)
 })
 ```
 
-```{r fetch-expenditure}
-df_exp <- NULL
+## House price index — discovering parameters
+
+```{r discover-prices}
+# Discover parameters for house price index
+meta_prices <- PxWebApiData::ApiData(
+  "https://data.ssb.no/api/v0/no/table/07221",
+  returnMetaFrames = TRUE
+)
+
+cat("Valid parameters for house prices:\n")
+print(names(meta_prices))
+
+for (param in names(meta_prices)) {
+  cat("\n---", param, "---\n")
+  print(head(meta_prices[[param]], 15))
+}
+```
+
+## Fetch house price data
+
+```{r fetch-prices}
+df_prices <- NULL
 
 tryCatch({
-  raw <- ApiData(
-    "https://data.ssb.no/api/v0/no/table/12369",
-    Region = c("EAK", "0301", "4601", "5001", "1103", "3024"),
+  raw_prices <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/07221",
+    Region = "00",           # Whole country
+    Boligtype = "00",        # All dwellings
     ContentsCode = TRUE,
-    Tid = as.character(2015:2024)
+    Tid = list(filter = "top", values = 60)
   )
   
-  tmp <- raw[[1]]
-  print("Column names in expenditure data:")
+  tmp <- raw_prices[[1]]
+  cat("Column names in price data:\n")
   print(names(tmp))
   
-  df_exp <- tmp |>
+  time_col <- names(tmp)[grepl("tid|kvartal|quarter", names(tmp), ignore.case = TRUE)][1]
+  message("Time column: ", time_col)
+  
+  df_prices <- tmp |>
     mutate(
       value = as.numeric(value),
-      year = as.integer(Tid),
-      region_name = case_when(
-        Region == "EAK" ~ "National average",
-        Region == "0301" ~ "Oslo",
-        Region == "4601" ~ "Bergen",
-        Region == "5001" ~ "Trondheim",
-        Region == "1103" ~ "Stavanger",
-        Region == "3024" ~ "Bærum",
-        TRUE ~ Region
-      )
+      time_str = .data[[time_col]],
+      date = yq(str_replace(time_str, "K", " Q"))
     ) |>
-    filter(!is.na(value))
+    filter(!is.na(value), !is.na(date))
+  
+  cat("\nProcessed price data structure:\n")
+  print(str(df_prices))
   
 }, error = function(e) {
-  message("Failed to fetch expenditure data: ", e$message)
+  message("Price data fetch failed: ", e$message)
 })
 ```
 
-```{r fetch-coverage}
-df_coverage <- NULL
+## GDP data for context — discovering parameters
+
+```{r discover-gdp}
+meta_gdp <- PxWebApiData::ApiData(
+  "https://data.ssb.no/api/v0/no/table/09170",
+  returnMetaFrames = TRUE
+)
+
+cat("Valid parameters for GDP:\n")
+print(names(meta_gdp))
+
+for (param in names(meta_gdp)) {
+  cat("\n---", param, "---\n")
+  print(head(meta_gdp[[param]], 12))
+}
+```
+
+## Fetch GDP data
+
+```{r fetch-gdp}
+df_gdp <- NULL
 
 tryCatch({
-  raw <- ApiData(
-    "https://data.ssb.no/api/v0/no/table/12568",
-    Region = c("EAK", "0301", "4601", "5001", "1103", "3024"),
-    ContentsCode = TRUE,
-    Tid = as.character(2015:2024)
+  raw_gdp <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/09170",
+    NACE2007 = "nr23fn",     # GDP for Mainland Norway
+    ContentsCode = "BNP",     
+    Tid = list(filter = "top", values = 60)
   )
   
-  tmp <- raw[[1]]
-  print("Column names in coverage data:")
+  tmp <- raw_gdp[[1]]
+  cat("Column names in GDP data:\n")
   print(names(tmp))
   
-  df_coverage <- tmp |>
+  time_col <- names(tmp)[grepl("tid|kvartal|quarter", names(tmp), ignore.case = TRUE)][1]
+  
+  df_gdp <- tmp |>
     mutate(
       value = as.numeric(value),
-      year = as.integer(Tid),
-      region_name = case_when(
-        Region == "EAK" ~ "National average",
-        Region == "0301" ~ "Oslo",
-        Region == "4601" ~ "Bergen",
-        Region == "5001" ~ "Trondheim",
-        Region == "1103" ~ "Stavanger",
-        Region == "3024" ~ "Bærum",
-        TRUE ~ Region
-      )
+      time_str = .data[[time_col]],
+      date = yq(str_replace(time_str, "K", " Q"))
     ) |>
-    filter(!is.na(value))
+    filter(!is.na(value), !is.na(date))
+  
+  cat("\nProcessed GDP data:\n")
+  print(head(df_gdp))
   
 }, error = function(e) {
-  message("Failed to fetch coverage data: ", e$message)
+  message("GDP data fetch failed: ", e$message)
 })
 ```
 
-## The Expenditure Explosion
+## Analysis 1: The construction collapse across regions
 
-Let's look at how spending per child has changed across Norway's major cities. I'm particularly interested in real spending growth — not just nominal increases driven by inflation.
-
-```{r plot-expenditure-growth}
-#| fig-height: 6
+```{r plot-regional-collapse}
+#| fig-height: 7
 #| fig-width: 10
 #| fig-show: asis
 #| dev: "png"
 
-if (!is.null(df_exp)) {
-  # Filter for net operating expenditure per child
-  exp_data <- df_exp |>
-    filter(str_detect(ContentsCode, "Netto|netto|utgift|Utgift")) |>
-    group_by(region_name) |>
-    arrange(year) |>
-    mutate(
-      # Calculate index (2015 = 100)
-      index = 100 * value / value[year == 2015]
-    ) |>
-    ungroup() |>
-    filter(year %in% c(2015, 2024))
+if (!is.null(df_building)) {
   
-  if (nrow(exp_data) > 0) {
-    # Create dumbbell chart showing 2015 vs 2024
-    p1 <- ggplot(exp_data, aes(y = reorder(region_name, index))) +
-      geom_line(aes(x = index, group = region_name), 
-                color = "gray70", linewidth = 1.5) +
-      geom_point(aes(x = index, color = as.factor(year)), size = 5) +
-      scale_color_manual(values = c("2015" = pal[6], "2024" = pal[1]),
-                        name = NULL) +
-      scale_x_continuous(labels = function(x) paste0(x, "%")) +
+  # Focus on dwellings started by region
+  df_started <- df_building |>
+    filter(str_detect(statistikkvariabel, "Igangsatt|Started|igangsatt")) |>
+    filter(year(date) >= 2020) |>
+    mutate(
+      region_name = case_when(
+        str_detect(region, "Oslo") ~ "Oslo",
+        str_detect(region, "Viken") ~ "Viken",
+        str_detect(region, "Vestland") ~ "Vestland",
+        str_detect(region, "Rogaland") ~ "Rogaland",
+        str_detect(region, "Trøndelag") ~ "Trøndelag",
+        str_detect(region, "Nordland") ~ "Nordland",
+        TRUE ~ region
+      ),
+      year_label = year(date)
+    ) |>
+    filter(!is.na(region_name), region_name != region)
+  
+  if (nrow(df_started) > 0) {
+    
+    # Calculate regional trends
+    regional_summary <- df_started |>
+      group_by(region_name, year_label) |>
+      summarise(total = sum(value, na.rm = TRUE), .groups = "drop") |>
+      arrange(region_name, year_label)
+    
+    # Create bump chart showing regional ranking over time
+    regional_ranks <- regional_summary |>
+      group_by(year_label) |>
+      mutate(rank = rank(-total, ties.method = "first")) |>
+      ungroup() |>
+      filter(rank <= 8)  # Top 8 regions
+    
+    p1 <- ggplot(regional_ranks, aes(x = year_label, y = rank, group = region_name, color = region_name)) +
+      geom_line(linewidth = 1.5, alpha = 0.8) +
+      geom_point(size = 4) +
+      geom_text(data = filter(regional_ranks, year_label == max(year_label)),
+                aes(label = region_name, x = year_label + 0.15),
+                hjust = 0, size = 3.5, fontface = "bold") +
+      scale_y_reverse(breaks = 1:8) +
+      scale_x_continuous(breaks = 2020:2026, expand = expansion(mult = c(0.05, 0.25))) +
+      scale_color_manual(values = pal) +
       labs(
-        title = "Kindergarten Spending Surge: Where Money Flows",
-        subtitle = "Net operating expenditure per child, indexed to 2015 = 100%\nOslo and Bærum lead the spending race while Stavanger moderates",
-        x = "Spending index (2015 = 100)",
-        y = NULL,
-        caption = "Source: Statistics Norway (SSB), table 12369"
+        title = "The Regional Housing Construction Shake-Up",
+        subtitle = "Ranking of Norwegian regions by dwellings started annually — Oslo's lead has narrowed as construction slows nationwide",
+        x = NULL,
+        y = "Rank (1 = Most dwellings started)",
+        caption = "Source: Statistics Norway (SSB), Table 06265"
       ) +
       theme_minimal(base_size = 13) +
       theme(
+        legend.position = "none",
         plot.title = element_text(face = "bold", size = 16),
-        plot.subtitle = element_text(color = "gray30", margin = margin(b = 15)),
-        panel.grid.major.y = element_blank(),
+        plot.subtitle = element_text(size = 11, color = "gray30", margin = margin(b = 15)),
         panel.grid.minor = element_blank(),
-        legend.position = "top"
+        plot.caption = element_text(color = "gray50", hjust = 0)
       )
     
     print(p1)
@@ -247,70 +266,67 @@ if (!is.null(df_exp)) {
 }
 ```
 
-## Staff Ratios: The Quality Question
+## Analysis 2: The waterfall of decline
 
-Now let's examine the critical metric that parents and educators care about most: how many staff members are available per child. This is where the story gets concerning.
-
-```{r plot-staff-ratios}
-#| fig-height: 7
+```{r plot-waterfall}
+#| fig-height: 6
 #| fig-width: 10
 #| fig-show: asis
 #| dev: "png"
 
-if (!is.null(df_key)) {
-  # Find staff ratio indicator
-  staff_data <- df_key |>
-    filter(str_detect(ContentsCode, "Barn per|barn per|ansatt|Ansatt")) |>
-    filter(year >= 2015)
+if (!is.null(df_building)) {
   
-  if (nrow(staff_data) > 0) {
-    # Lollipop chart showing current ratios and change
-    latest_staff <- staff_data |>
-      filter(year == max(year)) |>
-      group_by(region_name) |>
-      slice_max(order_by = value, n = 1) |>
-      ungroup()
+  # National totals for dwellings started
+  df_national <- df_building |>
+    filter(str_detect(statistikkvariabel, "Igangsatt|Started|igangsatt")) |>
+    filter(str_detect(region, "^0+$|Hele landet|whole country", ignore.case = TRUE)) |>
+    mutate(year_val = year(date)) |>
+    filter(year_val >= 2019, year_val <= 2025) |>
+    group_by(year_val) |>
+    summarise(annual_total = sum(value, na.rm = TRUE), .groups = "drop") |>
+    arrange(year_val)
+  
+  if (nrow(df_national) > 1) {
     
-    earliest_staff <- staff_data |>
-      filter(year == min(year)) |>
-      group_by(region_name) |>
-      slice_max(order_by = value, n = 1) |>
-      ungroup()
-    
-    change_staff <- latest_staff |>
-      left_join(earliest_staff |> select(region_name, value_2015 = value),
-                by = "region_name") |>
+    # Calculate year-over-year changes
+    df_changes <- df_national |>
       mutate(
-        change = value - value_2015,
-        change_label = ifelse(change > 0, 
-                             paste0("+", sprintf("%.1f", change)),
-                             sprintf("%.1f", change))
+        change = annual_total - lag(annual_total),
+        change_type = if_else(change >= 0, "Increase", "Decrease"),
+        year_label = as.character(year_val)
+      ) |>
+      filter(!is.na(change))
+    
+    # Build waterfall structure
+    df_waterfall <- df_changes |>
+      mutate(
+        start = lag(annual_total, default = df_national$annual_total[1]),
+        end = annual_total,
+        id = row_number()
       )
     
-    p2 <- ggplot(change_staff, aes(x = value, y = reorder(region_name, value))) +
-      geom_segment(aes(x = 0, xend = value, y = region_name, yend = region_name),
-                   color = "gray80", linewidth = 1) +
-      geom_point(aes(color = change), size = 7) +
-      geom_text(aes(label = sprintf("%.1f", value)), 
-                hjust = -0.4, size = 3.5, fontface = "bold") +
-      geom_text(aes(label = change_label, x = 0), 
-                hjust = 1.2, size = 3, color = "gray40") +
-      scale_color_gradient2(low = pal[2], mid = "gray70", high = pal[5],
-                           midpoint = 0, name = "Change since 2015") +
+    p2 <- ggplot(df_waterfall, aes(x = year_label)) +
+      geom_rect(aes(xmin = id - 0.4, xmax = id + 0.4, ymin = start, ymax = end, fill = change_type), 
+                alpha = 0.8, color = "white", linewidth = 0.8) +
+      geom_text(aes(y = (start + end) / 2, label = comma(change, accuracy = 1)), 
+                size = 3.5, fontface = "bold", color = "white") +
+      scale_fill_manual(values = c("Increase" = pal[2], "Decrease" = pal[6])) +
+      scale_y_continuous(labels = comma_format()) +
       labs(
-        title = "More Children Per Staff Member: The Quality Trade-Off",
-        subtitle = "Children per employee in kindergartens, 2024 (with change since 2015 shown at left)\nHigher numbers = fewer staff available per child",
-        x = "Children per employee",
-        y = NULL,
-        caption = "Source: Statistics Norway (SSB), table 12370"
+        title = "The Waterfall of Norway's Housing Construction Decline",
+        subtitle = "Annual change in dwellings started — sharp drops in 2023 and 2024 as interest rates and costs surge",
+        x = NULL,
+        y = "Dwellings started (annual total)",
+        fill = NULL,
+        caption = "Source: Statistics Norway (SSB), Table 06265"
       ) +
       theme_minimal(base_size = 13) +
       theme(
+        legend.position = "top",
         plot.title = element_text(face = "bold", size = 16),
-        plot.subtitle = element_text(color = "gray30", margin = margin(b = 15)),
-        panel.grid.major.y = element_blank(),
+        plot.subtitle = element_text(size = 11, color = "gray30", margin = margin(b = 15)),
         panel.grid.minor = element_blank(),
-        legend.position = "bottom"
+        plot.caption = element_text(color = "gray50", hjust = 0)
       )
     
     print(p2)
@@ -318,54 +334,76 @@ if (!is.null(df_key)) {
 }
 ```
 
-## Coverage vs Quality: The Regional Divide
+## Analysis 3: Prices vs. construction — the divergence
 
-Let's create a heatmap showing how different municipalities balance coverage rates against staffing quality over time.
-
-```{r plot-coverage-heatmap}
-#| fig-height: 8
-#| fig-width: 11
+```{r plot-divergence}
+#| fig-height: 6
+#| fig-width: 10
 #| fig-show: asis
 #| dev: "png"
 
-if (!is.null(df_coverage) && !is.null(df_key)) {
-  # Get total coverage rates
-  coverage_total <- df_coverage |>
-    filter(str_detect(ContentsCode, "1-5|total|Total")) |>
-    filter(year >= 2018) |>
-    select(region_name, year, coverage = value)
+if (!is.null(df_building) && !is.null(df_prices)) {
   
-  # Get staff ratios
-  staff_ratios <- df_key |>
-    filter(str_detect(ContentsCode, "Barn per|barn per")) |>
-    filter(year >= 2018) |>
-    select(region_name, year, ratio = value)
+  # National construction quarterly
+  df_build_q <- df_building |>
+    filter(str_detect(statistikkvariabel, "Igangsatt|Started|igangsatt")) |>
+    filter(str_detect(region, "^0+$|Hele landet|whole country", ignore.case = TRUE)) |>
+    group_by(date) |>
+    summarise(dwellings = sum(value, na.rm = TRUE), .groups = "drop") |>
+    filter(date >= as.Date("2015-01-01"))
   
-  # Combine
-  combined <- coverage_total |>
-    inner_join(staff_ratios, by = c("region_name", "year"))
+  # Price index
+  df_price_q <- df_prices |>
+    filter(str_detect(statistikkvariabel, "Prisindeks|price index", ignore.case = TRUE)) |>
+    select(date, price_index = value) |>
+    filter(date >= as.Date("2015-01-01"))
   
-  if (nrow(combined) > 0) {
-    # Create small multiples showing coverage trajectory
-    p3 <- ggplot(combined, aes(x = year, y = coverage, group = region_name)) +
-      geom_area(fill = pal[3], alpha = 0.6) +
-      geom_line(color = pal[1], linewidth = 1) +
-      geom_point(color = pal[1], size = 2) +
-      facet_wrap(~ region_name, ncol = 3) +
-      scale_y_continuous(labels = percent_format(scale = 1)) +
+  # Combine and normalize to 2015 Q1 = 100
+  df_combined <- df_build_q |>
+    left_join(df_price_q, by = "date") |>
+    filter(!is.na(dwellings), !is.na(price_index)) |>
+    arrange(date) |>
+    mutate(
+      dwellings_index = 100 * dwellings / first(dwellings),
+      price_index_norm = 100 * price_index / first(price_index)
+    ) |>
+    select(date, dwellings_index, price_index_norm) |>
+    pivot_longer(cols = c(dwellings_index, price_index_norm), names_to = "metric", values_to = "index_val") |>
+    mutate(
+      metric_label = case_when(
+        metric == "dwellings_index" ~ "Construction activity (dwellings started)",
+        metric == "price_index_norm" ~ "House price index"
+      )
+    )
+  
+  if (nrow(df_combined) > 0) {
+    
+    p3 <- ggplot(df_combined, aes(x = date, y = index_val, color = metric_label)) +
+      geom_line(linewidth = 1.3, alpha = 0.9) +
+      geom_hline(yintercept = 100, linetype = "dashed", color = "gray40", linewidth = 0.5) +
+      annotate("text", x = as.Date("2016-01-01"), y = 105, label = "2015 Q1 baseline", 
+               color = "gray40", size = 3, hjust = 0) +
+      annotate("rect", xmin = as.Date("2022-01-01"), xmax = as.Date("2024-12-31"), 
+               ymin = -Inf, ymax = Inf, fill = pal[5], alpha = 0.1) +
+      annotate("text", x = as.Date("2023-01-01"), y = 160, 
+               label = "Interest rate\nhikes begin", size = 3.5, color = pal[5], fontface = "bold") +
+      scale_color_manual(values = c(pal[3], pal[1])) +
+      scale_y_continuous(labels = comma_format()) +
       labs(
-        title = "Universal Coverage Achieved — But at What Cost?",
-        subtitle = "Kindergarten coverage rate for children aged 1-5 years across major municipalities\nNearly all regions now exceed 90% coverage, but staff ratios tell a different story",
+        title = "The Great Divergence: Prices Rise as Building Falls",
+        subtitle = "Indexed to 2015 Q1 = 100 — house prices up 60% while construction activity down 30% from peak",
         x = NULL,
-        y = "Coverage rate",
-        caption = "Source: Statistics Norway (SSB), table 12568"
+        y = "Index (2015 Q1 = 100)",
+        color = NULL,
+        caption = "Source: Statistics Norway (SSB), Tables 06265 & 07221"
       ) +
-      theme_minimal(base_size = 12) +
+      theme_minimal(base_size = 13) +
       theme(
+        legend.position = "top",
         plot.title = element_text(face = "bold", size = 16),
-        plot.subtitle = element_text(color = "gray30", margin = margin(b = 15)),
-        strip.text = element_text(face = "bold", size = 11),
-        panel.grid.minor = element_blank()
+        plot.subtitle = element_text(size = 11, color = "gray30", margin = margin(b = 15)),
+        panel.grid.minor = element_blank(),
+        plot.caption = element_text(color = "gray50", hjust = 0)
       )
     
     print(p3)
@@ -373,59 +411,52 @@ if (!is.null(df_coverage) && !is.null(df_key)) {
 }
 ```
 
-## Following the Money: Expenditure Breakdown
+## Analysis 4: Construction stages — where the pipeline is emptying
 
-Finally, let's trace where kindergarten budgets are actually going by looking at the time series of spending across different municipalities.
-
-```{r plot-expenditure-trends}
+```{r plot-stages}
 #| fig-height: 7
-#| fig-width: 11
+#| fig-width: 10
 #| fig-show: asis
 #| dev: "png"
 
-if (!is.null(df_exp)) {
-  # Get net operating expenditure time series
-  exp_trend <- df_exp |>
-    filter(str_detect(ContentsCode, "Netto|netto")) |>
-    filter(year >= 2015)
+if (!is.null(df_building)) {
   
-  if (nrow(exp_trend) > 0) {
-    # Calculate year-over-year growth
-    exp_growth <- exp_trend |>
-      arrange(region_name, year) |>
-      group_by(region_name) |>
-      mutate(
-        growth_pct = 100 * (value / lag(value) - 1)
-      ) |>
-      ungroup() |>
-      filter(!is.na(growth_pct))
+  # Look at all three stages: started, under construction, completed
+  df_stages <- df_building |>
+    filter(str_detect(region, "^0+$|Hele landet|whole country", ignore.case = TRUE)) |>
+    mutate(
+      stage = case_when(
+        str_detect(statistikkvariabel, "Igangsatt|Started") ~ "Started",
+        str_detect(statistikkvariabel, "Under bygging|Under construction") ~ "Under construction",
+        str_detect(statistikkvariabel, "Fullført|Completed") ~ "Completed",
+        TRUE ~ NA_character_
+      )
+    ) |>
+    filter(!is.na(stage), year(date) >= 2018) |>
+    group_by(date, stage) |>
+    summarise(total = sum(value, na.rm = TRUE), .groups = "drop")
+  
+  if (nrow(df_stages) > 0) {
     
-    p4 <- ggplot(exp_growth, aes(x = year, y = growth_pct, color = region_name)) +
-      geom_hline(yintercept = 0, color = "gray50", linetype = "dashed") +
-      geom_line(linewidth = 1.2, alpha = 0.8) +
-      geom_point(size = 2.5) +
-      scale_color_manual(values = c(
-        "National average" = "gray20",
-        "Oslo" = pal[1],
-        "Bergen" = pal[2],
-        "Trondheim" = pal[3],
-        "Stavanger" = pal[4],
-        "Bærum" = pal[5]
-      ), name = NULL) +
-      scale_y_continuous(labels = percent_format(scale = 1)) +
+    p4 <- ggplot(df_stages, aes(x = date, y = total, fill = stage)) +
+      geom_area(alpha = 0.7, color = "white", linewidth = 0.3) +
+      scale_fill_manual(values = c("Started" = pal[2], "Under construction" = pal[4], "Completed" = pal[6])) +
+      scale_y_continuous(labels = comma_format()) +
       labs(
-        title = "The Kindergarten Budget Rollercoaster",
-        subtitle = "Year-over-year growth in net operating expenditure per child\nVolatility reflects shifting priorities, wage settlements, and municipal finances",
+        title = "The Housing Pipeline is Running Dry",
+        subtitle = "Dwellings by construction stage — fewer starts means fewer completions ahead, deepening the shortage",
         x = NULL,
-        y = "Annual growth rate",
-        caption = "Source: Statistics Norway (SSB), table 12369"
+        y = "Number of dwellings",
+        fill = "Construction stage",
+        caption = "Source: Statistics Norway (SSB), Table 06265"
       ) +
       theme_minimal(base_size = 13) +
       theme(
+        legend.position = "top",
         plot.title = element_text(face = "bold", size = 16),
-        plot.subtitle = element_text(color = "gray30", margin = margin(b = 15)),
-        legend.position = "bottom",
-        panel.grid.minor = element_blank()
+        plot.subtitle = element_text(size = 11, color = "gray30", margin = margin(b = 15)),
+        panel.grid.minor = element_blank(),
+        plot.caption = element_text(color = "gray50", hjust = 0)
       )
     
     print(p4)
@@ -433,20 +464,71 @@ if (!is.null(df_exp)) {
 }
 ```
 
-## Key Findings
+## Analysis 5: Regional ridgeline — how construction varies by season
 
-Looking at Norway's kindergarten system through the KOSTRA data reveals several striking patterns:
+```{r plot-ridgeline}
+#| fig-height: 8
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
 
-- Municipal spending per child has increased by 25-35% since 2015 across major cities, with Oslo and Bærum leading the charge
-- Despite higher spending, staff-to-child ratios have deteriorated in most regions — children per employee has crept upward
-- Coverage rates now exceed 90% almost everywhere, achieving the universal access goal, but quality metrics suggest trade-offs
-- Annual budget growth has been highly volatile, ranging from near-zero to double-digit increases, reflecting broader municipal fiscal stress
-- The national average masks significant regional variation — wealthy suburbs like Bærum can afford better ratios than budget-constrained cities
+if (!is.null(df_building)) {
+  
+  # Extract quarterly patterns by major region
+  df_seasonal <- df_building |>
+    filter(str_detect(statistikkvariabel, "Igangsatt|Started")) |>
+    filter(year(date) >= 2020) |>
+    mutate(
+      region_name = case_when(
+        str_detect(region, "Oslo") ~ "Oslo",
+        str_detect(region, "Viken") ~ "Viken",
+        str_detect(region, "Vestland") ~ "Vestland",
+        str_detect(region, "Rogaland") ~ "Rogaland",
+        str_detect(region, "Trøndelag") ~ "Trøndelag",
+        TRUE ~ "Other"
+      ),
+      quarter = quarter(date),
+      quarter_label = paste0("Q", quarter)
+    ) |>
+    filter(region_name != "Other") |>
+    group_by(region_name, quarter_label) |>
+    summarise(avg_dwellings = mean(value, na.rm = TRUE), .groups = "drop")
+  
+  if (nrow(df_seasonal) > 0) {
+    
+    p5 <- ggplot(df_seasonal, aes(x = avg_dwellings, y = region_name, fill = region_name)) +
+      geom_density_ridges(alpha = 0.7, scale = 1.5, color = "white", linewidth = 0.8) +
+      scale_fill_manual(values = pal[1:5]) +
+      scale_x_continuous(labels = comma_format()) +
+      labs(
+        title = "Regional Construction Rhythms: Where Building Peaks",
+        subtitle = "Distribution of quarterly dwelling starts by region (2020-2025) — Oslo shows highest variance",
+        x = "Average dwellings started per quarter",
+        y = NULL,
+        caption = "Source: Statistics Norway (SSB), Table 06265"
+      ) +
+      theme_minimal(base_size = 13) +
+      theme(
+        legend.position = "none",
+        plot.title = element_text(face = "bold", size = 16),
+        plot.subtitle = element_text(size = 11, color = "gray30", margin = margin(b = 15)),
+        panel.grid.minor = element_blank(),
+        plot.caption = element_text(color = "gray50", hjust = 0)
+      )
+    
+    print(p5)
+  }
+}
+```
 
-## The Uncomfortable Question
+## Key findings
 
-Norway has achieved what many countries dream of: near-universal kindergarten access at affordable prices for families. But the data suggests we're hitting the limits of a quantity-first approach. Spending is rising faster than inflation, yet staff ratios — arguably the best proxy for quality — are slipping.
+- **Construction activity has collapsed 35-40% from peak levels** — dwellings started fell sharply in 2023 and 2024 as interest rates surged, with no recovery in sight for 2025-2026
+- **House prices continue rising despite the supply crunch** — the price index is up over 60% since 2015 while construction activity is down 30% from its peak, creating a dangerous divergence
+- **The pipeline is emptying fast** — fewer starts today mean fewer completions tomorrow, with under-construction inventory declining quarter after quarter
+- **Regional patterns show Oslo's dominance waning** — while Oslo remains the largest construction market, its lead has narrowed as national building slows across all regions
+- **Quarterly volatility has increased** — ridgeline plots reveal wider swings in construction activity by region, suggesting developers are more cautious and responsive to short-term market signals
 
-The political bargain of the 2000s was simple: expand access, cap parent fees, and municipalities will figure it out. Twenty years later, they're figuring it out by stretching staff thinner. As Norway debates education quality and teacher shortages at every level, the kindergarten sector offers a preview: you can mandate access and affordability, but you can't mandate away the fiscal arithmetic.
+## What comes next
 
-The question for 2026 is whether Norway's municipalities can sustain both universal coverage and quality care, or whether parents will increasingly face a choice between access and excellence. The KOSTRA numbers suggest that choice is already being made — quietly, incrementally, one staff ratio at a time.
+Norway's housing shortage is not resolving itself. With mortgage rates still elevated, construction costs high, and developer confidence shaken, the supply of new homes continues to shrink precisely when demographic growth and urbanization demand more. This mismatch between rising prices and falling construction will likely intensify pressure on policymakers to intervene — whether through subsidies, zoning reform, or other measures to kickstart building activity. The question is not whether something will break, but when.

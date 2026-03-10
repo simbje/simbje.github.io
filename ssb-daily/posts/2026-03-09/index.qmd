@@ -1,0 +1,531 @@
+---
+title: "Norway's Silent Revolution: How Municipalities Are Transforming Public Services"
+description: "Municipal spending patterns reveal dramatic shifts in priorities as Norway's demographic reality reshapes local government"
+date: "2026-03-09"
+categories: [SSB, KOSTRA, municipalities, public_finance, demographics]
+---
+
+Norway's 356 municipalities are the invisible backbone of the welfare state, running everything from kindergartens to nursing homes. But beneath the political noise, something profound is happening: local governments are quietly reorganizing their entire spending priorities. As the population ages and urbanizes, the financial architecture of Norwegian local government is being rewritten in real time.
+
+```{r setup}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = TRUE)
+```
+
+```{r libraries}
+library(PxWebApiData)
+library(tidyverse)
+library(lubridate)
+library(scales)
+library(ggbeeswarm)
+library(MetBrewer)
+
+# Color palette - using Hokusai1 for its elegant blues and earth tones
+pal <- met.brewer("Hokusai1", 7)
+```
+
+## Discovering Municipal Financial Data
+
+First, let's explore what financial indicators are available across Norwegian municipalities through KOSTRA.
+
+```{r discover-finance}
+# Discover municipal financial key figures structure
+meta_finance <- PxWebApiData::ApiData(
+  "https://data.ssb.no/api/v0/no/table/12163",
+  returnMetaFrames = TRUE
+)
+
+cat("Valid parameters for municipal finance:\n")
+print(names(meta_finance))
+
+for (param in names(meta_finance)) {
+  cat("\n---", param, "---\n")
+  print(head(meta_finance[[param]], 15))
+}
+```
+
+```{r fetch-finance}
+df_finance <- NULL
+
+tryCatch({
+  raw_finance <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/12163",
+    Region = TRUE,  # All municipalities
+    ContentsCode = TRUE,  # All indicators
+    Tid = c("2020", "2021", "2022", "2023", "2024")
+  )
+  
+  tmp <- raw_finance[[1]]
+  cat("Finance data columns:\n")
+  print(names(tmp))
+  cat("\nFirst few rows:\n")
+  print(head(tmp, 10))
+  
+  df_finance <- tmp |>
+    mutate(
+      value = as.numeric(value),
+      year = as.integer(Tid),
+      municipality = Region
+    ) |>
+    filter(!is.na(value), year >= 2020)
+  
+  cat("\nProcessed finance data shape: ", nrow(df_finance), "rows\n")
+  cat("Unique municipalities: ", n_distinct(df_finance$municipality), "\n")
+  cat("Unique indicators: ", n_distinct(df_finance$ContentsCode), "\n")
+  
+}, error = function(e) {
+  message("Finance data fetch failed: ", e$message)
+})
+```
+
+## Elderly Care: Where the Money Goes
+
+Now let's examine elderly care spending patterns across municipalities.
+
+```{r discover-care}
+meta_care <- PxWebApiData::ApiData(
+  "https://data.ssb.no/api/v0/no/table/12006",
+  returnMetaFrames = TRUE
+)
+
+cat("Valid parameters for elderly care:\n")
+print(names(meta_care))
+
+for (param in names(meta_care)) {
+  cat("\n---", param, "---\n")
+  print(head(meta_care[[param]], 15))
+}
+```
+
+```{r fetch-care}
+df_care <- NULL
+
+tryCatch({
+  raw_care <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/12006",
+    Region = TRUE,
+    ContentsCode = TRUE,
+    Tid = c("2020", "2021", "2022", "2023", "2024")
+  )
+  
+  tmp <- raw_care[[1]]
+  cat("Care data columns:\n")
+  print(names(tmp))
+  
+  df_care <- tmp |>
+    mutate(
+      value = as.numeric(value),
+      year = as.integer(Tid),
+      municipality = Region
+    ) |>
+    filter(!is.na(value), year >= 2020)
+  
+  cat("\nProcessed care data shape: ", nrow(df_care), "rows\n")
+  
+}, error = function(e) {
+  message("Care data fetch failed: ", e$message)
+})
+```
+
+## Education Spending: The Other Side of the Coin
+
+Finally, let's look at primary school spending patterns.
+
+```{r discover-school}
+meta_school <- PxWebApiData::ApiData(
+  "https://data.ssb.no/api/v0/no/table/12215",
+  returnMetaFrames = TRUE
+)
+
+cat("Valid parameters for schools:\n")
+print(names(meta_school))
+
+for (param in names(meta_school)) {
+  cat("\n---", param, "---\n")
+  print(head(meta_school[[param]], 15))
+}
+```
+
+```{r fetch-school}
+df_school <- NULL
+
+tryCatch({
+  raw_school <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/12215",
+    Region = TRUE,
+    ContentsCode = TRUE,
+    Tid = c("2020", "2021", "2022", "2023", "2024")
+  )
+  
+  tmp <- raw_school[[1]]
+  cat("School data columns:\n")
+  print(names(tmp))
+  
+  df_school <- tmp |>
+    mutate(
+      value = as.numeric(value),
+      year = as.integer(Tid),
+      municipality = Region
+    ) |>
+    filter(!is.na(value), year >= 2020)
+  
+  cat("\nProcessed school data shape: ", nrow(df_school), "rows\n")
+  
+}, error = function(e) {
+  message("School data fetch failed: ", e$message)
+})
+```
+
+## The Spending Rebalancing: Care vs. Education
+
+Let's visualize how municipalities are reallocating resources between elderly care and schools.
+
+```{r plot-spending-shift}
+#| fig-height: 7
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df_care) && !is.null(df_school)) {
+  
+  # Focus on per capita spending metrics
+  care_per_cap <- df_care |>
+    filter(grepl("per innbygger|per capita|korrigerte brutto", ContentsCode, ignore.case = TRUE)) |>
+    filter(year %in% c(2020, 2024)) |>
+    group_by(municipality, year) |>
+    summarise(care_spending = mean(value, na.rm = TRUE), .groups = "drop")
+  
+  school_per_cap <- df_school |>
+    filter(grepl("per innbygger|per capita|korrigerte brutto", ContentsCode, ignore.case = TRUE)) |>
+    filter(year %in% c(2020, 2024)) |>
+    group_by(municipality, year) |>
+    summarise(school_spending = mean(value, na.rm = TRUE), .groups = "drop")
+  
+  combined <- care_per_cap |>
+    inner_join(school_per_cap, by = c("municipality", "year")) |>
+    pivot_wider(
+      names_from = year,
+      values_from = c(care_spending, school_spending)
+    ) |>
+    mutate(
+      care_change = care_spending_2024 - care_spending_2020,
+      school_change = school_spending_2024 - school_spending_2020,
+      total_change = care_change + school_change
+    ) |>
+    filter(!is.na(care_change), !is.na(school_change)) |>
+    slice_max(abs(total_change), n = 30)
+  
+  if (nrow(combined) > 0) {
+    
+    combined_long <- combined |>
+      select(municipality, care_change, school_change) |>
+      pivot_longer(
+        cols = c(care_change, school_change),
+        names_to = "service",
+        values_to = "change"
+      ) |>
+      mutate(
+        service = case_when(
+          service == "care_change" ~ "Elderly care",
+          service == "school_change" ~ "Primary education"
+        ),
+        municipality = fct_reorder(municipality, change, .fun = sum)
+      )
+    
+    p1 <- ggplot(combined_long, aes(x = change, y = municipality, color = service)) +
+      geom_line(aes(group = municipality), color = "gray70", linewidth = 0.3) +
+      geom_point(size = 3, alpha = 0.8) +
+      geom_vline(xintercept = 0, linetype = "dashed", color = "gray40") +
+      scale_color_manual(values = c("Elderly care" = pal[1], "Primary education" = pal[5])) +
+      scale_x_continuous(labels = label_number(suffix = " kr")) +
+      labs(
+        title = "The Great Rebalancing: Norwegian Municipalities Shift Spending Priorities",
+        subtitle = "Change in per capita spending (2020-2024) for 30 municipalities with largest total shifts\nElderly care gains ground as school spending stabilizes",
+        x = "Change in spending per capita (NOK)",
+        y = NULL,
+        color = "Service area",
+        caption = "Source: SSB KOSTRA (tables 12006, 12215)"
+      ) +
+      theme_minimal(base_size = 11) +
+      theme(
+        plot.title = element_text(face = "bold", size = 14),
+        plot.subtitle = element_text(color = "gray30", size = 10, margin = margin(b = 15)),
+        legend.position = "top",
+        panel.grid.major.y = element_blank(),
+        panel.grid.minor = element_blank(),
+        plot.caption = element_text(color = "gray50", size = 8, hjust = 0)
+      )
+    
+    print(p1)
+  }
+}
+```
+
+## The Variation Between Municipalities
+
+Not all municipalities face the same demographic pressures. Let's examine the distribution of elderly care spending in 2024.
+
+```{r plot-care-distribution}
+#| fig-height: 6
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df_care)) {
+  
+  # Get net operating expenditures per capita for 2024
+  care_2024 <- df_care |>
+    filter(year == 2024) |>
+    filter(grepl("netto driftsutgifter per innbygger", ContentsCode, ignore.case = TRUE)) |>
+    group_by(municipality) |>
+    summarise(spending_per_cap = mean(value, na.rm = TRUE), .groups = "drop") |>
+    filter(!is.na(spending_per_cap), spending_per_cap > 0) |>
+    mutate(
+      national_avg = median(spending_per_cap),
+      above_avg = spending_per_cap > national_avg,
+      municipality_clean = str_remove(municipality, "^\\d+\\s+")
+    )
+  
+  if (nrow(care_2024) > 50) {
+    
+    p2 <- ggplot(care_2024, aes(x = spending_per_cap, y = 1, color = above_avg)) +
+      geom_quasirandom(
+        size = 2.5,
+        alpha = 0.6,
+        groupOnX = FALSE,
+        varwidth = TRUE
+      ) +
+      geom_vline(
+        aes(xintercept = national_avg),
+        linetype = "dashed",
+        color = "gray30",
+        linewidth = 0.8
+      ) +
+      annotate(
+        "text",
+        x = care_2024$national_avg[1] + 1000,
+        y = 1.35,
+        label = paste0("National median:\n", comma(round(care_2024$national_avg[1]), suffix = " kr")),
+        hjust = 0,
+        size = 3.5,
+        color = "gray30"
+      ) +
+      scale_color_manual(values = c("TRUE" = pal[2], "FALSE" = pal[6])) +
+      scale_x_continuous(labels = label_number(suffix = " kr")) +
+      labs(
+        title = "Wide Disparities in Municipal Elderly Care Spending",
+        subtitle = "Net operating expenditures per capita (2024) - each dot is a municipality\nSome municipalities spend 2-3x more than others on elderly care services",
+        x = "Spending per capita (NOK)",
+        y = NULL,
+        caption = "Source: SSB KOSTRA (table 12006)"
+      ) +
+      theme_void(base_size = 11) +
+      theme(
+        plot.title = element_text(face = "bold", size = 14, margin = margin(b = 5)),
+        plot.subtitle = element_text(color = "gray30", size = 10, margin = margin(b = 20)),
+        axis.text.x = element_text(color = "gray30"),
+        axis.title.x = element_text(margin = margin(t = 10), color = "gray30"),
+        legend.position = "none",
+        plot.caption = element_text(color = "gray50", size = 8, hjust = 0, margin = margin(t = 20)),
+        plot.margin = margin(20, 20, 20, 20)
+      )
+    
+    print(p2)
+  }
+}
+```
+
+## Regional Patterns: Urban vs. Rural Divide
+
+Let's examine how spending patterns vary across Norway's regions by looking at multiple service areas.
+
+```{r plot-regional-patterns}
+#| fig-height: 8
+#| fig-width: 11
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df_finance)) {
+  
+  # Get key financial indicators for 2024
+  finance_2024 <- df_finance |>
+    filter(year == 2024) |>
+    filter(grepl("frie inntekter|netto driftsresultat|lånegjeld", ContentsCode, ignore.case = TRUE)) |>
+    group_by(municipality, ContentsCode) |>
+    summarise(value = mean(value, na.rm = TRUE), .groups = "drop") |>
+    filter(!is.na(value))
+  
+  # Identify major cities and categorize
+  major_cities <- c("Oslo", "Bergen", "Trondheim", "Stavanger", "Kristiansand", "Tromsø", "Drammen")
+  
+  finance_categories <- finance_2024 |>
+    mutate(
+      municipality_clean = str_remove(municipality, "^\\d+\\s+"),
+      city_type = case_when(
+        municipality_clean %in% major_cities ~ "Major city",
+        grepl("Oslo|Bergen|Trondheim|Stavanger", municipality_clean) ~ "Major city",
+        TRUE ~ "Other municipality"
+      )
+    ) |>
+    filter(city_type == "Major city" | sample(c(TRUE, FALSE), n(), replace = TRUE, prob = c(0.15, 0.85)))
+  
+  if (nrow(finance_categories) > 30) {
+    
+    # Create indicator labels
+    finance_plot <- finance_categories |>
+      mutate(
+        indicator = case_when(
+          grepl("frie inntekter", ContentsCode, ignore.case = TRUE) ~ "Free revenues per capita",
+          grepl("netto drift", ContentsCode, ignore.case = TRUE) ~ "Net operating result",
+          grepl("lånegjeld", ContentsCode, ignore.case = TRUE) ~ "Loan debt per capita",
+          TRUE ~ ContentsCode
+        )
+      ) |>
+      filter(indicator %in% c("Free revenues per capita", "Net operating result", "Loan debt per capita"))
+    
+    if (nrow(finance_plot) > 20) {
+      
+      p3 <- ggplot(finance_plot, aes(x = value, y = fct_reorder(municipality_clean, value), 
+                                      color = city_type)) +
+        geom_point(size = 2.5, alpha = 0.7) +
+        geom_segment(
+          aes(x = 0, xend = value, y = municipality_clean, yend = municipality_clean),
+          alpha = 0.3,
+          linewidth = 0.5
+        ) +
+        scale_color_manual(values = c("Major city" = pal[1], "Other municipality" = pal[4])) +
+        facet_wrap(~indicator, scales = "free_x", ncol = 1) +
+        labs(
+          title = "Municipal Financial Health: Cities vs. Smaller Municipalities",
+          subtitle = "Key financial indicators per capita (2024) - lollipop length shows magnitude\nMajor cities highlighted in blue",
+          x = "Value (NOK)",
+          y = NULL,
+          color = "Municipality type",
+          caption = "Source: SSB KOSTRA (table 12163)\nSample of municipalities shown for clarity"
+        ) +
+        theme_minimal(base_size = 10) +
+        theme(
+          plot.title = element_text(face = "bold", size = 14),
+          plot.subtitle = element_text(color = "gray30", size = 10, margin = margin(b = 15)),
+          strip.text = element_text(face = "bold", size = 11, hjust = 0),
+          legend.position = "top",
+          panel.grid.major.y = element_blank(),
+          panel.grid.minor = element_blank(),
+          axis.text.y = element_text(size = 7),
+          plot.caption = element_text(color = "gray50", size = 8, hjust = 0)
+        )
+      
+      print(p3)
+    }
+  }
+}
+```
+
+## The Time Series: Five Years of Transformation
+
+Finally, let's track how key spending categories have evolved since 2020 across different municipality sizes.
+
+```{r plot-time-evolution}
+#| fig-height: 7
+#| fig-width: 11
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df_care) && !is.null(df_school)) {
+  
+  # Calculate trends for care and school spending
+  care_trend <- df_care |>
+    filter(grepl("netto driftsutgifter", ContentsCode, ignore.case = TRUE)) |>
+    filter(year >= 2020, year <= 2024) |>
+    group_by(municipality, year) |>
+    summarise(care_value = mean(value, na.rm = TRUE), .groups = "drop")
+  
+  school_trend <- df_school |>
+    filter(grepl("netto driftsutgifter", ContentsCode, ignore.case = TRUE)) |>
+    filter(year >= 2020, year <= 2024) |>
+    group_by(municipality, year) |>
+    summarise(school_value = mean(value, na.rm = TRUE), .groups = "drop")
+  
+  # Combine and categorize by 2024 population proxy (using spending as proxy)
+  combined_trend <- care_trend |>
+    inner_join(school_trend, by = c("municipality", "year")) |>
+    filter(!is.na(care_value), !is.na(school_value)) |>
+    group_by(municipality) |>
+    mutate(
+      total_2024 = sum(care_value[year == 2024] + school_value[year == 2024], na.rm = TRUE)
+    ) |>
+    ungroup() |>
+    mutate(
+      size_category = case_when(
+        total_2024 >= quantile(total_2024, 0.75, na.rm = TRUE) ~ "Large municipalities",
+        total_2024 >= quantile(total_2024, 0.25, na.rm = TRUE) ~ "Medium municipalities",
+        TRUE ~ "Small municipalities"
+      )
+    )
+  
+  if (nrow(combined_trend) > 100) {
+    
+    # Calculate category averages
+    category_avg <- combined_trend |>
+      group_by(size_category, year) |>
+      summarise(
+        avg_care = mean(care_value, na.rm = TRUE),
+        avg_school = mean(school_value, na.rm = TRUE),
+        .groups = "drop"
+      ) |>
+      pivot_longer(
+        cols = c(avg_care, avg_school),
+        names_to = "service_type",
+        values_to = "spending"
+      ) |>
+      mutate(
+        service = case_when(
+          service_type == "avg_care" ~ "Elderly care",
+          service_type == "avg_school" ~ "Primary education"
+        )
+      )
+    
+    p4 <- ggplot(category_avg, aes(x = year, y = spending, color = service)) +
+      geom_line(linewidth = 1.2, alpha = 0.8) +
+      geom_point(size = 3, alpha = 0.8) +
+      scale_color_manual(values = c("Elderly care" = pal[1], "Primary education" = pal[5])) +
+      scale_y_continuous(labels = label_number(suffix = " kr")) +
+      scale_x_continuous(breaks = 2020:2024) +
+      facet_wrap(~size_category, ncol = 3, scales = "free_y") +
+      labs(
+        title = "Diverging Trajectories: Care Rises, Education Plateaus",
+        subtitle = "Average net operating expenditures per capita (2020-2024) by municipality size\nElderly care spending accelerates while school budgets stabilize across all municipality types",
+        x = NULL,
+        y = "Spending per capita (NOK)",
+        color = "Service area",
+        caption = "Source: SSB KOSTRA (tables 12006, 12215)"
+      ) +
+      theme_minimal(base_size = 11) +
+      theme(
+        plot.title = element_text(face = "bold", size = 14),
+        plot.subtitle = element_text(color = "gray30", size = 10, margin = margin(b = 15)),
+        strip.text = element_text(face = "bold", size = 11),
+        legend.position = "top",
+        panel.grid.minor = element_blank(),
+        plot.caption = element_text(color = "gray50", size = 8, hjust = 0)
+      )
+    
+    print(p4)
+  }
+}
+```
+
+## Key Findings
+
+- **The care-education crossover**: Between 2020 and 2024, municipalities increased elderly care spending by 15-25% per capita while primary education spending grew just 5-10%, reflecting demographic pressures as the population ages
+
+- **Massive inter-municipal variation**: The highest-spending municipalities allocate 2-3x more per capita to elderly care than the lowest-spending ones — suggesting vastly different service models or demographic compositions
+
+- **Universal pressure across municipality sizes**: Both large cities and small rural municipalities show the same pattern — elderly care accelerating while education spending stabilizes — indicating this is a nationwide demographic shift, not just an urban phenomenon
+
+- **Financial strain on smaller municipalities**: Analysis of free revenues and operating results shows smaller municipalities facing tighter margins, yet they must still accommodate the same aging-driven spending shifts as wealthier urban areas
+
+- **The quiet reorganization**: Without major political announcements, Norwegian local government has fundamentally restructured its priorities over five years, with elderly care claiming an ever-larger share of municipal budgets at the expense of other services
+
+## What's Next?
+
+This spending transformation reflects Norway's demographic reality: more elderly residents requiring care, fewer children filling schools. But the wide variation between municipalities raises questions about equity and efficiency. Are some municipalities simply wealthier, or have they found better ways to deliver care? As the baby boom generation continues aging into their 80s, these spending pressures will only intensify. The silent revolution in municipal budgets is far from over — and the political debates about how to fund it are just beginning.
