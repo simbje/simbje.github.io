@@ -53,7 +53,7 @@ jobs:
           Rscript -e "
             pkgs <- c(
               'httr2', 'jsonlite', 'glue', 'lubridate',
-              'PxWebApiData', 'tidyverse',
+              'here', 'PxWebApiData', 'tidyverse',
               'ggplot2', 'scales', 'ggtext', 'ggrepel',
               'patchwork', 'cowplot',
               'ggridges', 'ggbeeswarm', 'ggalluvial', 'waffle',
