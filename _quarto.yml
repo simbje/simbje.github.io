@@ -16,6 +16,12 @@ website:
         href: projects/index.qmd
       - text: "Blog"
         href: blog/index.qmd
+      - text: "Data Projects"
+        menu:
+          - href: data-projects/index.qmd
+            text: All Data Projects
+          - href: data-projects/tennis-overview.qmd
+            text: Tennis Statistics
       - text: "SSB Daily"
         href: ssb-daily/index.qmd
       - text: "Risk analysis and Machine Learning"

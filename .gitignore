@@ -5,3 +5,4 @@
 /.Rproj.user/
 *.Rproj
 # Note: _freeze/ is intentionally tracked so GH Actions caches rendered outputs
+data-projects/data/
