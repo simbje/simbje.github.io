@@ -13,6 +13,7 @@ library(httr2)
 library(jsonlite)
 library(lubridate)
 library(glue)
+library(PxWebApiData)
 
 # ── Config ────────────────────────────────────────────────────────────────────
 ANTHROPIC_API_KEY <- Sys.getenv("ANTHROPIC_API_KEY")
@@ -28,119 +29,150 @@ if (dir.exists(POST_DIR)) {
   quit(status = 0)
 }
 
-# ── SSB Dataset catalogue ─────────────────────────────────────────────────────
-# A curated set of interesting SSB tables with known-working API parameters.
-# Claude will pick from these (or combine several) each day.
-SSB_CATALOGUE <- '
-## Available SSB datasets (PxWebApiData)
-
-IMPORTANT: Since the script always discovers parameters with returnMetaFrames = TRUE 
-before fetching data, Claude should feel free to explore ANY 5-digit SSB table — 
-the discovery step will reveal if a table exists and what parameters it has. 
-The tables below are verified starting points, but Claude can also try nearby 
-table IDs or search SSB Statbank (https://www.ssb.no/en/statbank) for more.
-
-### Economy & Prices
-- **03013** — Consumer Price Index (KPI) by consumption group, monthly (2015=100). Note: being replaced by **14700** in 2026.
-- **03014** — Consumer Price Index (KPI) 12-month rate, by consumption group, monthly
-- **09170** — GDP and related measures, quarterly (Nasjonalregnskap)
-- **09174** — Wages, employment and productivity by industry, annual (Nasjonalregnskap)
-- **09189** — National accounts, quarterly main figures
-- **09190** — GDP by industry, quarterly
-- **11174** — Household final consumption expenditure
-- **10948** — General government revenue and expenditure, annual
-- **12880** — National accounts, annual main figures
-
-### Labour Market
-- **05111** — Population by labour force status, age and sex, annual (AKU)
-- **05110** — Population by labour force status, age and sex, quarterly (AKU)
-- **13760** — Labour force, employment, unemployment — seasonally adjusted, monthly
-- **11350** — Average monthly earnings by industry (SIC2007) and sector
-- **08536** — Registered unemployed by age and county (NAV monthly)
-- **07984** — R&D personnel and FTE in business enterprise sector
-- **08771** — Job vacancies by major industry division (SIC2007)
-- **03629** — Work stoppages, wage earners involved and working days lost
-- **12549** — Sickness absence, by industry and type of absence
-
-### Housing & Construction
-- **07221** — House price index, existing dwellings
-- **06265** — Building activity — dwellings started, under construction, completed
-- **05889** — New dwellings completed by county
-
-### Demographics & Population
-- **07459** — Population by region (municipality), sex, age and year
-- **05810** — Population by age, sex and year (national)
-- **04861** — Area and population of urban settlements
-- **05803** — Births, by mothers age
-- **09817** — Immigration and emigration by citizenship and country
-- **05196** — Fertility rates
-- **10634** — Marriages and divorces
-- **09481** — Population changes, quarterly
-
-### Energy & Environment
-- **08307** — Electricity balance, monthly (production, consumption, exports, imports)
-- **13931** — First-time registered vehicles by fuel type and county
-- **09288** — Energy balance for Norway, by energy product
-- **03321** — Greenhouse gas emissions by source
-
-### Education
-- **09429** — Students in higher education by field of study
-- **08956** — Upper secondary completion rates
-- **07184** — Kindergartens — children, staff, operating expenses
-
-### Health
-- **06913** — Activities in somatic hospitals — patient statistics
-
-### Business & Industry
-- **07196** — Enterprises by industry (NACE) and organisational form
-- **10582** — Bankruptcies opened, by industry, quarterly
-- **08419** — Retail trade index, monthly (volume and value)
-- **08800** — Overnight stays by nationality and accommodation type
-
-### Crime & Justice
-- **08406** — Offences reported to the police by type of offence
-
-### KOSTRA — Municipality Data (kommune-level, annual)
-KOSTRA covers Norwegian municipalities. Published 15 March (preliminary) and 15 June (final).
-Use Region = "EAK" for national average, or municipality codes like "3001" (Halden), "0301"/"3005" (Oslo), etc.
-Use Region = TRUE for all municipalities. Tid = annual 4-digit year.
-KOSTRA tables are numbered 12xxx–13xxx. The discovery step will reveal exact parameters.
-Example KOSTRA tables to try:
-- **12362** — Barnehage (kindergarten) key figures
-- **12215** — Grunnskole (primary school) key figures  
-- **12006** — Pleie og omsorg (elderly care) key figures
-- **12163** — Municipal financial key figures
-- **12559** — Water and sewage key figures
-
-### International Trade
-- **08800** — (also used under Business — tourism nights)
-- **08807** — External trade in goods — imports and exports
-
----
-
-## PxWebApiData usage pattern
-```r
-library(PxWebApiData)
-
-# Fetch data
-result <- ApiData(
-  "https://data.ssb.no/api/v0/no/table/TABLE_ID",
-  ContentsCode = "CODE",          # the measure you want
-  Tid = list(filter="top", values=40)  # last 40 periods
+# ── SSB Table list ─────────────────────────────────────────────────────────────
+# All candidate tables. We pre-fetch their real metadata before calling Claude,
+# so Claude receives exact parameter names/values and never has to guess.
+SSB_TABLE_LIST <- list(
+  # Economy
+  c("14700", "Consumer Price Index (new series from 2026, replaces 03013)"),
+  c("03013", "Consumer Price Index by consumption group, monthly (2015=100)"),
+  c("03014", "Consumer Price Index 12-month rate, by consumption group, monthly"),
+  c("09170", "GDP and related measures, quarterly"),
+  c("09174", "Wages, employment and productivity by industry, annual"),
+  c("09189", "National accounts, quarterly main figures"),
+  c("09190", "GDP by industry, quarterly"),
+  c("11174", "Household final consumption expenditure"),
+  c("10948", "General government revenue and expenditure, annual"),
+  c("12880", "National accounts, annual main figures"),
+  # Labour
+  c("05111", "Population by labour force status, age and sex, annual (AKU)"),
+  c("05110", "Population by labour force status, age and sex, quarterly (AKU)"),
+  c("13760", "Labour force, employment, unemployment, seasonally adjusted, monthly"),
+  c("11350", "Average monthly earnings by industry and sector"),
+  c("08536", "Registered unemployed by age and county, monthly"),
+  c("07984", "R&D personnel in business enterprise sector"),
+  c("08771", "Job vacancies by major industry division"),
+  c("03629", "Work stoppages and working days lost"),
+  c("12549", "Sickness absence by industry"),
+  # Housing
+  c("07221", "House price index, existing dwellings"),
+  c("06265", "Building activity, dwellings started and completed"),
+  c("05889", "New dwellings completed by county"),
+  # Demographics
+  c("07459", "Population by region, sex, age and year"),
+  c("05810", "Population by age, sex and year"),
+  c("04861", "Area and population of urban settlements"),
+  c("05803", "Births by mothers age"),
+  c("09817", "Immigration and emigration by citizenship"),
+  c("05196", "Fertility rates"),
+  c("10634", "Marriages and divorces"),
+  c("09481", "Population changes, quarterly"),
+  # Energy & Environment
+  c("08307", "Electricity balance, monthly"),
+  c("13931", "First-time registered vehicles by fuel type and county"),
+  c("09288", "Energy balance for Norway by energy product"),
+  c("03321", "Greenhouse gas emissions by source"),
+  # Education
+  c("09429", "Students in higher education by field of study"),
+  c("08956", "Upper secondary completion rates"),
+  c("07184", "Kindergartens, children and staff"),
+  # Health
+  c("06913", "Activities in somatic hospitals"),
+  # Business & Industry
+  c("07196", "Enterprises by industry and organisational form"),
+  c("10582", "Bankruptcies opened by industry, quarterly"),
+  c("08419", "Retail trade index, monthly"),
+  c("08800", "Overnight stays by nationality and accommodation type"),
+  # Crime
+  c("08406", "Offences reported to police by type"),
+  # Trade
+  c("08807", "External trade in goods, imports and exports"),
+  # KOSTRA (municipality-level, annual)
+  c("12362", "KOSTRA: Kindergarten key figures by municipality"),
+  c("12215", "KOSTRA: Primary school key figures by municipality"),
+  c("12006", "KOSTRA: Elderly care key figures by municipality"),
+  c("12163", "KOSTRA: Municipal financial key figures"),
+  c("12559", "KOSTRA: Water and sewage key figures by municipality")
 )
 
-# result is a list: result[[1]] is a data.frame with columns:
-# value, Tid (time), and dimension columns
-df <- result[[1]] %>%
-  mutate(
-    value = as.numeric(value),
-    # parse Tid depending on frequency:
-    # Monthly  "2024M01" -> ym("2024-01")
-    # Quarterly "2024K1" -> yq("2024 Q1")  
-    # Annual   "2024"   -> ymd(paste0(Tid, "-01-01"))
+# ── Pre-fetch real metadata from SSB ──────────────────────────────────────────
+# Shuffled so a different subset is sampled each day (seed = today's date).
+# We fetch up to MAX_TABLES to keep the prompt a reasonable size.
+MAX_TABLES <- 15
+
+message("Pre-fetching SSB metadata to validate tables and discover real parameters...")
+
+fetch_table_meta <- function(table_id, description) {
+  url <- paste0("https://data.ssb.no/api/v0/no/table/", table_id)
+  tryCatch({
+    meta <- PxWebApiData::ApiData(url, returnMetaFrames = TRUE)
+    list(id = table_id, description = description, meta = meta, ok = TRUE)
+  }, error = function(e) {
+    message("  SKIP ", table_id, ": ", conditionMessage(e))
+    list(id = table_id, description = description, meta = NULL, ok = FALSE)
+  })
+}
+
+set.seed(SEED)
+shuffled <- SSB_TABLE_LIST[sample(length(SSB_TABLE_LIST))]
+
+table_results <- list()
+valid_count   <- 0L
+for (tbl in shuffled) {
+  res <- fetch_table_meta(tbl[[1]], tbl[[2]])
+  table_results[[length(table_results) + 1L]] <- res
+  if (res$ok) {
+    valid_count <- valid_count + 1L
+    message("  OK  ", tbl[[1]], " — ", tbl[[2]])
+    if (valid_count >= MAX_TABLES) break
+  }
+  Sys.sleep(0.2)  # be polite to SSB API
+}
+
+valid_tables <- Filter(function(r) r$ok, table_results)
+message("Validated ", length(valid_tables), " tables.")
+
+if (length(valid_tables) == 0L) stop("No SSB tables could be reached. Check network/API.")
+
+# ── Build dynamic catalogue string from real metadata ─────────────────────────
+format_param <- function(frame, max_values = 8L) {
+  if (is.null(frame) || nrow(frame) == 0L) return("")
+  code_col  <- names(frame)[1]
+  label_col <- if (ncol(frame) >= 2L) names(frame)[2L] else code_col
+  top       <- head(frame, max_values)
+  vals      <- if (code_col == label_col) {
+    paste0('"', top[[code_col]], '"')
+  } else {
+    paste0('"', top[[code_col]], '" (', top[[label_col]], ')')
+  }
+  suffix <- if (nrow(frame) > max_values) paste0(" ... ", nrow(frame), " total") else ""
+  paste0(paste(vals, collapse = ", "), suffix)
+}
+
+build_catalogue <- function(valid_tables) {
+  sections <- sapply(valid_tables, function(res) {
+    param_lines <- sapply(names(res$meta), function(p) {
+      formatted <- format_param(res$meta[[p]])
+      if (nchar(formatted) == 0L) return(NULL)
+      paste0("  - **", p, "**: ", formatted)
+    })
+    param_lines <- Filter(Negate(is.null), param_lines)
+    paste0(
+      "### ", res$id, " — ", res$description, "\n",
+      paste(param_lines, collapse = "\n")
+    )
+  })
+  paste0(
+    "## Verified SSB datasets with EXACT parameter names\n\n",
+    "CRITICAL: The parameter names and values below come directly from the SSB API.\n",
+    "Use them EXACTLY as written. Do NOT invent or modify parameter names.\n",
+    "For dimension parameters, pass TRUE to get all values, or a character vector of specific codes.\n",
+    "For Tid use list(filter='top', values=N) to get the last N periods.\n\n",
+    paste(sections, collapse = "\n\n")
   )
-```
-'
+}
+
+SSB_CATALOGUE <- build_catalogue(valid_tables)
 
 # ── Previous posts (for topic diversity — compact, token-safe) ───────────────
 # We never pass full post content. Instead we maintain a tiny index file:
@@ -216,39 +248,30 @@ analysis of Statistics Norway (SSB) data using R.
 - Add annotations, reference lines, and labels directly on the chart where helpful
 - Aim for publication-ready quality
 
-## Parameter discovery (CRITICAL — wrong parameter names is the most common failure)
-You do NOT know the exact parameter names for SSB tables. They vary between tables and your
-guesses will be wrong. You MUST always discover parameters first using returnMetaFrames = TRUE.
+## Parameter usage (CRITICAL — use ONLY the names provided in the catalogue)
+The catalogue in the user prompt contains verified parameter names and valid values fetched
+directly from the SSB API moments before this call. Use them EXACTLY as written.
 
-MANDATORY first chunk for EVERY table you use — do this BEFORE any data fetching:
-
-```{{r discover-params}}
-# Discover the actual parameter names and valid values for this table
-meta <- PxWebApiData::ApiData(
-  "https://data.ssb.no/api/v0/no/table/TABLE_ID",
-  returnMetaFrames = TRUE
-)
-
-# Print parameter names — use THESE in your ApiData() call, not guesses
-cat("Valid parameters:\\n")
-print(names(meta))
-
-# Print first few valid values for each parameter
-for (param in names(meta)) {{
-  cat("\\n---", param, "---\\n")
-  print(head(meta[[param]], 10))
-}}
-```
-
-Then use the EXACT parameter names from the discovery output in your ApiData() call.
-For example, if discovery shows the parameters are "UtslpTilLuft", "UtslpEnergivare",
-"ContentsCode", and "Tid" — those are what you use. NEVER guess names like "Kjoretoytype"
-or "Drivstofftype" — they will fail.
-
-When calling ApiData() for the actual data:
-- Use TRUE for a dimension parameter to get all values for that dimension
+Rules:
+- NEVER invent or modify parameter names — use only what is listed in the catalogue
+- For dimension parameters, pass TRUE to get all values, or a character vector of specific codes shown in the catalogue
 - Use Tid = list(filter="top", values=N) to get the last N time periods
-- Only specify ContentsCode if you know the exact code from the discovery step
+- Only use ContentsCode codes that appear in the catalogue for that table
+
+When calling ApiData():
+```{{r fetch-data}}
+df <- NULL
+tryCatch({{
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/TABLE_ID",
+    EXACT_PARAM_FROM_CATALOGUE = TRUE,   # use the name from the catalogue
+    Tid = list(filter = "top", values = 40)
+  )
+  tmp <- raw[[1]]
+  print(names(tmp))  # always print column names so the output is visible
+  df <- tmp |> mutate(value = as.numeric(value), ...)
+}}, error = function(e) message("Fetch failed: ", e$message))
+```
 
 ## Plotting rules (CRITICAL — plots not showing is the most common failure)
 - ALWAYS assign every ggplot to a named variable first, then call print() on it explicitly
@@ -297,11 +320,10 @@ categories: [SSB, category1, category2]
 
 Then structure:
 1. Brief intro (2-3 sentences) — the hook, why this matters today
-2. Parameter discovery chunk — returnMetaFrames = TRUE for each table
-3. Data section — fetch + wrangle using discovered parameter names, show the raw shape
-4. Analysis section(s) — 2-3 distinct analytical angles with charts
-5. Key findings — 3-5 bullet points with the numbers
-6. Closing reflection — broader context or what to watch next
+2. Data section — fetch + wrangle using exact parameter names from the catalogue, print column names
+3. Analysis section(s) — 2-3 distinct analytical angles with charts
+4. Key findings — 3-5 bullet points with the numbers
+5. Closing reflection — broader context or what to watch next
 
 ## Output format
 Return your response in TWO clearly separated sections:
@@ -345,40 +367,25 @@ STEP 1 — Setup chunk:
 knitr::opts_chunk$set(echo=TRUE, warning=FALSE, message=FALSE, error=TRUE)
 ```
 
-STEP 2 — Discovery chunk (MANDATORY for every table):
+STEP 2 — Data chunk using EXACT parameter names from the catalogue:
 ```r
-# Discover valid parameter names — NEVER guess them
-meta <- PxWebApiData::ApiData(
-  "https://data.ssb.no/api/v0/no/table/XXXXX",
-  returnMetaFrames = TRUE
-)
-cat("Valid parameters:\\n")
-print(names(meta))
-for (param in names(meta)) {{
-  cat("\\n---", param, "---\\n")
-  print(head(meta[[param]], 10))
-}}
-```
-
-STEP 3 — Data chunk using discovered names:
-```r
-df <- NULL  # ALWAYS initialise to NULL outside
+df <- NULL  # ALWAYS initialise to NULL outside tryCatch
 
 tryCatch({{
-  # Use the EXACT parameter names from the discovery step above
-  raw <- ApiData("https://data.ssb.no/api/v0/no/table/XXXXX",
-                 # e.g. if discovery showed "UtslpEnergivare" and "ContentsCode":
-                 UtslpEnergivare = TRUE,
-                 ContentsCode = TRUE,
-                 Tid = list(filter="top", values=40))
-  
+  # Parameter names below come from the verified catalogue — do NOT change them
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/XXXXX",
+    EXACT_PARAM_NAME = TRUE,          # use the name from the catalogue
+    Tid = list(filter="top", values=40)
+  )
+
   tmp <- raw[[1]]
   print(names(tmp))  # always print column names
-  
-  # discover time column defensively
+
+  # Find time column defensively (SSB uses varying names)
   time_col <- names(tmp)[grepl("tid|aar|kvartal|maaned|year|month|quarter", names(tmp), ignore.case=TRUE)][1]
   message("Time column: ", time_col)
-  
+
   df <- tmp |>
     mutate(
       value    = as.numeric(value),
@@ -391,11 +398,11 @@ tryCatch({{
       )
     ) |>
     filter(!is.na(value), !is.na(date))
-    
+
 }}, error = function(e) message("Data fetch failed: ", e$message))
 ```
 
-STEP 4 — Plot chunk (guard + print):
+STEP 3 — Plot chunk (guard + print):
 ```r
 if (!is.null(df)) {{
   p <- ggplot(df, aes(x = date, y = value)) +
@@ -432,7 +439,7 @@ response <- request("https://api.anthropic.com/v1/messages") |>
 result  <- resp_body_json(response)
 
 # ── Check for truncated response ─────────────────────────────────────────────
-stop_reason <- result$stop_reason %||% "unknown"
+stop_reason <- if (is.null(result$stop_reason)) "unknown" else result$stop_reason
 if (stop_reason == "max_tokens") {
   warning("API response was truncated (hit max_tokens). Post may have incomplete code chunks.")
 }
