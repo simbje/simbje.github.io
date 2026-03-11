@@ -37,8 +37,6 @@ page-layout: full
       <h1 class="cv-name">Simen Bjerkelund</h1>
       <p class="cv-tagline">Financial Analyst · Quantitative Researcher · Data Scientist</p>
       <div class="cv-contacts">
-        <span>Herslebs gate 32a, Oslo</span>
-        <a href="tel:93017845">930 17 845</a>
         <a href="mailto:simbje@gmail.com">simbje@gmail.com</a>
         <a href="https://github.com/simbje" target="_blank">github.com/simbje</a>
         <span>08.03.1991</span>
