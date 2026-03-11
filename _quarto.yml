@@ -5,6 +5,7 @@ project:
 website:
   title: "Simen Bjerkelund"
   description: "Financial Analyst · Quantitative Researcher · Data Scientist"
+  site-url: "https://simbje.github.io"
 
   navbar:
     left:
