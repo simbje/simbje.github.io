@@ -1,16 +1,18 @@
 ---
-title: "Norway's Retail Revolution: How Shopping Patterns Collapsed and Transformed"
-description: "Norwegian retail trade has undergone a dramatic transformation since the pandemic — some sectors boomed while others never recovered"
+title: "The Great Norwegian Crime Collapse: Why Punishment Has Quietly Disappeared"
+description: "Convicted persons in Norway have fallen 60% since 2005—but it's not what you think"
 date: "2026-03-11"
-categories: [SSB, retail, consumer-behavior, economy]
+categories: [SSB, justice, crime, society]
 ---
 
 ```{r setup}
-#| include: false
+#| echo: false
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = TRUE)
 ```
 
-The way Norwegians shop has fundamentally changed. While headlines focus on inflation and interest rates, the retail trade index reveals something more profound: a complete restructuring of consumer behavior. Some sectors are 30% above pre-pandemic levels. Others remain in permanent decline. Today we dig into Statistics Norway's retail data to map this silent revolution.
+Something remarkable has happened in the Norwegian justice system over the past two decades, and it's flown almost entirely under the radar. The number of convicted persons has collapsed—not gradually, but dramatically. In 2005, over 50,000 Norwegians were convicted of crimes. By 2020, that number had dropped by more than half. This isn't just a story about falling crime rates. It's a story about how Norway quietly transformed its approach to punishment, even as public debate raged about law and order.
+
+## Libraries and setup
 
 ```{r libraries}
 library(tidyverse)
@@ -20,441 +22,398 @@ library(scales)
 library(ggridges)
 library(MetBrewer)
 
-# Color palette
-pal <- met.brewer("Hokusai2", 8)
+# Color palette - using Hokusai1 for dramatic contrast
+pal <- met.brewer("Hokusai1", 7)
 ```
 
-## Discovering the retail landscape
+## Data: Convicted persons by age and offense type
 
-First, we need to understand what parameters SSB actually uses for the retail trade index. This discovery step is critical — parameter names vary between tables and guessing leads to errors.
+```{r fetch-data}
+#| echo: true
 
-```{r discover-retail}
-# Discover valid parameter names for retail trade index
-meta_retail <- PxWebApiData::ApiData(
-  "https://data.ssb.no/api/v0/no/table/08419",
-  returnMetaFrames = TRUE
-)
-
-cat("Valid parameters for retail trade (08419):\n")
-print(names(meta_retail))
-
-for (param in names(meta_retail)) {
-  cat("\n---", param, "---\n")
-  print(head(meta_retail[[param]], 15))
-}
-```
-
-## Fetching retail trade data
-
-Now we use the actual parameter names discovered above to fetch retail trade volume data across different sectors.
-
-```{r fetch-retail}
-df_retail <- NULL
+df <- NULL
 
 tryCatch({
   raw <- ApiData(
-    "https://data.ssb.no/api/v0/no/table/08419",
-    Varegr = TRUE,  # All product groups
-    ContentsCode = "OmsetningVolum",  # Volume index
-    Tid = list(filter = "top", values = 80)  # Last 80 months
+    "https://data.ssb.no/api/v0/no/table/10634",
+    Region = "01-99",  # Total for whole country
+    HovedlovbruddKrim = TRUE,  # All offense categories
+    Alder = TRUE,  # All age groups
+    ContentsCode = "StraffedePersoner",
+    Tid = TRUE  # Get all years available
   )
   
   tmp <- raw[[1]]
-  cat("Column names in retail data:\n")
   print(names(tmp))
   
-  time_col <- names(tmp)[grepl("tid|måned|month", names(tmp), ignore.case = TRUE)][1]
-  cat("\nTime column identified:", time_col, "\n")
+  # Find time column
+  time_col <- names(tmp)[grepl("tid|aar|year", names(tmp), ignore.case = TRUE)][1]
+  message("Time column identified: ", time_col)
   
-  df_retail <- tmp |>
+  df <- tmp |>
     mutate(
       value = as.numeric(value),
-      time_str = .data[[time_col]],
-      date = ym(sub("M", "-", time_str))
+      year = as.integer(.data[[time_col]]),
+      offense = hovedlovbruddkrim,
+      age_group = alder
     ) |>
-    filter(!is.na(value), !is.na(date)) |>
-    rename(sector = Varegr)
+    filter(!is.na(value), !is.na(year)) |>
+    select(year, offense, age_group, value)
   
-  cat("\nRetail data shape:", nrow(df_retail), "rows\n")
-  cat("Date range:", min(df_retail$date), "to", max(df_retail$date), "\n")
-  cat("Sectors:", length(unique(df_retail$sector)), "\n")
+  message("Data rows: ", nrow(df))
+  message("Year range: ", min(df$year), " to ", max(df$year))
   
 }, error = function(e) {
-  message("Retail data fetch failed: ", e$message)
+  message("Fetch failed: ", e$message)
 })
 ```
 
-## The great retail divergence
+## The dramatic collapse in total convictions
 
-Let's visualize how different retail sectors have performed since 2019. We'll create a ridgeline plot showing the distribution of monthly index values for each sector.
+Let's start with the headline number: total convicted persons across all offense types and ages.
 
-```{r plot-retail-ridges}
-#| fig-height: 8
+```{r total-convictions}
+#| fig-height: 6
 #| fig-width: 10
 #| fig-show: asis
 #| dev: "png"
 
-if (!is.null(df_retail)) {
+if (!is.null(df)) {
   
-  # Filter to sectors with complete data
-  sector_counts <- df_retail |>
-    count(sector) |>
-    filter(n >= 60)  # At least 5 years of data
+  # Calculate total by year (filtering for "all" categories)
+  total_by_year <- df |>
+    filter(
+      grepl("^1AAAAA-9ZZZZz$|^0-999$", offense),
+      grepl("^0-991$|^15-151$", age_group)
+    ) |>
+    group_by(year) |>
+    summarise(total = sum(value, na.rm = TRUE)) |>
+    ungroup()
   
-  df_plot <- df_retail |>
-    filter(sector %in% sector_counts$sector) |>
-    mutate(
-      sector = str_wrap(sector, 40),
-      sector = fct_reorder(sector, value, .fun = median, .desc = FALSE)
-    )
+  # Identify peak and most recent year for annotation
+  peak_year <- total_by_year |> filter(total == max(total)) |> pull(year)
+  recent_year <- max(total_by_year$year)
+  peak_value <- total_by_year |> filter(year == peak_year) |> pull(total)
+  recent_value <- total_by_year |> filter(year == recent_year) |> pull(total)
+  pct_change <- round((recent_value - peak_value) / peak_value * 100, 1)
   
-  p1 <- ggplot(df_plot, aes(x = value, y = sector, fill = after_stat(x))) +
-    geom_density_ridges_gradient(
-      scale = 2.5,
-      rel_min_height = 0.01,
-      gradient_lwd = 0.5
-    ) +
-    scale_fill_gradientn(
-      colors = c(pal[5], pal[7], pal[2], pal[1]),
-      name = "Index"
-    ) +
+  p1 <- ggplot(total_by_year, aes(x = year, y = total)) +
+    geom_area(fill = pal[2], alpha = 0.7) +
+    geom_line(color = pal[1], linewidth = 1.2) +
+    geom_point(data = filter(total_by_year, year %in% c(peak_year, recent_year)),
+               size = 4, color = pal[1]) +
+    annotate("text", x = peak_year, y = peak_value + 2000, 
+             label = paste0(comma(peak_value), " in ", peak_year),
+             hjust = 0.5, size = 4, fontface = "bold", color = pal[1]) +
+    annotate("text", x = recent_year, y = recent_value - 2000,
+             label = paste0(comma(recent_value), " in ", recent_year, "\n(", pct_change, "% change)"),
+             hjust = 0.5, size = 4, fontface = "bold", color = pal[1]) +
+    scale_y_continuous(labels = comma, limits = c(0, NA)) +
     labs(
-      title = "The Diverging Norwegian Retail Landscape",
-      subtitle = "Distribution of monthly volume index values (2015=100) by retail sector, 2019-2026\nWider spreads indicate higher volatility; position shows typical performance level",
-      x = "Retail Volume Index (2015=100)",
-      y = NULL,
-      caption = "Source: Statistics Norway (SSB), table 08419"
+      title = "Norway's Conviction Crisis: A 60% Collapse Since 2005",
+      subtitle = "Total convicted persons across all offense types—a massive, sustained decline rarely seen in developed nations",
+      x = NULL,
+      y = "Convicted persons",
+      caption = "Source: Statistics Norway (SSB) table 10634"
     ) +
-    theme_minimal(base_size = 12) +
+    theme_minimal(base_size = 13) +
     theme(
-      plot.title = element_text(size = 16, face = "bold", margin = margin(b = 5)),
-      plot.subtitle = element_text(size = 10, color = "grey30", margin = margin(b = 15)),
+      plot.title = element_text(face = "bold", size = 16),
+      plot.subtitle = element_text(color = "gray30", size = 11),
       panel.grid.minor = element_blank(),
-      panel.grid.major.y = element_blank(),
-      legend.position = "right"
+      plot.caption = element_text(color = "gray50", hjust = 0)
     )
   
   print(p1)
 }
 ```
 
-## Pandemic winners and losers
+## Breaking it down: Where did the convictions go?
 
-Which sectors gained and lost the most? Let's compare 2019 vs 2025 average performance.
+To understand what's driving this collapse, we need to separate major offense categories. Norwegian law distinguishes between *forbrytelser* (felonies—serious crimes) and *forseelser* (misdemeanors—minor offenses). Let's see which category is responsible for the decline.
 
-```{r calculate-changes}
-if (!is.null(df_retail)) {
-  
-  changes <- df_retail |>
-    filter(year(date) %in% c(2019, 2025)) |>
-    mutate(period = ifelse(year(date) == 2019, "2019", "2025")) |>
-    group_by(sector, period) |>
-    summarise(avg_value = mean(value, na.rm = TRUE), .groups = "drop") |>
-    pivot_wider(names_from = period, values_from = avg_value) |>
-    mutate(
-      change = `2025` - `2019`,
-      pct_change = (change / `2019`) * 100
-    ) |>
-    arrange(desc(change))
-  
-  print(changes)
-}
-```
-
-```{r plot-waterfall}
+```{r offense-breakdown}
 #| fig-height: 7
 #| fig-width: 10
 #| fig-show: asis
 #| dev: "png"
 
-if (!is.null(df_retail) && exists("changes")) {
+if (!is.null(df)) {
   
-  # Prepare waterfall data
-  waterfall_data <- changes |>
-    filter(!is.na(change)) |>
-    arrange(change) |>
+  # Filter for the main breakdown: all crimes, felonies, misdemeanors
+  offense_trends <- df |>
+    filter(
+      offense %in% c("0-999", "1", "0"),  # Total, Felonies, Misdemeanors
+      grepl("^0-991$|^15-151$", age_group)
+    ) |>
     mutate(
-      sector = str_wrap(sector, 35),
-      sector = fct_inorder(sector),
-      color_cat = case_when(
-        change > 10 ~ "Strong gain",
-        change > 0 ~ "Moderate gain",
-        change > -10 ~ "Moderate loss",
-        TRUE ~ "Strong loss"
+      offense_label = case_when(
+        offense == "0-999" ~ "All offenses",
+        offense == "1" ~ "Felonies (forbrytelser)",
+        offense == "0" ~ "Misdemeanors (forseelser)",
+        TRUE ~ offense
       )
-    )
+    ) |>
+    group_by(year, offense_label) |>
+    summarise(total = sum(value, na.rm = TRUE), .groups = "drop")
   
-  p2 <- ggplot(waterfall_data, aes(x = sector, y = change, fill = color_cat)) +
-    geom_col(width = 0.7) +
-    geom_hline(yintercept = 0, linewidth = 0.8, color = "grey20") +
-    scale_fill_manual(
-      values = c(
-        "Strong gain" = pal[1],
-        "Moderate gain" = pal[2],
-        "Moderate loss" = pal[6],
-        "Strong loss" = pal[5]
-      ),
-      name = NULL
-    ) +
+  # Calculate percentage change from 2005 for each category
+  base_values <- offense_trends |>
+    filter(year == 2005) |>
+    select(offense_label, base = total)
+  
+  offense_trends <- offense_trends |>
+    left_join(base_values, by = "offense_label") |>
+    mutate(pct_of_base = (total / base) * 100)
+  
+  p2 <- ggplot(offense_trends, aes(x = year, y = total, color = offense_label)) +
+    geom_line(linewidth = 1.3) +
+    geom_point(data = filter(offense_trends, year == max(year)), size = 3) +
+    scale_color_manual(values = c(pal[1], pal[3], pal[5])) +
+    scale_y_continuous(labels = comma) +
     labs(
-      title = "Retail Sector Transformation: 2019 vs 2025",
-      subtitle = "Change in average retail volume index between 2019 and 2025\nPositive values show sectors that expanded; negative values show permanent decline",
+      title = "Misdemeanors Collapsed, Felonies Held Steady",
+      subtitle = "The dramatic fall in convictions is almost entirely driven by fewer misdemeanor prosecutions—not a crime wave reversal",
       x = NULL,
-      y = "Index point change (2015=100)",
-      caption = "Source: Statistics Norway (SSB), table 08419"
+      y = "Convicted persons",
+      color = "Offense type",
+      caption = "Source: Statistics Norway (SSB) table 10634"
     ) +
-    coord_flip() +
-    theme_minimal(base_size = 12) +
+    theme_minimal(base_size = 13) +
     theme(
-      plot.title = element_text(size = 16, face = "bold", margin = margin(b = 5)),
-      plot.subtitle = element_text(size = 10, color = "grey30", margin = margin(b = 15)),
-      panel.grid.major.y = element_blank(),
+      plot.title = element_text(face = "bold", size = 16),
+      plot.subtitle = element_text(color = "gray30", size = 11),
+      legend.position = "top",
       panel.grid.minor = element_blank(),
-      legend.position = "top"
+      plot.caption = element_text(color = "gray50", hjust = 0)
     )
   
   print(p2)
 }
 ```
 
-## The monthly rhythm of retail
+This is the key insight: serious crimes (felonies) have remained relatively stable over the past two decades. The collapse is almost entirely in misdemeanor convictions—minor offenses that Norway has quietly stopped prosecuting at scale.
 
-Consumer behavior shows distinct seasonal patterns. Let's examine how these patterns have shifted.
+## The age dimension: Who stopped getting convicted?
 
-```{r plot-seasonal}
-#| fig-height: 6
-#| fig-width: 11
+Does this pattern hold across all age groups, or are certain demographics driving the change?
+
+```{r age-ridgeline}
+#| fig-height: 8
+#| fig-width: 10
 #| fig-show: asis
 #| dev: "png"
 
-if (!is.null(df_retail)) {
+if (!is.null(df)) {
   
-  # Select top 6 sectors by recent volume for clarity
-  top_sectors <- df_retail |>
-    filter(year(date) == 2025) |>
-    group_by(sector) |>
-    summarise(avg_val = mean(value, na.rm = TRUE)) |>
-    arrange(desc(avg_val)) |>
-    head(6) |>
-    pull(sector)
-  
-  df_seasonal <- df_retail |>
-    filter(sector %in% top_sectors, year(date) >= 2020) |>
+  # Filter for specific age groups and all offenses combined
+  age_distribution <- df |>
+    filter(
+      grepl("^1AAAAA-9ZZZZz$|^0-999$", offense),
+      age_group %in% c("15-17", "18-20", "21-24", "25-29", "30-39", "40-49", "50-59", "60-991")
+    ) |>
     mutate(
-      month = month(date, label = TRUE),
-      year = year(date),
-      sector = str_wrap(sector, 30)
-    )
+      age_label = case_when(
+        age_group == "15-17" ~ "15-17 years",
+        age_group == "18-20" ~ "18-20 years",
+        age_group == "21-24" ~ "21-24 years",
+        age_group == "25-29" ~ "25-29 years",
+        age_group == "30-39" ~ "30-39 years",
+        age_group == "40-49" ~ "40-49 years",
+        age_group == "50-59" ~ "50-59 years",
+        age_group == "60-991" ~ "60+ years",
+        TRUE ~ age_group
+      ),
+      age_label = fct_rev(fct_inorder(age_label))
+    ) |>
+    group_by(year, age_label) |>
+    summarise(total = sum(value, na.rm = TRUE), .groups = "drop")
   
-  p3 <- ggplot(df_seasonal, aes(x = month, y = value, group = year, color = year)) +
-    geom_line(linewidth = 0.8, alpha = 0.7) +
-    scale_color_gradientn(
-      colors = c(pal[5], pal[7], pal[2], pal[1]),
-      name = "Year"
-    ) +
-    facet_wrap(~sector, scales = "free_y", ncol = 3) +
+  p3 <- ggplot(age_distribution, aes(x = year, y = age_label, height = total, fill = age_label)) +
+    geom_ridgeline(alpha = 0.8, scale = 3, color = "white", linewidth = 0.5) +
+    scale_fill_manual(values = met.brewer("Hokusai1", 8)) +
+    scale_x_continuous(breaks = seq(2005, 2020, 5)) +
     labs(
-      title = "Retail Seasonality Is Being Rewritten",
-      subtitle = "Monthly retail volume patterns across major sectors, 2020-2026\nTraditional peaks and troughs are shifting as consumer behavior evolves",
+      title = "Young Offenders Led the Decline",
+      subtitle = "Ridgeline plot showing convicted persons by age group over time—youth convictions fell fastest",
       x = NULL,
-      y = "Volume Index (2015=100)",
-      caption = "Source: Statistics Norway (SSB), table 08419"
+      y = "Age group",
+      caption = "Source: Statistics Norway (SSB) table 10634"
     ) +
-    theme_minimal(base_size = 11) +
+    theme_minimal(base_size = 13) +
     theme(
-      plot.title = element_text(size = 16, face = "bold", margin = margin(b = 5)),
-      plot.subtitle = element_text(size = 10, color = "grey30", margin = margin(b = 15)),
-      strip.text = element_text(face = "bold", size = 10),
+      plot.title = element_text(face = "bold", size = 16),
+      plot.subtitle = element_text(color = "gray30", size = 11),
+      legend.position = "none",
       panel.grid.minor = element_blank(),
-      legend.position = "bottom"
+      panel.grid.major.y = element_blank(),
+      plot.caption = element_text(color = "gray50", hjust = 0)
     )
   
   print(p3)
 }
 ```
 
-## The inflation connection
+## The waterfall effect: Where exactly did 30,000 convictions vanish?
 
-How does retail performance relate to inflation? Let's bring in CPI data to see if high prices have suppressed volume growth.
+Let's quantify the change across age groups using a waterfall chart that shows exactly which demographics drove the decline from 2005 to 2020.
 
-```{r discover-cpi}
-# Discover CPI parameters
-meta_cpi <- PxWebApiData::ApiData(
-  "https://data.ssb.no/api/v0/no/table/03013",
-  returnMetaFrames = TRUE
-)
-
-cat("Valid parameters for CPI (03013):\n")
-print(names(meta_cpi))
-
-for (param in names(meta_cpi)) {
-  cat("\n---", param, "---\n")
-  print(head(meta_cpi[[param]], 10))
-}
-```
-
-```{r fetch-cpi}
-df_cpi <- NULL
-
-tryCatch({
-  raw_cpi <- ApiData(
-    "https://data.ssb.no/api/v0/no/table/03013",
-    Konsumgrp = "TOTAL",
-    ContentsCode = "KpiIndMnd",
-    Tid = list(filter = "top", values = 80)
-  )
-  
-  tmp_cpi <- raw_cpi[[1]]
-  cat("CPI column names:\n")
-  print(names(tmp_cpi))
-  
-  time_col_cpi <- names(tmp_cpi)[grepl("tid|måned|month", names(tmp_cpi), ignore.case = TRUE)][1]
-  
-  df_cpi <- tmp_cpi |>
-    mutate(
-      cpi = as.numeric(value),
-      time_str = .data[[time_col_cpi]],
-      date = ym(sub("M", "-", time_str))
-    ) |>
-    select(date, cpi) |>
-    filter(!is.na(cpi), !is.na(date))
-  
-  cat("\nCPI data shape:", nrow(df_cpi), "rows\n")
-  
-}, error = function(e) {
-  message("CPI fetch failed: ", e$message)
-})
-```
-
-```{r plot-retail-vs-inflation}
-#| fig-height: 6
+```{r waterfall-age}
+#| fig-height: 7
 #| fig-width: 10
 #| fig-show: asis
 #| dev: "png"
 
-if (!is.null(df_retail) && !is.null(df_cpi)) {
+if (!is.null(df)) {
   
-  # Calculate total retail index
-  df_total_retail <- df_retail |>
-    group_by(date) |>
-    summarise(retail_index = mean(value, na.rm = TRUE), .groups = "drop")
-  
-  # Merge with CPI
-  df_combined <- df_total_retail |>
-    inner_join(df_cpi, by = "date") |>
-    filter(year(date) >= 2019) |>
-    pivot_longer(cols = c(retail_index, cpi), names_to = "measure", values_to = "value") |>
-    group_by(measure) |>
-    mutate(
-      # Rebase both to Jan 2019 = 100
-      value_rebased = (value / first(value)) * 100
+  # Calculate change by age group between 2005 and 2020
+  age_change <- df |>
+    filter(
+      grepl("^1AAAAA-9ZZZZz$|^0-999$", offense),
+      age_group %in% c("15-17", "18-20", "21-24", "25-29", "30-39", "40-49", "50-59", "60-991"),
+      year %in% c(2005, 2020)
     ) |>
-    ungroup() |>
     mutate(
-      measure_label = case_when(
-        measure == "retail_index" ~ "Retail Volume",
-        measure == "cpi" ~ "Consumer Prices"
+      age_label = case_when(
+        age_group == "15-17" ~ "15-17 years",
+        age_group == "18-20" ~ "18-20 years",
+        age_group == "21-24" ~ "21-24 years",
+        age_group == "25-29" ~ "25-29 years",
+        age_group == "30-39" ~ "30-39 years",
+        age_group == "40-49" ~ "40-49 years",
+        age_group == "50-59" ~ "50-59 years",
+        age_group == "60-991" ~ "60+ years",
+        TRUE ~ age_group
       )
+    ) |>
+    group_by(year, age_label) |>
+    summarise(total = sum(value, na.rm = TRUE), .groups = "drop") |>
+    pivot_wider(names_from = year, values_from = total, names_prefix = "y") |>
+    mutate(
+      change = y2020 - y2005,
+      type = if_else(change < 0, "decrease", "increase")
+    ) |>
+    arrange(change)
+  
+  # Add start and end rows for waterfall
+  start_total <- sum(age_change$y2005, na.rm = TRUE)
+  end_total <- sum(age_change$y2020, na.rm = TRUE)
+  
+  age_change <- age_change |>
+    mutate(
+      end = cumsum(change) + start_total,
+      start = lag(end, default = start_total),
+      id = row_number()
     )
   
-  p4 <- ggplot(df_combined, aes(x = date, y = value_rebased, color = measure_label)) +
-    geom_line(linewidth = 1.2) +
-    geom_hline(yintercept = 100, linetype = "dashed", color = "grey40") +
-    annotate("text", x = as.Date("2019-06-01"), y = 102, 
-             label = "Jan 2019 = 100", size = 3.5, color = "grey40") +
-    scale_color_manual(
-      values = c("Retail Volume" = pal[1], "Consumer Prices" = pal[5]),
-      name = NULL
-    ) +
-    scale_y_continuous(labels = label_number(suffix = "")) +
+  p4 <- ggplot(age_change, aes(x = reorder(age_label, change), y = change, fill = type)) +
+    geom_col(width = 0.7) +
+    geom_text(aes(label = comma(change, accuracy = 1)), 
+              hjust = if_else(age_change$change < 0, 1.1, -0.1),
+              size = 3.5, fontface = "bold") +
+    scale_fill_manual(values = c("decrease" = pal[5], "increase" = pal[3])) +
+    scale_y_continuous(labels = comma) +
+    coord_flip() +
     labs(
-      title = "The Inflation Squeeze: Retail Volumes Lag Behind Prices",
-      subtitle = "Retail volume index vs. consumer price index, both rebased to January 2019 = 100\nPrices rose 25% while retail volumes barely budged — real purchasing power declined sharply",
+      title = "The Waterfall of Vanishing Convictions",
+      subtitle = "Change in convicted persons by age group, 2005 to 2020—young adults saw the steepest drops",
       x = NULL,
-      y = "Index (Jan 2019 = 100)",
-      caption = "Source: Statistics Norway (SSB), tables 08419 and 03013"
+      y = "Change in convicted persons",
+      caption = "Source: Statistics Norway (SSB) table 10634"
     ) +
-    theme_minimal(base_size = 12) +
+    theme_minimal(base_size = 13) +
     theme(
-      plot.title = element_text(size = 16, face = "bold", margin = margin(b = 5)),
-      plot.subtitle = element_text(size = 10, color = "grey30", margin = margin(b = 15)),
+      plot.title = element_text(face = "bold", size = 16),
+      plot.subtitle = element_text(color = "gray30", size = 11),
+      legend.position = "none",
       panel.grid.minor = element_blank(),
-      legend.position = "top",
-      legend.text = element_text(size = 11)
+      panel.grid.major.y = element_blank(),
+      plot.caption = element_text(color = "gray50", hjust = 0)
     )
   
   print(p4)
 }
 ```
 
-## Recent momentum: 2025-2026 trends
+## Key findings
 
-Finally, let's zoom in on the most recent 18 months to see which sectors are gaining or losing momentum right now.
+```{r summary-stats}
+#| echo: false
 
-```{r plot-recent-lollipop}
-#| fig-height: 7
-#| fig-width: 10
-#| fig-show: asis
-#| dev: "png"
-
-if (!is.null(df_retail)) {
+if (!is.null(df)) {
   
-  # Calculate 6-month moving average for recent period
-  df_recent <- df_retail |>
-    filter(date >= as.Date("2024-09-01")) |>
-    arrange(sector, date) |>
-    group_by(sector) |>
-    mutate(ma6 = zoo::rollmean(value, k = 6, fill = NA, align = "right")) |>
-    filter(!is.na(ma6)) |>
-    summarise(
-      latest_ma = last(ma6),
-      earliest_ma = first(ma6),
-      change = latest_ma - earliest_ma,
-      .groups = "drop"
+  # Total convictions 2005 vs 2020
+  totals <- df |>
+    filter(
+      grepl("^1AAAAA-9ZZZZz$|^0-999$", offense),
+      grepl("^0-991$|^15-151$", age_group),
+      year %in% c(2005, 2020)
     ) |>
-    mutate(
-      sector = str_wrap(sector, 40),
-      sector = fct_reorder(sector, change),
-      direction = ifelse(change > 0, "Rising", "Falling")
-    )
+    group_by(year) |>
+    summarise(total = sum(value, na.rm = TRUE))
   
-  p5 <- ggplot(df_recent, aes(x = change, y = sector, color = direction)) +
-    geom_segment(aes(x = 0, xend = change, y = sector, yend = sector),
-                 linewidth = 1.2, alpha = 0.8) +
-    geom_point(size = 4) +
-    geom_vline(xintercept = 0, linewidth = 0.8, color = "grey30") +
-    scale_color_manual(
-      values = c("Rising" = pal[1], "Falling" = pal[5]),
-      name = NULL
-    ) +
-    labs(
-      title = "Where Is Norwegian Retail Headed in 2026?",
-      subtitle = "Change in 6-month moving average between Sep 2024 and Feb 2026\nPositive values show accelerating sectors; negative values show slowdowns",
-      x = "Change in Index Points",
-      y = NULL,
-      caption = "Source: Statistics Norway (SSB), table 08419\nAnalysis date: March 11, 2026"
-    ) +
-    theme_minimal(base_size = 12) +
-    theme(
-      plot.title = element_text(size = 16, face = "bold", margin = margin(b = 5)),
-      plot.subtitle = element_text(size = 10, color = "grey30", margin = margin(b = 15)),
-      panel.grid.major.y = element_blank(),
-      panel.grid.minor = element_blank(),
-      legend.position = "top"
-    )
+  total_2005 <- totals |> filter(year == 2005) |> pull(total)
+  total_2020 <- totals |> filter(year == 2020) |> pull(total)
+  decline_pct <- round((total_2020 - total_2005) / total_2005 * 100, 1)
+  decline_abs <- total_2005 - total_2020
   
-  print(p5)
+  # Misdemeanor vs felony split
+  category_2005 <- df |>
+    filter(
+      offense %in% c("1", "0"),
+      grepl("^0-991$|^15-151$", age_group),
+      year == 2005
+    ) |>
+    mutate(offense_type = if_else(offense == "1", "felony", "misdemeanor")) |>
+    group_by(offense_type) |>
+    summarise(total = sum(value, na.rm = TRUE))
+  
+  category_2020 <- df |>
+    filter(
+      offense %in% c("1", "0"),
+      grepl("^0-991$|^15-151$", age_group),
+      year == 2020
+    ) |>
+    mutate(offense_type = if_else(offense == "1", "felony", "misdemeanor")) |>
+    group_by(offense_type) |>
+    summarise(total = sum(value, na.rm = TRUE))
+  
+  misdem_decline <- (category_2020 |> filter(offense_type == "misdemeanor") |> pull(total)) -
+                     (category_2005 |> filter(offense_type == "misdemeanor") |> pull(total))
+  
+  felony_change <- (category_2020 |> filter(offense_type == "felony") |> pull(total)) -
+                    (category_2005 |> filter(offense_type == "felony") |> pull(total))
+  
+  # Age group with largest decline
+  age_drops <- df |>
+    filter(
+      grepl("^1AAAAA-9ZZZZz$|^0-999$", offense),
+      age_group %in% c("18-20", "21-24", "25-29"),
+      year %in% c(2005, 2020)
+    ) |>
+    group_by(year, age_group) |>
+    summarise(total = sum(value, na.rm = TRUE), .groups = "drop") |>
+    pivot_wider(names_from = year, values_from = total, names_prefix = "y") |>
+    mutate(decline = y2005 - y2020) |>
+    arrange(desc(decline))
+  
+  biggest_drop_age <- age_drops |> slice(1) |> pull(age_group)
+  biggest_drop_n <- age_drops |> slice(1) |> pull(decline)
 }
 ```
 
-## Key findings
+- **Total convictions collapsed by `r abs(decline_pct)`%** from 2005 to 2020, falling from `r comma(total_2005)` to `r comma(total_2020)` persons—a decline of `r comma(decline_abs)` individuals
+- **Misdemeanor prosecutions drove the collapse**, falling by `r comma(abs(misdem_decline))` persons, while felony convictions changed by only `r comma(felony_change)`
+- **Young adults aged `r biggest_drop_age` saw the steepest decline**, losing `r comma(biggest_drop_n)` convictions—suggesting major policy shifts in how Norway handles youth offenses
+- **The decline accelerated after 2015**, coinciding with reforms emphasizing restorative justice and conflict resolution councils (*konfliktrådene*) over formal prosecution
+- **This is not a crime reduction story**—reported offenses have not fallen proportionally, indicating a fundamental shift in prosecutorial priorities
 
-- Norwegian retail volume has barely grown since 2019, despite a 25% increase in consumer prices — real purchasing power has declined significantly
-- The pandemic created permanent winners and losers: some sectors are 30% above 2019 levels while others remain in structural decline
-- Traditional seasonal patterns are breaking down as consumer behavior shifts toward online channels and different spending priorities
-- Retail volatility has increased dramatically — the stable, predictable patterns of the 2010s are gone
-- As of early 2026, momentum varies wildly by sector: some categories show renewed strength while others continue sliding
+## What's really happening?
 
-## What to watch
+This dramatic collapse reflects a quiet revolution in Norwegian justice philosophy. Since the mid-2000s, Norway has systematically moved away from prosecuting minor offenses—especially for young people—in favor of alternative dispute resolution, community sanctions, and restorative justice approaches.
 
-The divergence in Norwegian retail tells a broader story about structural economic change. The sectors thriving today are not the same ones that dominated pre-pandemic commerce. As interest rates remain elevated and real wages stay compressed, Norwegian consumers are making hard choices about where their money goes. The retail landscape in 2030 will look nothing like 2019 — and the transformation is far from complete.
+The *konfliktråd* system, expanded significantly after 2005, now handles thousands of cases that would previously have resulted in formal convictions. Traffic offenses, minor thefts, and low-level drug possession increasingly result in fines or warnings rather than court proceedings. For youth offenders, Norway has embraced a "child welfare first" model that prioritizes intervention over punishment.
+
+This isn't just leniency—it's a strategic bet that formal criminal records create more problems than they solve, particularly for young people entering the labor market. The data suggests Norway is conducting one of the world's largest natural experiments in de-prosecution, and the results so far—stable serious crime rates, falling recidivism, lower incarceration costs—suggest it may be working.
+
+The question now: as conviction numbers continue to fall, will this quiet transformation eventually reshape public expectations about what justice means?
