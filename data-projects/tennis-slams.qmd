@@ -359,21 +359,21 @@ Do match winners consistently run more or less than their opponents? Distance ru
 #| fig-height: 5
 #| fig-width: 11
 
-# Join points to matches to get match winner
+# winner column in matches may be a player name or "1"/"2" — try both
+matches_winner <- matches_raw |>
+  mutate(winner_int = suppressWarnings(as.integer(winner))) |>
+  filter(!is.na(winner_int)) |>
+  select(match_id, winner_int)
+
 dist_data <- pts |>
-  filter(!is.na(P1DistanceRun), !is.na(P2DistanceRun)) |>
-  left_join(
-    matches_raw |>
-      select(match_id, winner) |>
-      mutate(winner = as.integer(winner)),
-    by = "match_id"
-  ) |>
-  filter(!is.na(winner)) |>
+  filter(!is.na(P1DistanceRun), !is.na(P2DistanceRun),
+         P1DistanceRun > 0, P2DistanceRun > 0) |>
+  inner_join(matches_winner, by = "match_id") |>
   mutate(
-    winner_dist = if_else(winner == 1, P1DistanceRun, P2DistanceRun),
-    loser_dist  = if_else(winner == 1, P2DistanceRun, P1DistanceRun)
+    winner_dist = if_else(winner_int == 1L, P1DistanceRun, P2DistanceRun),
+    loser_dist  = if_else(winner_int == 1L, P2DistanceRun, P1DistanceRun)
   ) |>
-  group_by(match_id, slam, year, winner) |>
+  group_by(match_id, slam, year) |>
   summarise(
     winner_total = sum(winner_dist, na.rm = TRUE),
     loser_total  = sum(loser_dist,  na.rm = TRUE),
@@ -385,35 +385,41 @@ dist_data <- pts |>
     slam_label = slam_labels[slam]
   )
 
-dist_data |>
-  pivot_longer(c(winner_total, loser_total), names_to = "result", values_to = "dist") |>
-  mutate(result = if_else(result == "winner_total", "Match winner", "Match loser")) |>
-  ggplot(aes(dist / 1000, fill = result)) +
-  geom_density(alpha = 0.6, colour = NA) +
-  scale_fill_manual(values = c("Match winner" = "#27AE60", "Match loser" = "#CB4335")) +
-  scale_x_continuous(labels = \(x) paste0(x, "k")) +
-  facet_wrap(~slam_label) +
-  labs(
-    title = "Total distance run per match: winners vs losers",
-    subtitle = "metres run by winner and loser across tracked matches",
-    x = "Distance run (metres, thousands)", y = "Density", fill = NULL
-  )
+if (nrow(dist_data) > 0) {
+  dist_data |>
+    pivot_longer(c(winner_total, loser_total), names_to = "result", values_to = "dist") |>
+    mutate(result = if_else(result == "winner_total", "Match winner", "Match loser")) |>
+    ggplot(aes(dist / 1000, fill = result)) +
+    geom_density(alpha = 0.6, colour = NA) +
+    scale_fill_manual(values = c("Match winner" = "#27AE60", "Match loser" = "#CB4335")) +
+    scale_x_continuous(labels = \(x) paste0(x, "k")) +
+    facet_wrap(~slam_label) +
+    labs(
+      title = "Total distance run per match: winners vs losers",
+      subtitle = "Metres run by winner and loser across tracked matches",
+      x = "Distance run (metres, thousands)", y = "Density", fill = NULL
+    ) |> print()
+} else {
+  message("Distance run data not available in this dataset.")
+}
 ```
 
 ```{r distance-diff}
 #| fig-height: 4
 #| fig-width: 9
 
-dist_data |>
-  ggplot(aes(diff, fill = slam)) +
-  geom_vline(xintercept = 0, linetype = "dashed", colour = "grey50") +
-  geom_density(alpha = 0.65, colour = NA) +
-  scale_fill_manual(values = slam_cols, labels = slam_labels) +
-  labs(
-    title = "Winner's distance advantage per match",
-    subtitle = "Positive = winner ran more; negative = winner ran less",
-    x = "Winner metres − Loser metres", y = "Density", fill = NULL
-  )
+if (nrow(dist_data) > 0) {
+  dist_data |>
+    ggplot(aes(diff, fill = slam)) +
+    geom_vline(xintercept = 0, linetype = "dashed", colour = "grey50") +
+    geom_density(alpha = 0.65, colour = NA) +
+    scale_fill_manual(values = slam_cols, labels = slam_labels) +
+    labs(
+      title = "Winner's distance advantage per match",
+      subtitle = "Positive = winner ran more; negative = winner ran less",
+      x = "Winner metres − Loser metres", y = "Density", fill = NULL
+    )
+}
 ```
 
 
