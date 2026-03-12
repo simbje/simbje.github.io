@@ -1,0 +1,10 @@
+name: tennis-predictor
+title:
+username: simen-bjerkelund
+account: simen-bjerkelund
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 16883707
+bundleId: 11699252
+url: https://simen-bjerkelund.shinyapps.io/tennis-predictor/
+version: 1

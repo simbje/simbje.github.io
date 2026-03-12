@@ -21,6 +21,8 @@ website:
             text: All Data Projects
           - href: data-projects/tennis-overview.qmd
             text: Tennis Statistics
+          - href: data-projects/tennis-predictor.qmd
+            text: Tennis Match Predictor
       - text: "SSB Daily"
         href: ssb-daily/index.qmd
       - text: "Risk analysis and Machine Learning"

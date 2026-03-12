@@ -6,3 +6,7 @@
 *.Rproj
 # Note: _freeze/ is intentionally tracked so GH Actions caches rendered outputs
 data-projects/data/
+# Shiny app — model artifact is deployed to shinyapps.io, not committed
+data-projects/tennis-shiny/tennis_model.rds
+# Claude Code memory
+.claude/

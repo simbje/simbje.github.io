@@ -1,0 +1,900 @@
+---
+title: "Tennis Match Predictor"
+description: "Win probability model for ATP matches using Elo ratings, head-to-head records, recent form, and gradient boosted trees"
+date: "2026-03-11"
+categories: [Tennis, R, Machine Learning, Prediction]
+execute:
+  warning: false
+  message: false
+  freeze: true
+---
+
+```{r setup}
+library(tidyverse)
+library(scales)
+library(gt)
+library(xgboost)
+
+theme_set(
+  theme_minimal(base_size = 13) +
+    theme(
+      plot.title    = element_text(face = "bold", size = 16),
+      plot.subtitle = element_text(colour = "grey40", size = 12),
+      panel.grid.minor = element_blank(),
+      legend.position  = "bottom"
+    )
+)
+
+surface_cols <- c("Hard" = "#2171B5", "Clay" = "#CB4335", "Grass" = "#27AE60")
+```
+
+## Data
+
+We use Jeff Sackmann's cached ATP match data — see the [descriptive overview](tennis-overview.qmd) for full context.
+
+```{r load-data}
+data_dir <- here::here("data-projects", "data")
+
+atp <- read_csv(
+  file.path(data_dir, "atp_matches.csv"),
+  col_types = cols(.default = "c"),
+  show_col_types = FALSE
+) |>
+  mutate(
+    tourney_date  = as.Date(as.character(tourney_date), format = "%Y%m%d"),
+    year          = as.integer(format(tourney_date, "%Y")),
+    surface       = str_to_title(surface),
+    surface       = if_else(surface %in% c("Hard","Clay","Grass","Carpet"),
+                            surface, NA_character_),
+    winner_rank   = as.numeric(winner_rank),
+    loser_rank    = as.numeric(loser_rank),
+    winner_age    = as.numeric(winner_age),
+    loser_age     = as.numeric(loser_age),
+    winner_id     = as.character(winner_id),
+    loser_id      = as.character(loser_id),
+    tourney_level = case_when(
+      tourney_level == "G" ~ "Grand Slam",
+      tourney_level == "M" ~ "Masters",
+      tourney_level == "A" ~ "Tour 250/500",
+      tourney_level == "F" ~ "Tour Finals",
+      tourney_level == "D" ~ "Davis/Fed Cup",
+      TRUE                 ~ tourney_level
+    )
+  ) |>
+  filter(
+    !is.na(winner_id), !is.na(loser_id),
+    !str_detect(score, "W/O|RET|DEF|Def"),
+    !is.na(tourney_date)
+  ) |>
+  arrange(tourney_date, match_num) |>
+  mutate(row_idx = row_number())
+```
+
+The dataset contains **`r comma(nrow(atp))`** valid ATP tour-level matches.
+
+---
+
+## Elo Rating System
+
+[Elo ratings](https://en.wikipedia.org/wiki/Elo_rating_system) are the cornerstone of this model. Each player starts at 1500 and gains or loses points after every match based on how surprising the result was:
+
+$$
+E_A = \frac{1}{1 + 10^{(R_B - R_A)/400}}, \qquad \Delta R = K \cdot (\text{outcome} - E_A)
+$$
+
+We track **four separate Elo ratings** per player — one overall and one for each major surface — so that Nadal's Elo reflects his clay dominance separately from his hard-court record. The K-factor scales with tournament prestige (Grand Slam = 40, Masters = 36, others = 32).
+
+Alongside Elo, the same sequential pass also computes:
+
+- **Surface H2H** — how many times each player has beaten the other on *this specific surface* prior to the match
+- **Surface win rate** — each player's cumulative win% on this surface (min. 10 matches, else `NA`)
+
+```{r compute-elo}
+K_LOOKUP <- c("Grand Slam"=40, "Masters"=36, "Tour Finals"=32,
+              "Tour 250/500"=32, "Davis/Fed Cup"=20)
+
+compute_elo_features <- function(df) {
+  players <- unique(c(df$winner_id, df$loser_id))
+
+  # Named lists give O(1) hash-based lookup — critical for ~200k iterations
+  elo   <- as.list(setNames(rep(1500.0, length(players)), players))
+  elo_h <- as.list(setNames(rep(1500.0, length(players)), players))
+  elo_c <- as.list(setNames(rep(1500.0, length(players)), players))
+  elo_g <- as.list(setNames(rep(1500.0, length(players)), players))
+  h2h      <- list()
+  h2h_surf <- list()  # key = "w__l__surface"
+  surf_wins <- list() # key = "player__surface"
+  surf_n    <- list()
+
+  n <- nrow(df)
+  w_elo_pre   <- numeric(n); l_elo_pre   <- numeric(n)
+  w_selo_pre  <- numeric(n); l_selo_pre  <- numeric(n)
+  h2h_w       <- integer(n); h2h_l       <- integer(n)
+  sh2h_w      <- integer(n); sh2h_l      <- integer(n)
+  w_swr_pre   <- numeric(n); l_swr_pre   <- numeric(n)
+
+  for (i in seq_len(n)) {
+    w  <- df$winner_id[i];  l  <- df$loser_id[i]
+    s  <- df$surface[i];    tl <- df$tourney_level[i]
+    K  <- if (!is.na(tl) && tl %in% names(K_LOOKUP)) K_LOOKUP[[tl]] else 32
+
+    # ── Pre-match Elo ────────────────────────────────────────────────────────
+    ew <- elo[[w]]; el <- elo[[l]]
+    w_elo_pre[i] <- ew; l_elo_pre[i] <- el
+
+    on_surface <- !is.na(s) && s %in% c("Hard","Clay","Grass")
+    if (on_surface) {
+      sw <- if (s=="Hard") elo_h[[w]] else if (s=="Clay") elo_c[[w]] else elo_g[[w]]
+      sl <- if (s=="Hard") elo_h[[l]] else if (s=="Clay") elo_c[[l]] else elo_g[[l]]
+    } else { sw <- ew; sl <- el }
+    w_selo_pre[i] <- sw; l_selo_pre[i] <- sl
+
+    # ── Overall H2H ──────────────────────────────────────────────────────────
+    key_wl <- paste0(w,"__",l); key_lw <- paste0(l,"__",w)
+    wl <- if (!is.null(h2h[[key_wl]])) h2h[[key_wl]] else 0L
+    lw <- if (!is.null(h2h[[key_lw]])) h2h[[key_lw]] else 0L
+    h2h_w[i] <- wl; h2h_l[i] <- lw
+    h2h[[key_wl]] <- wl + 1L
+
+    # ── Surface H2H ──────────────────────────────────────────────────────────
+    if (on_surface) {
+      skwl <- paste0(w,"__",l,"__",s); sklw <- paste0(l,"__",w,"__",s)
+      swl <- if (!is.null(h2h_surf[[skwl]])) h2h_surf[[skwl]] else 0L
+      slw <- if (!is.null(h2h_surf[[sklw]])) h2h_surf[[sklw]] else 0L
+      sh2h_w[i] <- swl; sh2h_l[i] <- slw
+      h2h_surf[[skwl]] <- swl + 1L
+    }
+
+    # ── Surface win rate ─────────────────────────────────────────────────────
+    if (on_surface) {
+      kws <- paste0(w,"__",s); kls <- paste0(l,"__",s)
+      wsw <- if (!is.null(surf_wins[[kws]])) surf_wins[[kws]] else 0L
+      wsn <- if (!is.null(surf_n[[kws]]))   surf_n[[kws]]    else 0L
+      lsw <- if (!is.null(surf_wins[[kls]])) surf_wins[[kls]] else 0L
+      lsn <- if (!is.null(surf_n[[kls]]))   surf_n[[kls]]    else 0L
+      w_swr_pre[i] <- if (wsn >= 10) wsw / wsn else NA_real_
+      l_swr_pre[i] <- if (lsn >= 10) lsw / lsn else NA_real_
+      surf_wins[[kws]] <- wsw + 1L
+      surf_n[[kws]]    <- wsn + 1L
+      surf_n[[kls]]    <- lsn + 1L
+    } else {
+      w_swr_pre[i] <- NA_real_; l_swr_pre[i] <- NA_real_
+    }
+
+    # ── Elo update ───────────────────────────────────────────────────────────
+    E_w   <- 1 / (1 + 10^((el - ew) / 400))
+    delta <- K * (1 - E_w)
+    elo[[w]] <- ew + delta; elo[[l]] <- el - delta
+    if (on_surface) {
+      if (s=="Hard")  { elo_h[[w]] <- sw+delta; elo_h[[l]] <- sl-delta
+      } else if (s=="Clay") { elo_c[[w]] <- sw+delta; elo_c[[l]] <- sl-delta
+      } else          { elo_g[[w]] <- sw+delta; elo_g[[l]] <- sl-delta }
+    }
+  }
+
+  list(
+    data = df |> mutate(
+      w_elo=w_elo_pre, l_elo=l_elo_pre,
+      w_surf_elo=w_selo_pre, l_surf_elo=l_selo_pre,
+      h2h_winner=h2h_w, h2h_loser=h2h_l,
+      surf_h2h_winner=sh2h_w, surf_h2h_loser=sh2h_l,
+      w_surf_wr=w_swr_pre, l_surf_wr=l_swr_pre
+    ),
+    final_elo=elo, final_elo_h=elo_h, final_elo_c=elo_c, final_elo_g=elo_g,
+    h2h=h2h, h2h_surf=h2h_surf, surf_wins=surf_wins, surf_n=surf_n
+  )
+}
+
+message("Computing features (sequential pass over ~200k matches)...")
+elo_result <- compute_elo_features(atp)
+atp_feat   <- elo_result$data
+message("Done.")
+```
+
+### Current Elo leaderboard
+
+```{r elo-leaderboard}
+name_map <- atp |>
+  arrange(tourney_date) |>
+  group_by(winner_id) |> slice_tail(n=1) |> ungroup() |>
+  select(player_id=winner_id, player_name=winner_name)
+
+elo_df <- tibble(
+  player_id = names(elo_result$final_elo),
+  elo       = unlist(elo_result$final_elo),
+  elo_hard  = unlist(elo_result$final_elo_h),
+  elo_clay  = unlist(elo_result$final_elo_c),
+  elo_grass = unlist(elo_result$final_elo_g)
+) |>
+  left_join(name_map, by="player_id") |>
+  filter(!is.na(player_name))
+
+active_ids <- atp |> filter(year >= 2020) |> pull(winner_id) |> unique()
+
+elo_df |>
+  filter(player_id %in% active_ids) |>
+  slice_max(elo, n=15) |>
+  mutate(rank=row_number()) |>
+  select(rank, player_name, elo, elo_hard, elo_clay, elo_grass) |>
+  mutate(across(where(is.numeric), \(x) round(x,0))) |>
+  gt() |>
+  tab_header("Top 15 ATP Players by Overall Elo",
+             subtitle = "Active since 2020 · end-of-dataset ratings") |>
+  cols_label(rank="#", player_name="Player",
+             elo="Overall", elo_hard="Hard", elo_clay="Clay", elo_grass="Grass") |>
+  data_color(columns=c(elo,elo_hard,elo_clay,elo_grass),
+             palette=c("#FFFFFF","#2171B5"), na_color="white")
+```
+
+### All-time peak Elo
+
+```{r all-time-elo}
+atp_feat |>
+  select(winner_name, loser_name, w_elo, l_elo) |>
+  pivot_longer(c(w_elo,l_elo), names_to="role", values_to="elo") |>
+  mutate(player=if_else(role=="w_elo", winner_name, loser_name)) |>
+  group_by(player) |> summarise(peak_elo=max(elo), .groups="drop") |>
+  slice_max(peak_elo, n=20) |>
+  mutate(player=fct_reorder(player,peak_elo)) |>
+  ggplot(aes(peak_elo, player)) +
+  geom_col(fill="#2171B5", alpha=0.85) +
+  geom_text(aes(label=round(peak_elo)), hjust=-0.1, size=3.5) +
+  scale_x_continuous(expand=expansion(mult=c(0,0.08))) +
+  labs(title="All-time peak Elo (ATP)",
+       subtitle="Highest pre-match Elo rating ever recorded",
+       x="Peak Elo", y=NULL)
+```
+
+### Surface specialists
+
+```{r surface-specialists}
+bind_rows(
+  elo_df |> filter(player_id %in% active_ids) |>
+    slice_max(elo_hard,  n=10) |> mutate(surface="Hard",  se=elo_hard),
+  elo_df |> filter(player_id %in% active_ids) |>
+    slice_max(elo_clay,  n=10) |> mutate(surface="Clay",  se=elo_clay),
+  elo_df |> filter(player_id %in% active_ids) |>
+    slice_max(elo_grass, n=10) |> mutate(surface="Grass", se=elo_grass)
+) |>
+  group_by(surface) |> mutate(player_name=fct_reorder(player_name,se)) |> ungroup() |>
+  ggplot(aes(se, player_name, fill=surface)) +
+  geom_col(show.legend=FALSE) +
+  scale_fill_manual(values=surface_cols) +
+  facet_wrap(~surface, scales="free_y") +
+  labs(title="Surface Elo leaders (active ATP players)", x="Surface Elo", y=NULL)
+```
+
+---
+
+## Feature Engineering
+
+### Recent form
+
+Each player's win rate over their **last 20 matches** prior to the match, computed using a lagged rolling mean.
+
+```{r recent-form}
+player_games <- bind_rows(
+  atp_feat |> select(tourney_date,row_idx,player_id=winner_id) |> mutate(won=1L),
+  atp_feat |> select(tourney_date,row_idx,player_id=loser_id)  |> mutate(won=0L)
+) |>
+  arrange(player_id, tourney_date, row_idx) |>
+  group_by(player_id) |>
+  mutate(
+    form_raw = zoo::rollapply(won, width=20, FUN=mean, fill=NA, align="right"),
+    form_pre = lag(form_raw, 1)
+  ) |>
+  ungroup()
+
+atp_feat <- atp_feat |>
+  left_join(player_games |> filter(won==1) |>
+              select(tourney_date,row_idx,player_id,w_form=form_pre),
+            by=c("tourney_date","row_idx","winner_id"="player_id")) |>
+  left_join(player_games |> filter(won==0) |>
+              select(tourney_date,row_idx,player_id,l_form=form_pre),
+            by=c("tourney_date","row_idx","loser_id"="player_id"))
+```
+
+### Building the training dataset
+
+Each match appears **twice** — once with the actual winner labelled player 1, once flipped — giving the model a symmetric view of all feature combinations.
+
+| Feature | Description |
+|---------|-------------|
+| `Elo diff` | P1 overall Elo − P2 overall Elo |
+| `Surface Elo diff` | P1 surface Elo − P2 surface Elo |
+| `log-Rank diff` | log(P2 rank) − log(P1 rank) |
+| `H2H share` | P1 share of all prior H2H matches (centred at 0) |
+| `Surface H2H share` | Same, restricted to this surface |
+| `Form diff` | P1 recent win% − P2 recent win% (last 20 matches) |
+| `Surface WR diff` | P1 surface win% − P2 surface win% (cumulative) |
+| `Age diff` | P1 age − P2 age (years) |
+| `Surface` | Clay / Grass / Hard (reference) |
+
+```{r build-training}
+set.seed(42)
+
+FEAT_NAMES <- c("Elo diff", "Surface Elo diff", "log-Rank diff",
+                "H2H share", "Surface H2H share", "Form diff",
+                "Surface WR diff", "Age diff",
+                "Surface: Clay", "Surface: Grass")
+
+model_data <- atp_feat |>
+  filter(
+    year >= 2000,
+    surface %in% c("Hard","Clay","Grass"),
+    !is.na(winner_rank), !is.na(loser_rank),
+    winner_rank > 0, loser_rank > 0
+  ) |>
+  mutate(flip = sample(c(TRUE,FALSE), n(), replace=TRUE)) |>
+  mutate(
+    p1_won        = if_else(!flip, 1L, 0L),
+    p1_elo        = if_else(!flip, w_elo,           l_elo),
+    p2_elo        = if_else(!flip, l_elo,           w_elo),
+    p1_selo       = if_else(!flip, w_surf_elo,      l_surf_elo),
+    p2_selo       = if_else(!flip, l_surf_elo,      w_surf_elo),
+    p1_rank       = if_else(!flip, winner_rank,     loser_rank),
+    p2_rank       = if_else(!flip, loser_rank,      winner_rank),
+    p1_h2h        = if_else(!flip, h2h_winner,      h2h_loser),
+    p2_h2h        = if_else(!flip, h2h_loser,       h2h_winner),
+    p1_sh2h       = if_else(!flip, surf_h2h_winner, surf_h2h_loser),
+    p2_sh2h       = if_else(!flip, surf_h2h_loser,  surf_h2h_winner),
+    p1_form       = if_else(!flip, w_form,          l_form),
+    p2_form       = if_else(!flip, l_form,          w_form),
+    p1_swr        = if_else(!flip, w_surf_wr,       l_surf_wr),
+    p2_swr        = if_else(!flip, l_surf_wr,       w_surf_wr),
+    p1_age        = if_else(!flip, winner_age,      loser_age),
+    p2_age        = if_else(!flip, loser_age,       winner_age),
+
+    `Elo diff`          = p1_elo  - p2_elo,
+    `Surface Elo diff`  = p1_selo - p2_selo,
+    `log-Rank diff`     = log(p2_rank+1) - log(p1_rank+1),
+    h2h_tot             = p1_h2h + p2_h2h,
+    `H2H share`         = if_else(h2h_tot>0, p1_h2h/h2h_tot, 0.5) - 0.5,
+    sh2h_tot            = p1_sh2h + p2_sh2h,
+    `Surface H2H share` = if_else(sh2h_tot>0, p1_sh2h/sh2h_tot, 0.5) - 0.5,
+    `Form diff`         = coalesce(p1_form, 0.5) - coalesce(p2_form, 0.5),
+    `Surface WR diff`   = p1_swr - p2_swr,        # NAs kept for XGBoost; GLM imputes 0
+    `Age diff`          = p1_age - p2_age,
+    `Surface: Clay`     = as.integer(surface == "Clay"),
+    `Surface: Grass`    = as.integer(surface == "Grass"),
+    surface             = factor(surface, levels=c("Hard","Clay","Grass"))
+  ) |>
+  select(year, tourney_date, surface, p1_won, all_of(FEAT_NAMES)) |>
+  filter(!is.na(`Elo diff`), !is.na(`Surface Elo diff`),
+         !is.na(`log-Rank diff`), !is.na(`Form diff`), !is.na(`Age diff`))
+
+split_year <- 2022
+train <- model_data |> filter(year < split_year)
+test  <- model_data |> filter(year >= split_year)
+
+cat(sprintf("Train: %s rows (%d–%d) | Test: %s rows (%d–%d)\n",
+            comma(nrow(train)), min(train$year), max(train$year),
+            comma(nrow(test)),  min(test$year),  max(test$year)))
+```
+
+### Feature distributions
+
+```{r feat-dist}
+#| fig-height: 7
+train |>
+  select(`Elo diff`, `Surface Elo diff`, `Form diff`,
+         `Surface WR diff`, `Age diff`, `log-Rank diff`) |>
+  pivot_longer(everything(), names_to="feature", values_to="value") |>
+  drop_na() |>
+  ggplot(aes(value)) +
+  geom_histogram(bins=60, fill="#2171B5", alpha=0.75) +
+  facet_wrap(~feature, scales="free") +
+  labs(title="Numeric feature distributions (training set)",
+       x=NULL, y="Count")
+```
+
+---
+
+## The Prediction Models
+
+### Why prediction is hard
+
+Tennis has inherent randomness — a player can be two-sets-to-love up and still lose, a knee twinge can cost a match, and best-of-five outcomes at Grand Slams carry more uncertainty than the scoreline suggests. Our model predicts the *probability* that the better player wins, not the exact score. The goal is *calibration*: a match predicted at 70% should be won by player 1 around 70% of the time across many such matches.
+
+### Model 1 — Logistic regression
+
+Logistic regression directly models the log-odds of player 1 winning as a linear combination of features:
+
+$$
+\log \frac{p}{1-p} = \beta_0 + \beta_1 \cdot \text{Elo diff} + \beta_2 \cdot \text{Surface Elo diff} + \cdots
+$$
+
+**Strengths:** Naturally well-calibrated (minimises log-loss), coefficients are directly interpretable as marginal log-odds effects, and it runs instantly. It works well here because the dominant signal — Elo difference — is approximately linear on the log-odds scale.
+
+**Limitations:** Assumes all features act *additively* on log-odds. It cannot capture interactions like *"H2H matters more when two players have similar Elo ratings"* or *"surface win rate is more predictive for clay specialists than for all-rounders"*.
+
+### Model 2 — XGBoost
+
+Gradient boosted trees build an ensemble of shallow decision trees where each tree corrects the residuals of the previous ones. The key advantages for this problem:
+
+- **Automatic interactions:** trees naturally split on multiple features at once, learning that the effect of Elo advantage depends on H2H and surface
+- **Non-linearity:** a large Elo gap means a near-certain win; a small gap makes every other feature count more — trees capture this threshold behaviour
+- **Native NA handling:** surface win rate and form are missing for new players; XGBoost learns the optimal direction to route these cases
+- **Regularisation:** depth limits, subsampling, and L2 penalties prevent overfitting despite a moderately sized feature set
+
+**Trade-off:** Gradient boosted trees are not interpretable by default. We recover interpretability via **SHAP values** (see below).
+
+### The Elo-only baseline
+
+Before adding any extra features, Elo's own expected win probability is already a strong predictor. Establishing this baseline tells us exactly how much value each additional feature adds.
+
+$$
+p_{\text{Elo}} = \frac{1}{1 + 10^{(\text{Elo}_2 - \text{Elo}_1)/400}}
+$$
+
+### SHAP values
+
+[SHAP (SHapley Additive exPlanations)](https://arxiv.org/abs/1705.07874) allocates each prediction's deviation from the average prediction fairly among all features, using Shapley values from cooperative game theory. For player 1's win probability in a specific match:
+
+$$
+\hat{f}(x) = \phi_0 + \sum_{i=1}^{p} \phi_i
+$$
+
+where $\phi_0$ is the baseline (average prediction over training data) and each $\phi_i$ is the SHAP contribution of feature $i$ for *this specific match*. For tree models, exact SHAP values can be computed efficiently — xgboost implements this natively.
+
+---
+
+## Model Training
+
+```{r elo-baseline}
+# Elo-only baseline: use Elo formula directly
+elo_prob <- function(elo_diff) 1 / (1 + 10^(-elo_diff / 400))
+
+test <- test |> mutate(prob_elo = elo_prob(`Elo diff`))
+
+auc_fn <- function(labels, probs) {
+  pos <- probs[labels==1]; neg <- probs[labels==0]
+  mean(outer(pos, neg, ">") + 0.5 * outer(pos, neg, "=="))
+}
+
+acc_elo <- mean((test$prob_elo > 0.5) == (test$p1_won == 1))
+auc_elo <- auc_fn(test$p1_won, test$prob_elo)
+cat(sprintf("Elo baseline  — Acc: %.1f%%  AUC: %.4f\n", 100*acc_elo, auc_elo))
+```
+
+```{r train-glm}
+# Logistic regression: impute Surface WR NAs with 0 (neutral)
+train_glm <- train |>
+  mutate(`Surface WR diff` = coalesce(`Surface WR diff`, 0))
+test_glm  <- test  |>
+  mutate(`Surface WR diff` = coalesce(`Surface WR diff`, 0))
+
+fit_glm <- glm(
+  p1_won ~ `Elo diff` + `Surface Elo diff` + `log-Rank diff` +
+           `H2H share` + `Surface H2H share` + `Form diff` +
+           `Surface WR diff` + `Age diff` + surface,
+  data   = train_glm,
+  family = binomial(link="logit")
+)
+
+test <- test |>
+  mutate(prob_glm = predict(fit_glm, newdata=test_glm, type="response"))
+
+acc_glm <- mean((test$prob_glm > 0.5) == (test$p1_won == 1))
+auc_glm <- auc_fn(test$p1_won, test$prob_glm)
+cat(sprintf("Logistic reg  — Acc: %.1f%%  AUC: %.4f\n", 100*acc_glm, auc_glm))
+```
+
+```{r train-xgb}
+make_xgb_matrix <- function(df) {
+  mat <- df |>
+    select(all_of(FEAT_NAMES)) |>
+    as.matrix()
+  colnames(mat) <- FEAT_NAMES
+  mat
+}
+
+X_train <- make_xgb_matrix(train); y_train <- train$p1_won
+X_test  <- make_xgb_matrix(test);  y_test  <- test$p1_won
+
+dtrain <- xgb.DMatrix(X_train, label=y_train)
+dtest  <- xgb.DMatrix(X_test,  label=y_test)
+
+xgb_params <- list(
+  objective        = "binary:logistic",
+  eval_metric      = "auc",
+  max_depth        = 4,
+  eta              = 0.05,
+  subsample        = 0.8,
+  colsample_bytree = 0.8,
+  min_child_weight = 10,
+  gamma            = 1
+)
+
+fit_xgb <- xgb.train(
+  params    = xgb_params,
+  data      = dtrain,
+  nrounds   = 300,
+  watchlist = list(train=dtrain, test=dtest),
+  verbose   = 0
+)
+
+test <- test |>
+  mutate(prob_xgb = predict(fit_xgb, dtest))
+
+acc_xgb <- mean((test$prob_xgb > 0.5) == (y_test == 1))
+auc_xgb <- auc_fn(y_test, test$prob_xgb)
+cat(sprintf("XGBoost       — Acc: %.1f%%  AUC: %.4f\n", 100*acc_xgb, auc_xgb))
+```
+
+### Logistic regression coefficients
+
+```{r coef-plot}
+broom::tidy(fit_glm, conf.int=TRUE) |>
+  filter(term != "(Intercept)") |>
+  mutate(term = str_replace_all(term, "`", ""),
+         term = recode(term, surfaceClay="Surface: Clay", surfaceGrass="Surface: Grass"),
+         term = fct_reorder(term, estimate)) |>
+  ggplot(aes(estimate, term, colour=estimate>0)) +
+  geom_vline(xintercept=0, linetype="dashed", colour="grey50") +
+  geom_errorbarh(aes(xmin=conf.low, xmax=conf.high), height=0.3) +
+  geom_point(size=3) +
+  scale_colour_manual(values=c("TRUE"="#2171B5","FALSE"="#CB4335"), guide="none") +
+  labs(title="Logistic regression — coefficients with 95% CI",
+       subtitle="Positive = increases log-odds of player 1 winning",
+       x="Log-odds coefficient", y=NULL)
+```
+
+All numeric features carry the expected sign. Note that `Surface WR diff` and `Surface H2H share` add independent information beyond the overall Elo and H2H features: they capture whether a player has historically performed *better or worse than their rating predicts* on this surface and against this specific opponent.
+
+---
+
+## Model Comparison
+
+```{r comparison-table}
+tibble(
+  Model       = c("Elo-only baseline", "Logistic regression", "XGBoost"),
+  Accuracy    = percent(c(acc_elo, acc_glm, acc_xgb), accuracy=0.1),
+  AUC         = round(c(auc_elo, auc_glm, auc_xgb), 4)
+) |>
+  gt() |>
+  tab_header("Model comparison — test set 2022–2025") |>
+  tab_style(
+    style     = list(cell_fill(color="#EBF5FB"), cell_text(weight="bold")),
+    locations = cells_body(rows=3)
+  )
+```
+
+The baseline Elo model is already remarkably competitive — a reminder that most of the predictable signal in tennis comes from the skill gap between players. The logistic model adds modest gains from surface H2H, form, and other features. XGBoost improves further by exploiting interactions and non-linear thresholds.
+
+### Calibration
+
+```{r calibration}
+#| fig-height: 4
+bind_rows(
+  test |> mutate(prob=prob_elo, model="Elo baseline"),
+  test |> mutate(prob=prob_glm, model="Logistic"),
+  test |> mutate(prob=prob_xgb, model="XGBoost")
+) |>
+  mutate(bin = cut(prob, breaks=seq(0,1,0.1), include.lowest=TRUE, right=FALSE)) |>
+  group_by(model, bin) |>
+  summarise(mean_pred=mean(prob), obs_rate=mean(p1_won), n=n(), .groups="drop") |>
+  ggplot(aes(mean_pred, obs_rate, colour=model)) +
+  geom_abline(linetype="dashed", colour="grey50") +
+  geom_line(linewidth=0.8) +
+  geom_point(aes(size=n), alpha=0.7) +
+  scale_colour_manual(values=c("Elo baseline"="#8E44AD",
+                               "Logistic"="#CB4335",
+                               "XGBoost"="#2171B5")) +
+  scale_x_continuous(labels=percent) +
+  scale_y_continuous(labels=percent) +
+  scale_size_continuous(labels=comma, name="n", guide="none") +
+  labs(title="Calibration — all three models",
+       subtitle="Predicted vs observed win rate per decile",
+       x="Predicted probability", y="Observed win rate", colour=NULL)
+```
+
+All three models are well-calibrated near the centre of the distribution; divergence at the tails reflects the relative scarcity of extreme predictions in the test set.
+
+### Accuracy by confidence band
+
+```{r accuracy-conf}
+bind_rows(
+  test |> mutate(prob=prob_glm, pred=(prob>0.5)*1L, model="Logistic"),
+  test |> mutate(prob=prob_xgb, pred=(prob>0.5)*1L, model="XGBoost")
+) |>
+  mutate(
+    conf   = abs(prob - 0.5),
+    bucket = cut(conf, breaks=c(0,0.1,0.2,0.3,0.4,0.5),
+                 labels=c("50–60%","60–70%","70–80%","80–90%","90–100%"))
+  ) |>
+  group_by(model, bucket) |>
+  summarise(acc=mean(pred==p1_won), n=n(), .groups="drop") |>
+  ggplot(aes(bucket, acc, fill=model)) +
+  geom_col(position="dodge", alpha=0.85) +
+  geom_hline(yintercept=0.5, linetype="dashed") +
+  scale_fill_manual(values=c("Logistic"="#CB4335","XGBoost"="#2171B5")) +
+  scale_y_continuous(labels=percent, limits=c(0,1)) +
+  labs(title="Accuracy by confidence band",
+       x="Predicted win probability range", y="Accuracy", fill=NULL)
+```
+
+---
+
+## Feature Importance via SHAP
+
+SHAP values answer *why* the model predicts what it predicts. We compute exact SHAP values for the XGBoost model on the full test set using xgboost's native tree-path algorithm — no approximations needed.
+
+```{r compute-shap}
+# predcontrib = TRUE returns SHAP matrix: (n × p+1), last col = baseline
+shap_mat   <- predict(fit_xgb, dtest, predcontrib=TRUE)
+n_feat     <- length(FEAT_NAMES)
+shap_vals  <- shap_mat[, 1:n_feat]
+colnames(shap_vals) <- FEAT_NAMES
+feat_vals  <- X_test
+
+# Mean absolute SHAP per feature (global importance)
+mean_abs_shap <- colMeans(abs(shap_vals), na.rm=TRUE)
+```
+
+### Global feature importance
+
+```{r shap-importance}
+tibble(feature=FEAT_NAMES, importance=mean_abs_shap) |>
+  mutate(feature=fct_reorder(feature, importance)) |>
+  ggplot(aes(importance, feature)) +
+  geom_col(fill="#2171B5", alpha=0.85) +
+  geom_text(aes(label=round(importance,4)), hjust=-0.1, size=3.5) +
+  scale_x_continuous(expand=expansion(mult=c(0,0.1))) +
+  labs(title="XGBoost feature importance — mean |SHAP|",
+       subtitle="Average absolute SHAP contribution across all test predictions",
+       x="Mean |SHAP value|", y=NULL)
+```
+
+### SHAP summary (beeswarm) plot
+
+Each point is one test match. The position on the x-axis shows how much that feature pushed the prediction toward player 1 (positive) or player 2 (negative). The colour shows the raw feature value — blue = high, red = low.
+
+```{r shap-beeswarm}
+#| fig-height: 6.5
+
+# Build long format for beeswarm
+set.seed(99)
+beeswarm_df <- map_dfr(FEAT_NAMES, function(f) {
+  sv   <- shap_vals[, f]
+  fv   <- feat_vals[, f]
+  # Robust 5–95th percentile normalisation for colour
+  lo   <- quantile(fv, 0.05, na.rm=TRUE)
+  hi   <- quantile(fv, 0.95, na.rm=TRUE)
+  fv_s <- pmin(pmax((fv - lo) / (hi - lo + 1e-9), 0), 1)
+  tibble(feature=f, shap=sv, feat_val=fv_s,
+         mean_abs=mean(abs(sv), na.rm=TRUE))
+}) |>
+  mutate(feature = fct_reorder(feature, mean_abs))
+
+beeswarm_df |>
+  ggplot(aes(shap, feature, colour=feat_val)) +
+  geom_jitter(height=0.22, size=0.35, alpha=0.35) +
+  geom_vline(xintercept=0, linetype="dashed", colour="grey40") +
+  scale_colour_gradient2(
+    low="firebrick3", mid="grey85", high="steelblue3",
+    midpoint=0.5, limits=c(0,1),
+    breaks=c(0,1), labels=c("Low","High"),
+    name="Feature\nvalue"
+  ) +
+  guides(colour=guide_colourbar(barheight=6, barwidth=0.8)) +
+  labs(title="SHAP summary plot — XGBoost",
+       subtitle="Each point = one test match  ·  x-axis = impact on P(player 1 wins)",
+       x="SHAP value (log-odds scale)", y=NULL)
+```
+
+**Reading the plot:** Elo difference dominates — a high Elo advantage (blue) pushes strongly positive. Surface Elo difference and log-Rank difference follow. Form difference and surface win rate contribute smaller but consistent effects. The H2H features matter most when players are well-matched and have a long history together.
+
+### SHAP waterfall — a single prediction
+
+A waterfall plot shows how each feature pushes a *specific* prediction above or below the baseline. The most interesting predictions to decompose are the close calls — when the model is near 50/50 every feature matters. We pick the test match closest to 50% win probability.
+
+```{r shap-waterfall}
+# Use the test row closest to 50-50 (most interesting prediction to decompose)
+match_idx <- which.min(abs(test$prob_xgb - 0.5))
+
+baseline    <- mean(predict(fit_xgb, dtrain))
+shap_single <- shap_vals[match_idx, ]
+pred_prob   <- test$prob_xgb[match_idx]
+outcome_lbl <- if_else(test$p1_won[match_idx] == 1L, "✓ P1 won", "✗ P1 lost")
+
+tibble(feature=FEAT_NAMES, shap=shap_single) |>
+  arrange(abs(shap)) |>
+  mutate(
+    feature = fct_reorder(feature, shap),
+    dir     = if_else(shap >= 0, "positive", "negative")
+  ) |>
+  ggplot(aes(shap, feature, fill=dir)) +
+  geom_col(alpha=0.9) +
+  geom_vline(xintercept=0, linetype="dashed", colour="grey40") +
+  scale_fill_manual(values=c("positive"="#2171B5","negative"="#CB4335"), guide="none") +
+  labs(
+    title    = sprintf("SHAP waterfall — test match #%d", match_idx),
+    subtitle = sprintf("Predicted P(P1 wins) = %.1f%% | Baseline = %.1f%% | Outcome: %s",
+                       100*pred_prob, 100*plogis(qlogis(baseline)), outcome_lbl),
+    x = "SHAP contribution (log-odds)", y = NULL
+  )
+```
+
+### SHAP dependence — does surface change the Elo effect?
+
+```{r shap-dependence}
+tibble(
+  elo_diff    = feat_vals[,"Elo diff"],
+  shap_elo    = shap_vals[,"Elo diff"],
+  surf_clay   = feat_vals[,"Surface: Clay"],
+  surf_grass  = feat_vals[,"Surface: Grass"]
+) |>
+  mutate(surface = case_when(
+    surf_clay  == 1 ~ "Clay",
+    surf_grass == 1 ~ "Grass",
+    TRUE            ~ "Hard"
+  )) |>
+  ggplot(aes(elo_diff, shap_elo, colour=surface)) +
+  geom_point(size=0.4, alpha=0.3) +
+  geom_smooth(method="loess", se=FALSE, linewidth=1) +
+  scale_colour_manual(values=surface_cols) +
+  labs(
+    title    = "SHAP dependence plot — Elo diff by surface",
+    subtitle = "Does the Elo advantage translate differently by surface?",
+    x = "Elo difference (P1 − P2)", y = "SHAP(Elo diff)",
+    colour = "Surface"
+  )
+```
+
+The dependence plot reveals whether the Elo advantage is more decisive on one surface than another. On clay, where longer rallies reward consistent baseline play, a given Elo gap may contribute more to the prediction than on grass, where variance is higher.
+
+---
+
+## Example Predictions
+
+The XGBoost model is used for final predictions (higher AUC), with logistic regression probabilities shown as a comparison.
+
+```{r example-preds}
+# Lookup helpers
+get_elo_vals <- function(nm) {
+  r <- elo_df |> filter(player_name==nm) |> slice(1)
+  if (nrow(r)==0) list(elo=1500, hard=1500, clay=1500, grass=1500)
+  else list(elo=r$elo, hard=r$elo_hard, clay=r$elo_clay, grass=r$elo_grass)
+}
+
+predict_match <- function(p1_name, p2_name, surface_str,
+                          fit_glm, fit_xgb, elo_df,
+                          h2h_overall, h2h_surface,
+                          recent_form_tbl) {
+  e1 <- get_elo_vals(p1_name); e2 <- get_elo_vals(p2_name)
+  p1_id <- elo_df |> filter(player_name==p1_name) |> pull(player_id)
+  p2_id <- elo_df |> filter(player_name==p2_name) |> pull(player_id)
+  p1_id <- if (length(p1_id)>0) p1_id[[1]] else ""
+  p2_id <- if (length(p2_id)>0) p2_id[[1]] else ""
+
+  p1_elo  <- e1$elo; p2_elo <- e2$elo
+  p1_selo <- switch(surface_str, Hard=e1$hard, Clay=e1$clay, Grass=e1$grass, e1$elo)
+  p2_selo <- switch(surface_str, Hard=e2$hard, Clay=e2$clay, Grass=e2$grass, e2$elo)
+
+  h12 <- if (!is.null(h2h_overall[[paste0(p1_id,"__",p2_id)]])) h2h_overall[[paste0(p1_id,"__",p2_id)]] else 0L
+  h21 <- if (!is.null(h2h_overall[[paste0(p2_id,"__",p1_id)]])) h2h_overall[[paste0(p2_id,"__",p1_id)]] else 0L
+  ht  <- h12+h21; h2h_pct <- if (ht>0) h12/ht-0.5 else 0.0
+
+  sh12 <- if (!is.null(h2h_surface[[paste0(p1_id,"__",p2_id,"__",surface_str)]])) h2h_surface[[paste0(p1_id,"__",p2_id,"__",surface_str)]] else 0L
+  sh21 <- if (!is.null(h2h_surface[[paste0(p2_id,"__",p1_id,"__",surface_str)]])) h2h_surface[[paste0(p2_id,"__",p1_id,"__",surface_str)]] else 0L
+  sht  <- sh12+sh21; sh2h_pct <- if (sht>0) sh12/sht-0.5 else 0.0
+
+  p1_form <- coalesce(recent_form_tbl |> filter(player_name==p1_name) |> pull(form) |> first(), 0.5)
+  p2_form <- coalesce(recent_form_tbl |> filter(player_name==p2_name) |> pull(form) |> first(), 0.5)
+
+  nd_glm <- tibble(
+    `Elo diff`=p1_elo-p2_elo, `Surface Elo diff`=p1_selo-p2_selo,
+    `log-Rank diff`=0L, `H2H share`=h2h_pct, `Surface H2H share`=sh2h_pct,
+    `Form diff`=p1_form-p2_form, `Surface WR diff`=0,
+    `Age diff`=0, surface=factor(surface_str,levels=c("Hard","Clay","Grass"))
+  )
+  nd_xgb <- matrix(
+    c(p1_elo-p2_elo, p1_selo-p2_selo, 0, h2h_pct, sh2h_pct,
+      p1_form-p2_form, NA, 0,
+      as.integer(surface_str=="Clay"), as.integer(surface_str=="Grass")),
+    nrow=1, dimnames=list(NULL, FEAT_NAMES)
+  )
+
+  list(
+    prob_glm = predict(fit_glm, nd_glm, type="response")[[1]],
+    prob_xgb = predict(fit_xgb, xgb.DMatrix(nd_xgb))[[1]]
+  )
+}
+
+recent_form_tbl <- player_games |>
+  group_by(player_id) |> slice_tail(n=1) |> ungroup() |>
+  left_join(name_map, by="player_id") |>
+  filter(!is.na(player_name)) |>
+  mutate(form=coalesce(form_raw, 0.5)) |>
+  select(player_name, form)
+
+matchups <- tribble(
+  ~p1,                 ~p2,                 ~surface,
+  "Novak Djokovic",    "Rafael Nadal",      "Clay",
+  "Novak Djokovic",    "Rafael Nadal",      "Hard",
+  "Novak Djokovic",    "Roger Federer",     "Grass",
+  "Carlos Alcaraz",    "Jannik Sinner",     "Hard",
+  "Carlos Alcaraz",    "Jannik Sinner",     "Clay",
+  "Carlos Alcaraz",    "Novak Djokovic",    "Grass",
+  "Jannik Sinner",     "Novak Djokovic",    "Hard",
+  "Daniil Medvedev",   "Carlos Alcaraz",    "Hard"
+)
+
+matchups <- matchups |>
+  rowwise() |>
+  mutate(
+    res = list(predict_match(p1, p2, surface, fit_glm, fit_xgb,
+                             elo_df, elo_result$h2h, elo_result$h2h_surf,
+                             recent_form_tbl)),
+    prob_glm = res$prob_glm,
+    prob_xgb = res$prob_xgb
+  ) |>
+  select(-res) |>
+  ungroup()
+
+matchups |>
+  mutate(
+    `P1 (GLM)`  = percent(prob_glm, accuracy=0.1),
+    `P1 (XGB)`  = percent(prob_xgb, accuracy=0.1),
+    `P2 (XGB)`  = percent(1-prob_xgb, accuracy=0.1),
+    `Odds P1`   = round(1/prob_xgb, 2),
+    `Odds P2`   = round(1/(1-prob_xgb), 2)
+  ) |>
+  rename(Player1=p1, Player2=p2, Surface=surface) |>
+  select(-prob_glm,-prob_xgb) |>
+  gt() |>
+  tab_header("Example match predictions",
+             subtitle="XGBoost model · implied decimal odds") |>
+  tab_spanner(label="Win probability", columns=c(`P1 (GLM)`,`P1 (XGB)`,`P2 (XGB)`)) |>
+  tab_spanner(label="Implied odds",    columns=c(`Odds P1`,`Odds P2`)) |>
+  tab_style(cell_fill("#EBF5FB"), cells_body(rows=seq(1,nrow(matchups),2)))
+```
+
+---
+
+## Saving Artifacts
+
+```{r save-artifacts}
+active_players <- atp |>
+  filter(year >= 2022) |>
+  select(winner_id, winner_name) |> distinct() |>
+  rename(player_id=winner_id, player_name=winner_name) |>
+  bind_rows(
+    atp |> filter(year >= 2022) |>
+      select(loser_id, loser_name) |> distinct() |>
+      rename(player_id=loser_id, player_name=loser_name)
+  ) |>
+  distinct(player_id, player_name) |>
+  left_join(elo_df |> select(player_id,elo,elo_hard,elo_clay,elo_grass),
+            by="player_id") |>
+  filter(!is.na(elo)) |>
+  arrange(desc(elo))
+
+artifacts <- list(
+  model_glm      = fit_glm,
+  model_xgb      = fit_xgb,
+  feat_names     = FEAT_NAMES,
+  elo_df         = elo_df,
+  h2h            = elo_result$h2h,
+  h2h_surf       = elo_result$h2h_surf,
+  surf_wins      = elo_result$surf_wins,
+  surf_n         = elo_result$surf_n,
+  recent_form    = recent_form_tbl,
+  active_players = active_players,
+  predict_fn     = predict_match
+)
+
+saveRDS(artifacts, file.path(data_dir, "tennis_model.rds"))
+message("Saved to data/tennis_model.rds")
+```
+
+**Results on held-out 2022–2025 data:**
+
+| Model | Accuracy | AUC |
+|-------|----------|-----|
+| Elo baseline | `r sprintf("%.1f%%", 100*acc_elo)` | `r round(auc_elo, 4)` |
+| Logistic regression | `r sprintf("%.1f%%", 100*acc_glm)` | `r round(auc_glm, 4)` |
+| XGBoost | `r sprintf("%.1f%%", 100*acc_xgb)` | `r round(auc_xgb, 4)` |
+
+The model and player ratings power the interactive [Tennis Match Predictor app](https://simen-bjerkelund.shinyapps.io/tennis-predictor/).
