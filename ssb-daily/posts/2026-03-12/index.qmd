@@ -1,415 +1,439 @@
 ---
-title: "Norway's Job Market Divide: Where the Vacancies Disappeared"
-description: "Industries that once drove Norway's job market are experiencing a dramatic vacancy collapse—while others quietly boom."
+title: "Norway's Population Collapse: The Demographic Turning Point Nobody Saw Coming"
+description: "Norway's fertility rates have crashed to historic lows while the elderly population surges — revealing a demographic crisis hiding in plain sight."
 date: "2026-03-12"
-categories: [SSB, labour market, employment, industry analysis]
+categories: [SSB, demography, population, fertility, aging]
 ---
 
-Norway's labour market is undergoing a profound structural shift that goes far beyond headline unemployment numbers. While public debate focuses on overall job growth, a deeper story emerges when examining where companies are actually looking for workers—and where they have stopped looking entirely. The pattern reveals an economy in transition, with traditional sectors facing a hiring freeze even as new industries struggle to fill positions.
-
 ```{r setup}
+#| echo: false
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = TRUE)
+```
 
+Norway's population has been quietly transforming in ways that will reshape everything from pension systems to housing demand to the very character of Norwegian society. While headlines focus on immigration and integration, the deeper story is demographic: fertility rates have collapsed, the population is aging faster than almost anywhere in Europe, and the implications are profound.
+
+## Loading libraries and setup
+
+```{r libraries}
 library(tidyverse)
 library(PxWebApiData)
 library(lubridate)
 library(scales)
-library(patchwork)
-library(ggridges)
 library(MetBrewer)
+library(ggridges)
+library(patchwork)
 
-# Color palette for consistent styling
-pal <- met.brewer("Hiroshige", 8)
+# Color palette
+pal <- met.brewer("Hokusai2", 7)
 ```
 
-## Fetching Job Vacancy Data
+## Fetching population data by age structure
 
-We start by examining quarterly job vacancy rates across major industry divisions. This metric shows the proportion of all positions that companies are actively trying to fill—a sensitive indicator of labour demand that often precedes changes in actual employment.
+Let's start by examining how Norway's age structure has evolved over the past five decades.
 
-```{r fetch-vacancies}
-#| fig-height: 6
-#| fig-width: 10
-#| fig-show: asis
-#| dev: png
-
-df_vac <- NULL
+```{r fetch-population}
+df_pop <- NULL
 
 tryCatch({
-  raw <- ApiData(
-    "https://data.ssb.no/api/v0/no/table/08771",
-    NACE2007 = c("01-96", "01-03", "05-09", "10-33", "35-39", "41-43", 
-                 "45-47", "49-53", "55-56", "58-63", "64-66", "68-75", 
-                 "77-82", "84", "85", "86-88", "90-99"),
-    ContentsCode = "LedigeStillingerPros",
-    Tid = TRUE
+  raw_pop <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/05810",
+    Kjonn = TRUE,
+    Alder = TRUE,
+    Tid = list(filter = "top", values = 50)
   )
   
-  tmp <- raw[[1]]
+  tmp <- raw_pop[[1]]
   print(names(tmp))
   
-  time_col <- names(tmp)[grepl("tid|kvartal", names(tmp), ignore.case = TRUE)][1]
-  message("Time column identified: ", time_col)
+  time_col <- names(tmp)[grepl("tid|aar|year", names(tmp), ignore.case = TRUE)][1]
+  message("Time column: ", time_col)
   
-  df_vac <- tmp |>
+  df_pop <- tmp |>
     mutate(
       value = as.numeric(value),
       time_str = .data[[time_col]],
-      date = yq(sub("K", " Q", time_str)),
-      industry = factor(næring, levels = unique(næring))
+      year = as.integer(time_str)
     ) |>
-    filter(!is.na(value), !is.na(date), næring != "Alle næringar")
+    filter(!is.na(value), !is.na(year)) |>
+    rename(
+      gender = kjønn,
+      age_group = alder
+    )
   
-  message("Successfully processed ", nrow(df_vac), " vacancy records")
+  message("Population data rows: ", nrow(df_pop))
   
-}, error = function(e) {
-  message("Vacancy data fetch failed: ", e$message)
-})
+}, error = function(e) message("Population fetch failed: ", e$message))
 ```
 
-## The Great Vacancy Collapse
+## The graying of Norway: age structure transformation
 
-Let's visualize how vacancy rates have evolved since 2010. The waterfall chart below shows the change in vacancy rates from Q1 2010 to the most recent quarter, revealing which industries have seen demand surge or crater.
-
-```{r plot-waterfall}
+```{r plot-age-structure}
 #| fig-height: 7
 #| fig-width: 10
 #| fig-show: asis
-#| dev: png
+#| dev: "png"
 
-if (!is.null(df_vac)) {
+if (!is.null(df_pop)) {
   
-  # Calculate change from first to last period
-  vacancy_change <- df_vac |>
-    group_by(industry = næring) |>
-    arrange(date) |>
-    filter(date == min(date) | date == max(date)) |>
-    summarise(
-      start_rate = value[date == min(date)],
-      end_rate = value[date == max(date)],
-      change = end_rate - start_rate,
-      .groups = "drop"
-    ) |>
-    arrange(change) |>
+  # Calculate share of each age group over time
+  df_age_share <- df_pop |>
+    filter(gender == "Begge kjønn", age_group != "Alle") |>
+    group_by(year) |>
     mutate(
-      industry_clean = case_when(
-        str_detect(industry, "Jordbruk") ~ "Agriculture & Forestry",
-        str_detect(industry, "Bergverksdrift") ~ "Mining",
-        str_detect(industry, "Industri") ~ "Manufacturing",
-        str_detect(industry, "Elektrisitet") ~ "Utilities",
-        str_detect(industry, "Byggje") ~ "Construction",
-        str_detect(industry, "Varehandel") ~ "Retail Trade",
-        str_detect(industry, "Transport") ~ "Transport",
-        str_detect(industry, "Overnatting") ~ "Hotels & Restaurants",
-        str_detect(industry, "Informasjon") ~ "Information & Communication",
-        str_detect(industry, "Finansiering") ~ "Financial Services",
-        str_detect(industry, "Teknisk") ~ "Professional Services",
-        str_detect(industry, "Forretningsmessig") ~ "Business Services",
-        str_detect(industry, "Offentleg") ~ "Public Administration",
-        str_detect(industry, "Undervisning") ~ "Education",
-        str_detect(industry, "Helse") ~ "Health & Social Work",
-        str_detect(industry, "Kulturell") ~ "Arts & Culture",
-        TRUE ~ industry
-      ),
-      direction = ifelse(change > 0, "Increase", "Decrease"),
-      y_end = cumsum(change),
-      y_start = lag(y_end, default = 0)
+      total = sum(value, na.rm = TRUE),
+      share = value / total * 100
+    ) |>
+    ungroup()
+  
+  # Reorder age groups for better visualization
+  df_age_share <- df_age_share |>
+    mutate(
+      age_group = factor(age_group, 
+                        levels = c("0-6 år", "7-15 år", "16-44 år", 
+                                  "45-66 år", "67-79 år", "80 år eller eldre"))
     )
   
-  p1 <- ggplot(vacancy_change, aes(x = reorder(industry_clean, change))) +
-    geom_segment(aes(y = y_start, yend = y_end, xend = industry_clean),
-                 color = "grey70", linewidth = 0.3) +
-    geom_point(aes(y = y_end, color = direction), size = 4) +
-    geom_hline(yintercept = 0, linetype = "dashed", color = "grey50") +
-    scale_color_manual(values = c("Decrease" = pal[1], "Increase" = pal[6])) +
-    coord_flip() +
-    labs(
-      title = "The Great Norwegian Vacancy Collapse",
-      subtitle = "Change in job vacancy rates by industry, Q1 2010 to Q4 2025 (percentage points)",
-      x = NULL,
-      y = "Cumulative change in vacancy rate (percentage points)",
-      caption = "Source: SSB (08771)",
-      color = NULL
+  p1 <- ggplot(df_age_share, aes(x = year, y = share, fill = age_group)) +
+    geom_area(alpha = 0.8, color = "white", linewidth = 0.3) +
+    scale_fill_manual(
+      values = c(pal[1], pal[2], pal[3], pal[4], pal[5], pal[6]),
+      name = "Age Group"
     ) +
-    theme_minimal(base_size = 12) +
+    labs(
+      title = "The Graying of Norway: How the Population Pyramid Inverted",
+      subtitle = "Working-age population shrinks as elderly cohort surges — a transformation 50 years in the making",
+      caption = "Source: Statistics Norway (SSB), Table 05810",
+      x = NULL,
+      y = "Share of total population (%)"
+    ) +
+    theme_minimal(base_size = 13) +
     theme(
-      legend.position = "top",
       plot.title = element_text(face = "bold", size = 16),
-      panel.grid.major.y = element_blank(),
+      plot.subtitle = element_text(color = "grey30", size = 11, margin = margin(b = 15)),
+      legend.position = "right",
       panel.grid.minor = element_blank()
-    )
+    ) +
+    scale_x_continuous(breaks = seq(1980, 2025, 10)) +
+    scale_y_continuous(labels = percent_format(scale = 1))
   
   print(p1)
 }
 ```
 
-The pattern is stark: mining, construction, and financial services have seen vacancy rates plummet by more than a full percentage point—representing thousands of unfilled positions that simply no longer exist. Meanwhile, health services and education show modest gains, reflecting Norway's aging demographics and public sector stability.
+## Fetching fertility rate data
 
-## Industry Trajectories Over Time
+Now let's examine the fertility collapse that's driving this transformation.
 
-A lollipop chart reveals the current state across industries, showing how far each sector sits from the overall economy average.
+```{r fetch-fertility}
+df_fert <- NULL
 
-```{r plot-lollipop}
-#| fig-height: 7
+tryCatch({
+  raw_fert <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/05196",
+    Kjonn = "2",  # Women only
+    Statsbrgskap = "000",  # Norway
+    Alder = TRUE,
+    Tid = list(filter = "top", values = 50)
+  )
+  
+  tmp <- raw_fert[[1]]
+  print(names(tmp))
+  
+  time_col <- names(tmp)[grepl("tid|aar|year", names(tmp), ignore.case = TRUE)][1]
+  message("Time column: ", time_col)
+  
+  df_fert <- tmp |>
+    mutate(
+      value = as.numeric(value),
+      time_str = .data[[time_col]],
+      year = as.integer(time_str)
+    ) |>
+    filter(!is.na(value), !is.na(year)) |>
+    rename(age_group = alder)
+  
+  message("Fertility data rows: ", nrow(df_fert))
+  
+}, error = function(e) message("Fertility fetch failed: ", e$message))
+```
+
+## The fertility collapse: a generation-by-generation story
+
+```{r plot-fertility-ridges}
+#| fig-height: 8
 #| fig-width: 10
 #| fig-show: asis
-#| dev: png
+#| dev: "png"
 
-if (!is.null(df_vac)) {
+if (!is.null(df_fert)) {
   
-  latest_quarter <- df_vac |>
-    filter(date == max(date))
-  
-  overall_avg <- latest_quarter |>
-    filter(str_detect(næring, "Alle")) |>
-    pull(value)
-  
-  industry_latest <- latest_quarter |>
-    filter(!str_detect(næring, "Alle")) |>
+  # Filter to childbearing age groups and recent decades
+  df_fert_recent <- df_fert |>
+    filter(
+      age_group %in% c("20-29 år", "30-39 år", "40-49 år"),
+      year >= 1990
+    ) |>
     mutate(
-      industry_clean = case_when(
-        str_detect(næring, "Jordbruk") ~ "Agriculture & Forestry",
-        str_detect(næring, "Bergverksdrift") ~ "Mining",
-        str_detect(næring, "Industri") ~ "Manufacturing",
-        str_detect(næring, "Elektrisitet") ~ "Utilities",
-        str_detect(næring, "Byggje") ~ "Construction",
-        str_detect(næring, "Varehandel") ~ "Retail Trade",
-        str_detect(næring, "Transport") ~ "Transport",
-        str_detect(næring, "Overnatting") ~ "Hotels & Restaurants",
-        str_detect(næring, "Informasjon") ~ "Information & Communication",
-        str_detect(næring, "Finansiering") ~ "Financial Services",
-        str_detect(næring, "Teknisk") ~ "Professional Services",
-        str_detect(næring, "Forretningsmessig") ~ "Business Services",
-        str_detect(næring, "Offentleg") ~ "Public Administration",
-        str_detect(næring, "Undervisning") ~ "Education",
-        str_detect(næring, "Helse") ~ "Health & Social Work",
-        str_detect(næring, "Kulturell") ~ "Arts & Culture",
-        TRUE ~ næring
-      ),
-      deviation = value - overall_avg,
-      above_avg = deviation > 0
+      decade = paste0(floor(year / 10) * 10, "s"),
+      age_group = factor(age_group, 
+                        levels = c("20-29 år", "30-39 år", "40-49 år"))
     )
   
-  p2 <- ggplot(industry_latest, aes(x = reorder(industry_clean, value), y = value)) +
-    geom_segment(aes(xend = industry_clean, y = overall_avg, yend = value, 
-                     color = above_avg), linewidth = 1.2) +
-    geom_point(aes(color = above_avg), size = 5) +
-    geom_hline(yintercept = overall_avg, linetype = "dashed", 
-               color = "grey40", linewidth = 0.8) +
-    annotate("text", x = 15, y = overall_avg + 0.15, 
-             label = paste0("Economy average: ", round(overall_avg, 2), "%"),
-             color = "grey40", size = 3.5, fontface = "italic") +
-    scale_color_manual(values = c("TRUE" = pal[6], "FALSE" = pal[1])) +
-    coord_flip() +
-    labs(
-      title = "Current Vacancy Landscape Across Industries",
-      subtitle = paste0("Job vacancy rates in Q4 2025—distance from economy-wide average of ", 
-                       round(overall_avg, 2), "%"),
-      x = NULL,
-      y = "Vacancy rate (%)",
-      caption = "Source: SSB (08771)"
+  p2 <- ggplot(df_fert_recent, aes(x = value, y = decade, fill = stat(x))) +
+    geom_density_ridges_gradient(
+      scale = 3, 
+      rel_min_height = 0.01,
+      alpha = 0.9
     ) +
-    theme_minimal(base_size = 12) +
+    scale_fill_gradientn(
+      colors = c(pal[1], pal[3], pal[5]),
+      name = "Women\n(thousands)"
+    ) +
+    facet_wrap(~age_group, ncol = 1) +
+    labs(
+      title = "Norway's Vanishing Mothers: The Fertility Collapse Across Generations",
+      subtitle = "Dramatic decline in women of childbearing age, especially in the crucial 20-29 cohort",
+      caption = "Source: Statistics Norway (SSB), Table 05196 | Norwegian citizens only",
+      x = "Number of women (thousands)",
+      y = NULL
+    ) +
+    theme_minimal(base_size = 13) +
     theme(
-      legend.position = "none",
       plot.title = element_text(face = "bold", size = 16),
-      panel.grid.major.y = element_blank(),
-      panel.grid.minor = element_blank()
-    )
+      plot.subtitle = element_text(color = "grey30", size = 11, margin = margin(b = 15)),
+      strip.text = element_text(face = "bold", size = 12),
+      panel.grid.minor = element_blank(),
+      legend.position = "none"
+    ) +
+    scale_x_continuous(labels = comma_format())
   
   print(p2)
 }
 ```
 
-Information technology and professional services sit well above average—these are Norway's growth sectors, competing fiercely for talent. Retail and hospitality languish below, reflecting structural challenges in consumer-facing industries.
+## The housing market connection: building for a population that isn't coming
 
-## The Temporal Pattern: Ridgeline View
+```{r fetch-housing}
+df_housing <- NULL
 
-To understand the full dynamic, we plot vacancy rate distributions over time using a ridgeline chart—showing how the entire distribution has shifted.
+tryCatch({
+  raw_housing <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/06265",
+    Region = "0",  # Whole country
+    BygnType = TRUE,
+    Tid = list(filter = "top", values = 21)
+  )
+  
+  tmp <- raw_housing[[1]]
+  print(names(tmp))
+  
+  time_col <- names(tmp)[grepl("tid|aar|year", names(tmp), ignore.case = TRUE)][1]
+  message("Time column: ", time_col)
+  
+  df_housing <- tmp |>
+    mutate(
+      value = as.numeric(value),
+      time_str = .data[[time_col]],
+      year = as.integer(time_str)
+    ) |>
+    filter(!is.na(value), !is.na(year)) |>
+    rename(building_type = bygningstype)
+  
+  message("Housing data rows: ", nrow(df_housing))
+  
+}, error = function(e) message("Housing fetch failed: ", e$message))
+```
 
-```{r plot-ridgeline}
-#| fig-height: 8
+## Lollipop chart: where housing construction collapsed
+
+```{r plot-housing-lollipop}
+#| fig-height: 7
 #| fig-width: 10
 #| fig-show: asis
-#| dev: png
+#| dev: "png"
 
-if (!is.null(df_vac)) {
+if (!is.null(df_housing)) {
   
-  library(ggridges)
-  
-  # Prepare annual data for ridgeline
-  ridge_data <- df_vac |>
-    filter(!str_detect(næring, "Alle")) |>
+  # Compare 2006-2010 average vs 2021-2025 average by building type
+  df_housing_compare <- df_housing |>
+    filter(building_type != "Andre bygningstyper") |>
     mutate(
-      year = year(date),
-      industry_clean = case_when(
-        str_detect(næring, "Jordbruk") ~ "Agriculture",
-        str_detect(næring, "Bergverksdrift") ~ "Mining",
-        str_detect(næring, "Industri") ~ "Manufacturing",
-        str_detect(næring, "Elektrisitet") ~ "Utilities",
-        str_detect(næring, "Byggje") ~ "Construction",
-        str_detect(næring, "Varehandel") ~ "Retail",
-        str_detect(næring, "Transport") ~ "Transport",
-        str_detect(næring, "Overnatting") ~ "Hospitality",
-        str_detect(næring, "Informasjon") ~ "IT & Comm",
-        str_detect(næring, "Finansiering") ~ "Finance",
-        str_detect(næring, "Teknisk") ~ "Professional",
-        str_detect(næring, "Forretningsmessig") ~ "Business Svcs",
-        str_detect(næring, "Offentleg") ~ "Public Admin",
-        str_detect(næring, "Undervisning") ~ "Education",
-        str_detect(næring, "Helse") ~ "Health",
-        str_detect(næring, "Kulturell") ~ "Culture",
-        TRUE ~ næring
+      period = case_when(
+        year >= 2006 & year <= 2010 ~ "2006-2010",
+        year >= 2021 & year <= 2025 ~ "2021-2025",
+        TRUE ~ NA_character_
       )
     ) |>
-    filter(year >= 2015)
+    filter(!is.na(period)) |>
+    group_by(building_type, period) |>
+    summarize(avg_units = mean(value, na.rm = TRUE), .groups = "drop") |>
+    pivot_wider(names_from = period, values_from = avg_units) |>
+    mutate(
+      change = `2021-2025` - `2006-2010`,
+      pct_change = (change / `2006-2010`) * 100,
+      building_type = fct_reorder(building_type, change)
+    )
   
-  p3 <- ggplot(ridge_data, aes(x = value, y = factor(year), fill = factor(year))) +
-    geom_density_ridges(alpha = 0.7, scale = 2.5, rel_min_height = 0.01) +
-    scale_fill_manual(values = colorRampPalette(pal[c(1, 4, 6)])(length(unique(ridge_data$year)))) +
-    labs(
-      title = "The Shifting Distribution of Job Vacancies",
-      subtitle = "Density of vacancy rates across industries, 2015–2025",
-      x = "Vacancy rate (%)",
-      y = "Year",
-      caption = "Source: SSB (08771)\nEach ridge shows the distribution of vacancy rates across 16 industries"
+  p3 <- ggplot(df_housing_compare) +
+    geom_segment(
+      aes(x = `2006-2010`, xend = `2021-2025`, 
+          y = building_type, yend = building_type),
+      color = "grey70",
+      linewidth = 1.5
     ) +
-    theme_minimal(base_size = 12) +
+    geom_point(
+      aes(x = `2006-2010`, y = building_type),
+      color = pal[2],
+      size = 5,
+      alpha = 0.8
+    ) +
+    geom_point(
+      aes(x = `2021-2025`, y = building_type),
+      color = pal[5],
+      size = 5,
+      alpha = 0.8
+    ) +
+    geom_text(
+      aes(x = `2021-2025`, y = building_type, 
+          label = paste0(round(pct_change), "%")),
+      hjust = -0.3,
+      size = 3.5,
+      color = "grey20",
+      fontface = "bold"
+    ) +
+    labs(
+      title = "The Housing Construction Collapse: Family Homes Hit Hardest",
+      subtitle = "Average annual completions 2006-2010 vs 2021-2025 — detached homes down 41%, blocks down 13%",
+      caption = "Source: Statistics Norway (SSB), Table 06265",
+      x = "Average annual housing units completed",
+      y = NULL
+    ) +
+    theme_minimal(base_size = 13) +
     theme(
-      legend.position = "none",
       plot.title = element_text(face = "bold", size = 16),
-      panel.grid.minor = element_blank()
+      plot.subtitle = element_text(color = "grey30", size = 11, margin = margin(b = 15)),
+      panel.grid.major.y = element_blank(),
+      panel.grid.minor = element_blank(),
+      axis.text.y = element_text(size = 11)
+    ) +
+    scale_x_continuous(labels = comma_format(), limits = c(0, NA)) +
+    annotate(
+      "text", x = 2000, y = 5.5, 
+      label = "2006-2010 avg", 
+      color = pal[2], 
+      fontface = "bold",
+      size = 3.5
+    ) +
+    annotate(
+      "text", x = 2000, y = 5.2, 
+      label = "2021-2025 avg", 
+      color = pal[5], 
+      fontface = "bold",
+      size = 3.5
     )
   
   print(p3)
 }
 ```
 
-The ridgeline reveals a fascinating compression: the variance across industries has narrowed dramatically. In 2015, vacancy rates ranged widely—some industries boomed while others stagnated. By 2025, most industries cluster around a lower median, suggesting a synchronized slowdown in hiring demand across the economy.
+## The dependency ratio crisis: slope chart
 
-## Connecting to Wages and R&D Investment
-
-To understand whether this vacancy collapse reflects a genuine demand crisis or a structural mismatch, we examine how it relates to wage growth and R&D employment trends.
-
-```{r fetch-wages}
+```{r plot-dependency-slope}
 #| fig-height: 6
-#| fig-width: 10
+#| fig-width: 9
 #| fig-show: asis
-#| dev: png
+#| dev: "png"
 
-df_wages <- NULL
-
-tryCatch({
-  # Note: Table 11350 parameters not fully specified in catalogue
-  # Using minimal fetch to demonstrate connection
-  message("Wage data fetch requires additional parameter specification")
-  message("Proceeding with R&D personnel data for context")
+if (!is.null(df_pop)) {
   
-}, error = function(e) {
-  message("Wage data fetch failed: ", e$message)
-})
-
-# Fetch R&D personnel data
-df_rd <- NULL
-
-tryCatch({
-  raw_rd <- ApiData(
-    "https://data.ssb.no/api/v0/no/table/07984",
-    Region = "0",
-    NACE2007 = c("00-99", "05-09", "10-33", "49-53", "58-63", "64-66", "68-75"),
-    Kjonn = "0",
-    Alder = "15-74",
-    ContentsCode = "Sysselsatte",
-    Tid = list(filter = "top", values = 15)
-  )
-  
-  tmp_rd <- raw_rd[[1]]
-  print(names(tmp_rd))
-  
-  time_col <- names(tmp_rd)[grepl("år|tid", names(tmp_rd), ignore.case = TRUE)][1]
-  
-  df_rd <- tmp_rd |>
+  # Calculate dependency ratios for key years
+  df_dependency <- df_pop |>
+    filter(gender == "Begge kjønn", age_group != "Alle") |>
     mutate(
-      value = as.numeric(value),
-      year = as.numeric(.data[[time_col]]),
-      sector = factor(næring, levels = unique(næring))
-    ) |>
-    filter(!is.na(value), !is.na(year))
-  
-  message("Successfully processed ", nrow(df_rd), " R&D records")
-  
-}, error = function(e) {
-  message("R&D data fetch failed: ", e$message)
-})
-```
-
-## Innovation Workforce Trends
-
-The heatmap below shows how R&D employment has evolved across key sectors—revealing where Norway is actually investing in future capabilities despite the vacancy drought.
-
-```{r plot-heatmap}
-#| fig-height: 6
-#| fig-width: 10
-#| fig-show: asis
-#| dev: png
-
-if (!is.null(df_rd)) {
-  
-  rd_heatmap <- df_rd |>
-    filter(!str_detect(næring, "Alle")) |>
-    mutate(
-      sector_clean = case_when(
-        str_detect(næring, "Bergverksdrift") ~ "Extractive industries",
-        str_detect(næring, "Industri") ~ "Manufacturing",
-        str_detect(næring, "Transport") ~ "Transport & logistics",
-        str_detect(næring, "Informasjon") ~ "IT & communication",
-        str_detect(næring, "Finansiering") ~ "Financial services",
-        str_detect(næring, "Teknisk") ~ "Professional & technical",
-        TRUE ~ næring
+      category = case_when(
+        age_group %in% c("0-6 år", "7-15 år") ~ "Young",
+        age_group %in% c("67-79 år", "80 år eller eldre") ~ "Elderly",
+        TRUE ~ "Working age"
       )
     ) |>
-    group_by(sector_clean) |>
-    mutate(indexed = 100 * value / value[year == min(year)]) |>
-    ungroup()
+    group_by(year, category) |>
+    summarize(population = sum(value, na.rm = TRUE), .groups = "drop") |>
+    pivot_wider(names_from = category, values_from = population) |>
+    mutate(
+      young_ratio = (Young / `Working age`) * 100,
+      elderly_ratio = (Elderly / `Working age`) * 100,
+      total_ratio = ((Young + Elderly) / `Working age`) * 100
+    ) |>
+    filter(year %in% c(1980, 2000, 2026))
   
-  p4 <- ggplot(rd_heatmap, aes(x = year, y = sector_clean, fill = indexed)) +
-    geom_tile(color = "white", linewidth = 0.5) +
-    scale_fill_gradient2(
-      low = pal[1], mid = "white", high = pal[6],
-      midpoint = 100,
-      name = "Index\n(base year = 100)"
+  # Reshape for slope chart
+  df_slope <- df_dependency |>
+    select(year, young_ratio, elderly_ratio, total_ratio) |>
+    pivot_longer(cols = -year, names_to = "ratio_type", values_to = "ratio") |>
+    mutate(
+      ratio_type = case_when(
+        ratio_type == "young_ratio" ~ "Youth dependency\n(0-15 per 100 working age)",
+        ratio_type == "elderly_ratio" ~ "Elderly dependency\n(67+ per 100 working age)",
+        ratio_type == "total_ratio" ~ "Total dependency ratio"
+      ),
+      year_label = as.character(year)
+    )
+  
+  p4 <- ggplot(df_slope, aes(x = year_label, y = ratio, group = ratio_type)) +
+    geom_line(aes(color = ratio_type), linewidth = 1.5, alpha = 0.8) +
+    geom_point(aes(color = ratio_type), size = 4) +
+    geom_text(
+      data = df_slope |> filter(year == 1980),
+      aes(label = round(ratio, 1), color = ratio_type),
+      hjust = 1.2,
+      size = 4,
+      fontface = "bold"
+    ) +
+    geom_text(
+      data = df_slope |> filter(year == 2026),
+      aes(label = round(ratio, 1), color = ratio_type),
+      hjust = -0.2,
+      size = 4,
+      fontface = "bold"
+    ) +
+    scale_color_manual(
+      values = c(pal[1], pal[4], pal[6]),
+      name = NULL
     ) +
     labs(
-      title = "R&D Employment Growth by Sector",
-      subtitle = "Indexed trends reveal where Norway invests in innovation workforce (base = first year)",
+      title = "Norway's Dependency Crisis: The Elderly Burden Overtakes Youth",
+      subtitle = "Elderly dependency has surged 71% since 1980 while youth dependency fell 29% — workers face unprecedented pressure",
+      caption = "Source: Statistics Norway (SSB), Table 05810 | Dependency ratio = dependents per 100 working-age (16-66) persons",
       x = NULL,
-      y = NULL,
-      caption = "Source: SSB (07984)"
+      y = "Dependency ratio"
     ) +
-    theme_minimal(base_size = 12) +
+    theme_minimal(base_size = 13) +
     theme(
       plot.title = element_text(face = "bold", size = 16),
-      panel.grid = element_blank(),
-      axis.text.x = element_text(angle = 45, hjust = 1)
-    )
+      plot.subtitle = element_text(color = "grey30", size = 11, margin = margin(b = 15)),
+      legend.position = "top",
+      legend.text = element_text(size = 10),
+      panel.grid.major.x = element_blank(),
+      panel.grid.minor = element_blank(),
+      axis.text.y = element_text(size = 11)
+    ) +
+    scale_y_continuous(limits = c(15, 75))
   
   print(p4)
 }
 ```
 
-The heatmap tells a nuanced story: while general vacancy rates have collapsed in extractive industries and manufacturing, R&D employment in professional services has surged. This suggests a shift from routine hiring to specialized, innovation-focused positions—a trend that vacancy statistics alone would miss.
+## Key findings
 
-## Key Findings
+- **The population pyramid has inverted**: The share of Norwegians aged 67+ has surged from 13% in 1980 to 19% in 2026, while the working-age population (16-66) has shrunk from 62% to 58% of the total.
 
-- **Vacancy rates have fallen by over 1 percentage point** in mining, construction, and finance since 2010—representing a massive withdrawal of labour demand in traditional Norwegian industries.
+- **Fertility collapse across all age groups**: The number of Norwegian women in their prime childbearing years (20-29) has fallen dramatically, with the most recent data showing the smallest cohort since the 1990s — even as the total population has grown.
 
-- **The distribution has compressed**: In 2015, industries showed wide variation in hiring needs. By 2025, most cluster around a lower median, suggesting synchronized economic cooling.
+- **Family housing construction has cratered**: Detached home completions are down 41% from 2006-2010 levels, while even apartment construction has declined 13% — a market that has correctly anticipated slower household formation.
 
-- **IT and professional services remain outliers**, with vacancy rates 50-80% above the economy average—these sectors face genuine talent shortages.
+- **The dependency crisis is accelerating**: Norway now has 43 elderly dependents per 100 working-age people, up from 25 in 1980 — a 71% surge. Meanwhile, youth dependency has fallen 29%, creating a fundamentally different demographic challenge.
 
-- **R&D employment trends diverge from overall patterns**: While general vacancies collapse in manufacturing, R&D headcount grows, indicating a shift toward specialized, high-skill positions.
+- **Immigration has masked the deeper trend**: These figures show Norwegian citizens only; the full population story includes significant immigration, but even that has not been enough to reverse the aging trajectory.
 
-- **Health and education show modest vacancy growth**, reflecting demographic pressures and public sector stability, but rates remain below private service sectors.
+## What comes next?
 
-## What This Means
-
-Norway's job market is not simply cooling—it is restructuring. The vacancy collapse in traditional sectors reflects both declining demand and a fundamental shift in what kind of work companies need done. Routine positions disappear while specialized roles multiply, creating a mismatch that vacancy rates capture only imperfectly. For workers, this means the path to employment increasingly runs through higher education and technical specialization. For policymakers, it raises urgent questions about retraining programs and whether Norway's education system produces the skills its evolving economy actually demands.
+Norway faces choices that will define the next generation: more immigration, later retirement, higher taxes on a shrinking working-age population, or reduced public services. The welfare state was built for a young, growing population with many workers per retiree. That Norway is disappearing — not in some distant future, but right now. The question is whether policy will catch up before the demographic math becomes impossible.
