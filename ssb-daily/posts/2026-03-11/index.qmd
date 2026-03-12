@@ -341,10 +341,10 @@ if (!is.null(df)) {
 #| echo: false
 
 # Initialize with defaults in case df is NULL
-decline_pct <- NA; decline_abs <- NA
-total_2005 <- NA; total_2020 <- NA
-misdem_decline <- NA; felony_change <- NA
-biggest_drop_age <- NA; biggest_drop_n <- NA
+decline_pct <- NA_real_; decline_abs <- NA_real_
+total_2005 <- NA_real_; total_2020 <- NA_real_
+misdem_decline <- NA_real_; felony_change <- NA_real_
+biggest_drop_age <- NA_character_; biggest_drop_n <- NA_real_
 
 if (!is.null(df)) {
   
