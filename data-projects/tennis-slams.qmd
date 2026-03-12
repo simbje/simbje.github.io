@@ -114,23 +114,16 @@ if (!file.exists(points_cache)) {
 # ── Clean & type-cast ─────────────────────────────────────────────────────────
 pts <- points_raw |>
   mutate(
-    year          = as.integer(year),
-    SetNo         = as.integer(SetNo),
-    GameNo        = as.integer(GameNo),
-    PointNumber   = as.integer(PointNumber),
-    PointServer   = as.integer(PointServer),
-    PointWinner   = as.integer(PointWinner),
-    GameWinner    = as.integer(GameWinner),
-    RallyCount    = as.integer(RallyCount),
-    Speed_KMH     = as.numeric(Speed_KMH),
-    P1DistanceRun = as.numeric(P1DistanceRun),
-    P2DistanceRun = as.numeric(P2DistanceRun),
-    across(c(P1Ace, P2Ace, P1Winner, P2Winner,
+    across(c(year, SetNo, GameNo, PointNumber, PointServer,
+             PointWinner, GameWinner, RallyCount,
+             P1Ace, P2Ace, P1Winner, P2Winner,
              P1DoubleFault, P2DoubleFault,
              P1UnfErr, P2UnfErr,
              P1BreakPoint, P2BreakPoint,
              P1BreakPointWon, P2BreakPointWon),
-           as.integer),
+           \(x) suppressWarnings(as.integer(x))),
+    across(c(Speed_KMH, P1DistanceRun, P2DistanceRun),
+           \(x) suppressWarnings(as.numeric(x))),
     slam_label = slam_labels[slam]
   )
 
