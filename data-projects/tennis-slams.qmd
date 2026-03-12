@@ -6,7 +6,7 @@ categories: [Tennis, R, Data Analysis]
 execute:
   warning: false
   message: false
-  freeze: false
+  freeze: auto
 ---
 
 ```{r setup}
@@ -114,15 +114,15 @@ if (!file.exists(points_cache)) {
 # ── Clean & type-cast ─────────────────────────────────────────────────────────
 pts <- points_raw |>
   mutate(
-    across(c(year, SetNo, GameNo, PointNumber, PointServer,
-             PointWinner, GameWinner, RallyCount,
-             P1Ace, P2Ace, P1Winner, P2Winner,
-             P1DoubleFault, P2DoubleFault,
-             P1UnfErr, P2UnfErr,
-             P1BreakPoint, P2BreakPoint,
-             P1BreakPointWon, P2BreakPointWon),
+    across(any_of(c("year", "SetNo", "GameNo", "PointNumber", "PointServer",
+                    "PointWinner", "GameWinner", "RallyCount",
+                    "P1Ace", "P2Ace", "P1Winner", "P2Winner",
+                    "P1DoubleFault", "P2DoubleFault",
+                    "P1UnfErr", "P2UnfErr",
+                    "P1BreakPoint", "P2BreakPoint",
+                    "P1BreakPointWon", "P2BreakPointWon")),
            \(x) suppressWarnings(as.integer(x))),
-    across(c(Speed_KMH, P1DistanceRun, P2DistanceRun),
+    across(any_of(c("Speed_KMH", "P1DistanceRun", "P2DistanceRun")),
            \(x) suppressWarnings(as.numeric(x))),
     slam_label = slam_labels[slam]
   )
@@ -211,22 +211,26 @@ First serves are substantially faster than second serves at every slam. Hard-cou
 #| fig-height: 5
 #| fig-width: 11
 
-pts |>
+speed_df <- pts |>
   filter(!is.na(Speed_KMH), Speed_KMH > 100, Speed_KMH < 260,
          ServeIndicator %in% c("1", "2")) |>
   mutate(
     serve = if_else(ServeIndicator == "1", "1st serve", "2nd serve"),
     slam_label = slam_labels[slam]
-  ) |>
-  ggplot(aes(Speed_KMH, fill = slam)) +
-  geom_density(alpha = 0.65, colour = NA) +
-  scale_fill_manual(values = slam_cols, labels = slam_labels) +
-  facet_grid(serve ~ slam_label) +
-  labs(
-    title = "Serve speed distribution by slam and serve number",
-    x = "Speed (km/h)", y = "Density", fill = NULL
-  ) +
-  theme(legend.position = "none")
+  )
+
+if (nrow(speed_df) > 0) {
+  speed_df |>
+    ggplot(aes(Speed_KMH, fill = slam)) +
+    geom_density(alpha = 0.65, colour = NA) +
+    scale_fill_manual(values = slam_cols, labels = slam_labels) +
+    facet_grid(serve ~ slam_label) +
+    labs(
+      title = "Serve speed distribution by slam and serve number",
+      x = "Speed (km/h)", y = "Density", fill = NULL
+    ) +
+    theme(legend.position = "none")
+}
 ```
 
 ```{r serve-speed-trend}
@@ -259,7 +263,7 @@ Does a server change their target when facing a break point? `ServeWidth` encode
 #| fig-height: 6
 #| fig-width: 11
 
-pts |>
+dir_df <- pts |>
   filter(!is.na(ServeWidth), ServeWidth != "", ServeIndicator == "1") |>
   mutate(
     direction = case_when(
@@ -278,18 +282,22 @@ pts |>
   count(slam, pressure, direction) |>
   group_by(slam, pressure) |>
   mutate(pct = n / sum(n), slam_label = slam_labels[slam]) |>
-  ungroup() |>
-  ggplot(aes(direction, pct, fill = pressure)) +
-  geom_col(position = "dodge", width = 0.7) +
-  scale_fill_manual(values = c("Normal point" = "#2171B5",
-                                "Break point against server" = "#CB4335")) +
-  scale_y_continuous(labels = percent) +
-  facet_wrap(~slam_label) +
-  labs(
-    title = "1st serve direction: normal vs break point",
-    subtitle = "Does pressure shift the target?",
-    x = NULL, y = "Share of 1st serves", fill = NULL
-  )
+  ungroup()
+
+if (nrow(dir_df) > 0) {
+  dir_df |>
+    ggplot(aes(direction, pct, fill = pressure)) +
+    geom_col(position = "dodge", width = 0.7) +
+    scale_fill_manual(values = c("Normal point" = "#2171B5",
+                                  "Break point against server" = "#CB4335")) +
+    scale_y_continuous(labels = percent) +
+    facet_wrap(~slam_label) +
+    labs(
+      title = "1st serve direction: normal vs break point",
+      subtitle = "Does pressure shift the target?",
+      x = NULL, y = "Share of 1st serves", fill = NULL
+    )
+}
 ```
 
 
@@ -315,39 +323,37 @@ bp_data <- pts |>
   filter(n_bp >= 20) |>
   mutate(slam_label = slam_labels[slam])
 
-bp_data |>
-  ggplot(aes(year, conversion, colour = slam)) +
-  geom_line(linewidth = 0.9) +
-  geom_point(size = 2) +
-  scale_colour_manual(values = slam_cols, labels = slam_labels) +
-  scale_y_continuous(labels = percent) +
-  labs(
-    title = "Break point conversion rate over time",
-    subtitle = "Share of break point opportunities converted",
-    x = NULL, y = "Conversion rate", colour = NULL
-  )
+if (nrow(bp_data) > 0) {
+  bp_data |>
+    ggplot(aes(year, conversion, colour = slam)) +
+    geom_line(linewidth = 0.9) +
+    geom_point(size = 2) +
+    scale_colour_manual(values = slam_cols, labels = slam_labels) +
+    scale_y_continuous(labels = percent) +
+    labs(
+      title = "Break point conversion rate over time",
+      subtitle = "Share of break point opportunities converted",
+      x = NULL, y = "Conversion rate", colour = NULL
+    )
+}
 ```
 
 ```{r bp-by-slam}
 #| fig-height: 4
 #| fig-width: 9
 
-bp_data |>
-  group_by(slam, slam_label) |>
-  summarise(
-    avg_conversion = mean(conversion),
-    .groups = "drop"
-  ) |>
-  mutate(slam_label = fct_reorder(slam_label, avg_conversion)) |>
-  ggplot(aes(avg_conversion, slam_label, fill = slam)) +
-  geom_col(width = 0.6) +
-  scale_fill_manual(values = slam_cols) +
-  scale_x_continuous(labels = percent) +
-  labs(
-    title = "Average break point conversion by slam",
-    x = "Conversion rate", y = NULL
-  ) +
-  theme(legend.position = "none")
+if (nrow(bp_data) > 0) {
+  bp_data |>
+    group_by(slam, slam_label) |>
+    summarise(avg_conversion = mean(conversion), .groups = "drop") |>
+    mutate(slam_label = fct_reorder(slam_label, avg_conversion)) |>
+    ggplot(aes(avg_conversion, slam_label, fill = slam)) +
+    geom_col(width = 0.6) +
+    scale_fill_manual(values = slam_cols) +
+    scale_x_continuous(labels = percent) +
+    labs(title = "Average break point conversion by slam", x = "Conversion rate", y = NULL) +
+    theme(legend.position = "none")
+}
 ```
 
 
@@ -485,6 +491,8 @@ fatigue_df <- map_dfr(thresholds, function(thr) {
 ```{r fatigue-plot}
 #| fig-height: 5
 #| fig-width: 10
+
+if (nrow(fatigue_df) == 0) stop("No fatigue data available.")
 
 fatigue_df |>
   ggplot(aes(threshold, edge, colour = prev_loser_role)) +

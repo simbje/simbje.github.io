@@ -6,7 +6,7 @@ categories: [Tennis, R, Data Analysis]
 execute:
   warning: false
   message: false
-  freeze: false
+  freeze: auto
 ---
 
 ```{r setup}
