@@ -6,7 +6,7 @@ categories: [Tennis, R, Data Analysis]
 execute:
   warning: false
   message: false
-  freeze: true
+  freeze: false
 ---
 
 ```{r setup}
@@ -369,6 +369,100 @@ atp |>
     x = NULL, y = "1st serve win %"
   ) +
   theme(legend.position = "none")
+```
+
+
+## Surface edge over time
+
+Has professional tennis become more or less surface-neutral over the past 30 years? The "surface edge" is measured as the **server's share of all serve points played** — a high value means big serves dominate (fast surface); a low value means returns and rallies rule (slow surface). The gap between Grass and Clay is the best single indicator of how differentiated the three main surfaces are.
+
+```{r surface-edge-data}
+#| echo: false
+
+# Compute serve win% from both winner and loser stats per match
+serve_edge <- function(df, tour_name) {
+  df |>
+    filter(
+      surface %in% c("Hard", "Clay", "Grass"),
+      !is.na(w_svpt), !is.na(l_svpt),
+      !is.na(w_1stWon), !is.na(w_2ndWon),
+      !is.na(l_1stWon), !is.na(l_2ndWon),
+      w_svpt > 0, l_svpt > 0,
+      year >= 1995, year <= 2025
+    ) |>
+    mutate(
+      serve_pts_won   = w_1stWon + w_2ndWon + l_1stWon + l_2ndWon,
+      serve_pts_total = w_svpt + l_svpt,
+      serve_win_pct   = serve_pts_won / serve_pts_total,
+      tour = tour_name
+    ) |>
+    group_by(tour, surface, year) |>
+    summarise(
+      srv_pct = median(serve_win_pct, na.rm = TRUE),
+      n = n(),
+      .groups = "drop"
+    ) |>
+    filter(n >= 30)
+}
+
+edge_df <- bind_rows(serve_edge(atp, "ATP"), serve_edge(wta, "WTA"))
+
+gap_df <- edge_df |>
+  select(tour, surface, year, srv_pct) |>
+  pivot_wider(names_from = surface, values_from = srv_pct) |>
+  filter(!is.na(Grass), !is.na(Clay), !is.na(Hard)) |>
+  mutate(
+    `Grass \u2212 Clay` = Grass - Clay,
+    `Hard \u2212 Clay`  = Hard  - Clay,
+    `Grass \u2212 Hard` = Grass - Hard
+  ) |>
+  pivot_longer(c(`Grass \u2212 Clay`, `Hard \u2212 Clay`, `Grass \u2212 Hard`),
+               names_to = "gap", values_to = "pct_pts")
+```
+
+```{r surface-edge-raw}
+#| fig-height: 5
+#| fig-width: 11
+#| fig-cap: "Server's share of serve points by surface (1995–2025)"
+
+edge_df |>
+  ggplot(aes(year, srv_pct, colour = surface)) +
+  geom_line(linewidth = 0.7, alpha = 0.45) +
+  geom_smooth(method = "loess", span = 0.4, se = FALSE, linewidth = 1.2) +
+  scale_colour_manual(values = surface_cols) +
+  scale_y_continuous(labels = percent) +
+  facet_wrap(~tour) +
+  labs(
+    title = "Server's share of serve points by surface",
+    subtitle = "Higher = surface favours the serve (faster court). Loess smoother.",
+    x = NULL, y = "Serve win %", colour = "Surface"
+  )
+```
+
+```{r surface-edge-gap}
+#| fig-height: 5
+#| fig-width: 11
+#| fig-cap: "Surface edge: gap in serve dominance between surfaces (1995–2025)"
+
+gap_cols <- c(
+  "Grass \u2212 Clay" = "#27AE60",
+  "Hard \u2212 Clay"  = "#2171B5",
+  "Grass \u2212 Hard" = "#8E44AD"
+)
+
+gap_df |>
+  ggplot(aes(year, pct_pts, colour = gap)) +
+  geom_hline(yintercept = 0, linetype = "dashed", colour = "grey60") +
+  geom_line(linewidth = 0.7, alpha = 0.45) +
+  geom_smooth(method = "loess", span = 0.4, se = FALSE, linewidth = 1.2) +
+  scale_colour_manual(values = gap_cols) +
+  scale_y_continuous(labels = \(x) paste0(round(x * 100, 1), " pp")) +
+  facet_wrap(~tour) +
+  labs(
+    title = "Surface edge over time",
+    subtitle = "Narrowing gap = surfaces converging; wider gap = more specialised play",
+    x = NULL, y = "Percentage point gap", colour = "Comparison"
+  )
 ```
 
 
