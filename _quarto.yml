@@ -23,6 +23,8 @@ website:
             text: Tennis Statistics
           - href: data-projects/tennis-predictor.qmd
             text: Tennis Match Predictor
+          - href: data-projects/tennis-slams.qmd
+            text: Grand Slam Point-by-Point
       - text: "SSB Daily"
         href: ssb-daily/index.qmd
       - text: "Risk analysis and Machine Learning"

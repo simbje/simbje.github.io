@@ -1,0 +1,572 @@
+---
+title: "Grand Slam Point-by-Point Analysis"
+description: "Serve patterns, rally length, break point pressure, distance run, and long-point fatigue across all four Grand Slams (2011–2020)"
+date: "2026-03-12"
+categories: [Tennis, R, Data Analysis]
+execute:
+  warning: false
+  message: false
+  freeze: false
+---
+
+```{r setup}
+#| echo: false
+library(tidyverse)
+library(scales)
+library(gt)
+
+theme_set(
+  theme_minimal(base_size = 13) +
+    theme(
+      plot.title    = element_text(face = "bold", size = 16),
+      plot.subtitle = element_text(colour = "grey40", size = 12),
+      panel.grid.minor = element_blank(),
+      legend.position  = "bottom"
+    )
+)
+
+slam_cols <- c(
+  "ausopen"    = "#0057A8",
+  "frenchopen" = "#C8593C",
+  "usopen"     = "#3D5A99",
+  "wimbledon"  = "#27AE60"
+)
+slam_labels <- c(
+  "ausopen"    = "Australian Open",
+  "frenchopen" = "French Open",
+  "usopen"     = "US Open",
+  "wimbledon"  = "Wimbledon"
+)
+```
+
+## Data
+
+Point-by-point data from [Jeff Sackmann's Grand Slam repository](https://github.com/JeffSackmann/tennis_slam_pointbypoint). Covers matches on courts with the Hawkeye tracking system — typically from the second week onward plus select early-round showcourts. Australian Open runs 2011–2020; the other three slams run 2011–2019.
+
+```{r load-data}
+data_dir <- here::here("data-projects", "data")
+
+slams     <- c("ausopen", "frenchopen", "usopen", "wimbledon")
+ao_years  <- 2011:2020
+other_years <- 2011:2019
+
+slam_years <- bind_rows(
+  tibble(slam = "ausopen",    year = ao_years),
+  tibble(slam = "frenchopen", year = other_years),
+  tibble(slam = "usopen",     year = other_years),
+  tibble(slam = "wimbledon",  year = other_years)
+)
+
+base_url <- "https://raw.githubusercontent.com/JeffSackmann/tennis_slam_pointbypoint/master/"
+
+# ── Matches ──────────────────────────────────────────────────────────────────
+matches_cache <- file.path(data_dir, "slam_matches.csv")
+
+if (!file.exists(matches_cache)) {
+  matches_raw <- pmap_dfr(slam_years, function(slam, year) {
+    url <- paste0(base_url, year, "-", slam, "-matches.csv")
+    tryCatch(
+      read_csv(url, show_col_types = FALSE, col_types = cols(.default = "c")) |>
+        mutate(slam = slam, year = year),
+      error = \(e) tibble()
+    )
+  })
+  write_csv(matches_raw, matches_cache)
+} else {
+  matches_raw <- read_csv(matches_cache, show_col_types = FALSE)
+}
+
+# ── Points ────────────────────────────────────────────────────────────────────
+points_cache <- file.path(data_dir, "slam_points.csv")
+
+keep_cols <- c(
+  "match_id", "SetNo", "GameNo", "PointNumber", "PointServer",
+  "P1GamesWon", "P2GamesWon", "P1PointsWon", "P2PointsWon",
+  "SetWinner", "GameWinner", "PointWinner",
+  "P1Score", "P2Score",
+  "Speed_KMH", "ServeWidth", "ServeIndicator", "ServeDepth", "ReturnDepth",
+  "RallyCount",
+  "P1Ace", "P2Ace", "P1Winner", "P2Winner",
+  "P1DoubleFault", "P2DoubleFault",
+  "P1UnfErr", "P2UnfErr",
+  "P1NetPoint", "P2NetPoint",
+  "P1BreakPoint", "P2BreakPoint",
+  "P1BreakPointWon", "P2BreakPointWon",
+  "P1BreakPointMissed", "P2BreakPointMissed",
+  "P1DistanceRun", "P2DistanceRun"
+)
+
+if (!file.exists(points_cache)) {
+  points_raw <- pmap_dfr(slam_years, function(slam, year) {
+    url <- paste0(base_url, year, "-", slam, "-points.csv")
+    tryCatch({
+      df <- read_csv(url, show_col_types = FALSE, col_types = cols(.default = "c"))
+      # keep only columns that exist in this file
+      df[intersect(keep_cols, names(df))] |>
+        mutate(slam = slam, year = as.integer(year))
+    }, error = \(e) tibble())
+  })
+  write_csv(points_raw, points_cache)
+} else {
+  points_raw <- read_csv(points_cache, show_col_types = FALSE)
+}
+
+# ── Clean & type-cast ─────────────────────────────────────────────────────────
+pts <- points_raw |>
+  mutate(
+    year          = as.integer(year),
+    SetNo         = as.integer(SetNo),
+    GameNo        = as.integer(GameNo),
+    PointNumber   = as.integer(PointNumber),
+    PointServer   = as.integer(PointServer),
+    PointWinner   = as.integer(PointWinner),
+    GameWinner    = as.integer(GameWinner),
+    RallyCount    = as.integer(RallyCount),
+    Speed_KMH     = as.numeric(Speed_KMH),
+    P1DistanceRun = as.numeric(P1DistanceRun),
+    P2DistanceRun = as.numeric(P2DistanceRun),
+    across(c(P1Ace, P2Ace, P1Winner, P2Winner,
+             P1DoubleFault, P2DoubleFault,
+             P1UnfErr, P2UnfErr,
+             P1BreakPoint, P2BreakPoint,
+             P1BreakPointWon, P2BreakPointWon),
+           as.integer),
+    slam_label = slam_labels[slam]
+  )
+
+matches <- matches_raw |>
+  mutate(year = as.integer(year))
+```
+
+
+## Coverage overview
+
+Not every match is tracked — Hawkeye data is only available for select courts. This heatmap shows how many matches have point data per slam per year.
+
+```{r coverage}
+#| fig-height: 4
+#| fig-width: 9
+
+pts |>
+  distinct(match_id, slam, year) |>
+  count(slam, year) |>
+  mutate(slam_label = slam_labels[slam]) |>
+  ggplot(aes(factor(year), slam_label, fill = n)) +
+  geom_tile(colour = "white", linewidth = 0.5) +
+  geom_text(aes(label = n), size = 3.5, colour = "white", fontface = "bold") +
+  scale_fill_gradient(low = "#9ECAE1", high = "#08519C") +
+  labs(
+    title = "Matches with point-by-point data",
+    x = NULL, y = NULL, fill = "Matches"
+  ) +
+  theme(legend.position = "right", axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+## Rally length by slam
+
+Clay courts at Roland Garros produce the longest rallies; grass at Wimbledon the shortest. The distributions below pool all points by slam.
+
+```{r rally-dist}
+#| fig-height: 5
+#| fig-width: 11
+
+pts |>
+  filter(!is.na(RallyCount), RallyCount >= 1, RallyCount <= 40) |>
+  mutate(slam_label = fct_reorder(slam_label, RallyCount, median, .desc = TRUE)) |>
+  ggplot(aes(RallyCount, fill = slam)) +
+  geom_histogram(binwidth = 1, colour = NA, alpha = 0.85) +
+  scale_fill_manual(values = slam_cols, labels = slam_labels) +
+  facet_wrap(~slam_label, scales = "free_y") +
+  labs(
+    title = "Rally length distribution by slam",
+    subtitle = "All tracked points, 2011–2020",
+    x = "Rally length (shots)", y = "Points", fill = NULL
+  ) +
+  theme(legend.position = "none")
+```
+
+```{r rally-trend}
+#| fig-height: 5
+#| fig-width: 11
+
+pts |>
+  filter(!is.na(RallyCount), RallyCount >= 1) |>
+  group_by(slam, year) |>
+  summarise(
+    median_rally = median(RallyCount),
+    mean_rally   = mean(RallyCount),
+    .groups = "drop"
+  ) |>
+  mutate(slam_label = slam_labels[slam]) |>
+  ggplot(aes(year, median_rally, colour = slam)) +
+  geom_line(linewidth = 0.9) +
+  geom_point(size = 2) +
+  scale_colour_manual(values = slam_cols, labels = slam_labels) +
+  labs(
+    title = "Median rally length over time by slam",
+    x = NULL, y = "Median rally length (shots)", colour = NULL
+  )
+```
+
+
+## Serve speed
+
+First serves are substantially faster than second serves at every slam. Hard-court slams (AO, USO) tend to produce slightly higher serve speeds than clay or grass.
+
+```{r serve-speed-dist}
+#| fig-height: 5
+#| fig-width: 11
+
+pts |>
+  filter(!is.na(Speed_KMH), Speed_KMH > 100, Speed_KMH < 260,
+         ServeIndicator %in% c("1", "2")) |>
+  mutate(
+    serve = if_else(ServeIndicator == "1", "1st serve", "2nd serve"),
+    slam_label = slam_labels[slam]
+  ) |>
+  ggplot(aes(Speed_KMH, fill = slam)) +
+  geom_density(alpha = 0.65, colour = NA) +
+  scale_fill_manual(values = slam_cols, labels = slam_labels) +
+  facet_grid(serve ~ slam_label) +
+  labs(
+    title = "Serve speed distribution by slam and serve number",
+    x = "Speed (km/h)", y = "Density", fill = NULL
+  ) +
+  theme(legend.position = "none")
+```
+
+```{r serve-speed-trend}
+#| fig-height: 5
+#| fig-width: 11
+
+pts |>
+  filter(!is.na(Speed_KMH), Speed_KMH > 100, Speed_KMH < 260,
+         ServeIndicator %in% c("1", "2")) |>
+  mutate(serve = if_else(ServeIndicator == "1", "1st serve", "2nd serve")) |>
+  group_by(slam, year, serve) |>
+  summarise(median_speed = median(Speed_KMH), .groups = "drop") |>
+  mutate(slam_label = slam_labels[slam]) |>
+  ggplot(aes(year, median_speed, colour = slam, linetype = serve)) +
+  geom_line(linewidth = 0.9) +
+  geom_point(size = 2) +
+  scale_colour_manual(values = slam_cols, labels = slam_labels) +
+  labs(
+    title = "Median serve speed over time",
+    x = NULL, y = "Median speed (km/h)", colour = NULL, linetype = NULL
+  )
+```
+
+
+## Serve direction under pressure
+
+Does a server change their target when facing a break point? `ServeWidth` encodes: **W** (wide), **B/BC/BW** (body), **C** (centre/T).
+
+```{r serve-direction}
+#| fig-height: 6
+#| fig-width: 11
+
+pts |>
+  filter(!is.na(ServeWidth), ServeWidth != "", ServeIndicator == "1") |>
+  mutate(
+    direction = case_when(
+      ServeWidth %in% c("W", "BW") ~ "Wide",
+      ServeWidth %in% c("B", "BC") ~ "Body",
+      ServeWidth == "C"            ~ "Centre/T",
+      TRUE                         ~ NA_character_
+    ),
+    pressure = case_when(
+      PointServer == 1 & P1BreakPoint == 1 ~ "Break point against server",
+      PointServer == 2 & P2BreakPoint == 1 ~ "Break point against server",
+      TRUE                                  ~ "Normal point"
+    )
+  ) |>
+  filter(!is.na(direction)) |>
+  count(slam, pressure, direction) |>
+  group_by(slam, pressure) |>
+  mutate(pct = n / sum(n), slam_label = slam_labels[slam]) |>
+  ungroup() |>
+  ggplot(aes(direction, pct, fill = pressure)) +
+  geom_col(position = "dodge", width = 0.7) +
+  scale_fill_manual(values = c("Normal point" = "#2171B5",
+                                "Break point against server" = "#CB4335")) +
+  scale_y_continuous(labels = percent) +
+  facet_wrap(~slam_label) +
+  labs(
+    title = "1st serve direction: normal vs break point",
+    subtitle = "Does pressure shift the target?",
+    x = NULL, y = "Share of 1st serves", fill = NULL
+  )
+```
+
+
+## Break point conversion
+
+```{r bp-conversion}
+#| fig-height: 5
+#| fig-width: 11
+
+bp_data <- pts |>
+  filter(!is.na(P1BreakPoint), !is.na(P2BreakPoint)) |>
+  mutate(
+    bp_opp  = P1BreakPoint + P2BreakPoint,
+    bp_won  = P1BreakPointWon + P2BreakPointWon
+  ) |>
+  filter(bp_opp == 1) |>
+  group_by(slam, year) |>
+  summarise(
+    conversion = mean(bp_won == 1, na.rm = TRUE),
+    n_bp = n(),
+    .groups = "drop"
+  ) |>
+  filter(n_bp >= 20) |>
+  mutate(slam_label = slam_labels[slam])
+
+bp_data |>
+  ggplot(aes(year, conversion, colour = slam)) +
+  geom_line(linewidth = 0.9) +
+  geom_point(size = 2) +
+  scale_colour_manual(values = slam_cols, labels = slam_labels) +
+  scale_y_continuous(labels = percent) +
+  labs(
+    title = "Break point conversion rate over time",
+    subtitle = "Share of break point opportunities converted",
+    x = NULL, y = "Conversion rate", colour = NULL
+  )
+```
+
+```{r bp-by-slam}
+#| fig-height: 4
+#| fig-width: 9
+
+bp_data |>
+  group_by(slam, slam_label) |>
+  summarise(
+    avg_conversion = mean(conversion),
+    .groups = "drop"
+  ) |>
+  mutate(slam_label = fct_reorder(slam_label, avg_conversion)) |>
+  ggplot(aes(avg_conversion, slam_label, fill = slam)) +
+  geom_col(width = 0.6) +
+  scale_fill_manual(values = slam_cols) +
+  scale_x_continuous(labels = percent) +
+  labs(
+    title = "Average break point conversion by slam",
+    x = "Conversion rate", y = NULL
+  ) +
+  theme(legend.position = "none")
+```
+
+
+## Distance run: winners vs losers
+
+Do match winners consistently run more or less than their opponents? Distance run data reflects how much each player was pushed around the court.
+
+```{r distance-run}
+#| fig-height: 5
+#| fig-width: 11
+
+# Join points to matches to get match winner
+dist_data <- pts |>
+  filter(!is.na(P1DistanceRun), !is.na(P2DistanceRun)) |>
+  left_join(
+    matches_raw |>
+      select(match_id, winner) |>
+      mutate(winner = as.integer(winner)),
+    by = "match_id"
+  ) |>
+  filter(!is.na(winner)) |>
+  mutate(
+    winner_dist = if_else(winner == 1, P1DistanceRun, P2DistanceRun),
+    loser_dist  = if_else(winner == 1, P2DistanceRun, P1DistanceRun)
+  ) |>
+  group_by(match_id, slam, year, winner) |>
+  summarise(
+    winner_total = sum(winner_dist, na.rm = TRUE),
+    loser_total  = sum(loser_dist,  na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  filter(winner_total > 0, loser_total > 0) |>
+  mutate(
+    diff = winner_total - loser_total,
+    slam_label = slam_labels[slam]
+  )
+
+dist_data |>
+  pivot_longer(c(winner_total, loser_total), names_to = "result", values_to = "dist") |>
+  mutate(result = if_else(result == "winner_total", "Match winner", "Match loser")) |>
+  ggplot(aes(dist / 1000, fill = result)) +
+  geom_density(alpha = 0.6, colour = NA) +
+  scale_fill_manual(values = c("Match winner" = "#27AE60", "Match loser" = "#CB4335")) +
+  scale_x_continuous(labels = \(x) paste0(x, "k")) +
+  facet_wrap(~slam_label) +
+  labs(
+    title = "Total distance run per match: winners vs losers",
+    subtitle = "metres run by winner and loser across tracked matches",
+    x = "Distance run (metres, thousands)", y = "Density", fill = NULL
+  )
+```
+
+```{r distance-diff}
+#| fig-height: 4
+#| fig-width: 9
+
+dist_data |>
+  ggplot(aes(diff, fill = slam)) +
+  geom_vline(xintercept = 0, linetype = "dashed", colour = "grey50") +
+  geom_density(alpha = 0.65, colour = NA) +
+  scale_fill_manual(values = slam_cols, labels = slam_labels) +
+  labs(
+    title = "Winner's distance advantage per match",
+    subtitle = "Positive = winner ran more; negative = winner ran less",
+    x = "Winner metres − Loser metres", y = "Density", fill = NULL
+  )
+```
+
+
+## After a long point: does the loser fade?
+
+When a rally goes long, one player wins and one loses. Does the losing player carry any fatigue into the **next** point — or do elite players reset completely?
+
+The test: for every point following a rally of length ≥ threshold, compute the win rate of the player who **lost** the previous long point, split by whether they are serving or returning. Compare against their overall win rate in that role.
+
+```{r fatigue-data}
+#| echo: false
+
+# Sort points within each match in rally order
+pts_sorted <- pts |>
+  filter(!is.na(RallyCount), !is.na(PointWinner), !is.na(PointServer)) |>
+  arrange(match_id, SetNo, GameNo, PointNumber)
+
+# For each point, tag the loser of the PREVIOUS point and its rally length
+pts_lagged <- pts_sorted |>
+  group_by(match_id) |>
+  mutate(
+    prev_rally  = lag(RallyCount),
+    prev_winner = lag(PointWinner),   # who won previous point (1 or 2)
+    prev_server = lag(PointServer)    # who served previous point
+  ) |>
+  ungroup() |>
+  filter(!is.na(prev_rally), !is.na(prev_winner)) |>
+  mutate(
+    # loser of previous point
+    prev_loser = if_else(prev_winner == 1L, 2L, 1L),
+    # did the loser of previous point win this point?
+    loser_won_next = as.integer(PointWinner == prev_loser),
+    # role of that loser on THIS point
+    prev_loser_role = case_when(
+      prev_loser == PointServer ~ "Serving next",
+      TRUE                      ~ "Returning next"
+    )
+  )
+
+# Baselines: overall win rate by role
+baseline <- pts_lagged |>
+  group_by(prev_loser_role) |>
+  summarise(baseline_win = mean(loser_won_next, na.rm = TRUE), .groups = "drop")
+
+# Fatigue effect by rally threshold
+thresholds <- c(5, 8, 10, 12, 15, 20)
+
+fatigue_df <- map_dfr(thresholds, function(thr) {
+  pts_lagged |>
+    filter(prev_rally >= thr) |>
+    group_by(prev_loser_role) |>
+    summarise(
+      win_rate = mean(loser_won_next, na.rm = TRUE),
+      n = n(),
+      .groups = "drop"
+    ) |>
+    mutate(threshold = thr)
+}) |>
+  left_join(baseline, by = "prev_loser_role") |>
+  mutate(edge = win_rate - baseline_win)
+```
+
+```{r fatigue-plot}
+#| fig-height: 5
+#| fig-width: 10
+
+fatigue_df |>
+  ggplot(aes(threshold, edge, colour = prev_loser_role)) +
+  geom_hline(yintercept = 0, linetype = "dashed", colour = "grey50") +
+  geom_line(linewidth = 1.1) +
+  geom_point(aes(size = n)) +
+  scale_colour_manual(values = c("Serving next" = "#2171B5", "Returning next" = "#CB4335")) +
+  scale_size_continuous(range = c(2, 6), labels = comma) +
+  scale_x_continuous(breaks = thresholds) +
+  scale_y_continuous(labels = \(x) paste0(round(x * 100, 1), " pp")) +
+  labs(
+    title = "Long-point fatigue: does losing a long rally hurt the next point?",
+    subtitle = "Win rate of previous-point loser on next point, relative to their baseline\nNegative = they win next point less often than expected",
+    x = "Minimum rally length of previous point (shots)",
+    y = "Win rate vs baseline (percentage points)",
+    colour = "Role on next point",
+    size = "Points (n)"
+  )
+```
+
+```{r fatigue-by-slam}
+#| fig-height: 5
+#| fig-width: 11
+
+thr_main <- 10  # focus on rallies of 10+ shots
+
+pts_lagged |>
+  filter(prev_rally >= thr_main) |>
+  group_by(slam, prev_loser_role) |>
+  summarise(
+    win_rate = mean(loser_won_next, na.rm = TRUE),
+    n = n(),
+    .groups = "drop"
+  ) |>
+  left_join(baseline, by = "prev_loser_role") |>
+  mutate(
+    edge = win_rate - baseline_win,
+    slam_label = slam_labels[slam]
+  ) |>
+  ggplot(aes(slam_label, edge, fill = slam)) +
+  geom_col(width = 0.6) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  scale_fill_manual(values = slam_cols) +
+  scale_y_continuous(labels = \(x) paste0(round(x * 100, 1), " pp")) +
+  facet_wrap(~prev_loser_role) +
+  labs(
+    title = "Fatigue effect by slam (rallies ≥ 10 shots)",
+    subtitle = "Win rate of long-point loser on next point vs. baseline",
+    x = NULL, y = "vs. baseline (pp)", fill = NULL
+  ) +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 25, hjust = 1))
+```
+
+```{r fatigue-table}
+fatigue_df |>
+  filter(threshold %in% c(5, 10, 15)) |>
+  mutate(
+    win_pct      = percent(win_rate, accuracy = 0.1),
+    baseline_pct = percent(baseline_win, accuracy = 0.1),
+    edge_pp      = paste0(round(edge * 100, 2), " pp"),
+    n            = comma(n)
+  ) |>
+  select(
+    `Min rally` = threshold,
+    Role = prev_loser_role,
+    `Win rate (next point)` = win_pct,
+    `Baseline win rate` = baseline_pct,
+    `Difference` = edge_pp,
+    `N` = n
+  ) |>
+  arrange(`Min rally`, Role) |>
+  gt() |>
+  tab_header(
+    title    = "Long-point fatigue effect",
+    subtitle = "Win rate of previous-point loser on the immediately following point"
+  ) |>
+  tab_style(
+    style = cell_text(color = "#CB4335", weight = "bold"),
+    locations = cells_body(
+      columns = Difference,
+      rows    = as.numeric(str_remove(Difference, " pp")) < 0
+    )
+  )
+```
