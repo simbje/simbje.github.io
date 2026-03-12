@@ -19,8 +19,8 @@ website:
         menu:
           - href: data-projects/index.qmd
             text: All Data Projects
-      - text: "Tennis Data"
-        menu:
+          - text: "---"
+          - text: "Tennis Data"
           - href: data-projects/tennis-overview.qmd
             text: Tennis Statistics
           - href: data-projects/tennis-predictor.qmd
