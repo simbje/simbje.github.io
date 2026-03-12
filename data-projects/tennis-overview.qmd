@@ -412,11 +412,11 @@ gap_df <- edge_df |>
   pivot_wider(names_from = surface, values_from = srv_pct) |>
   filter(!is.na(Grass), !is.na(Clay), !is.na(Hard)) |>
   mutate(
-    `Grass \u2212 Clay` = Grass - Clay,
-    `Hard \u2212 Clay`  = Hard  - Clay,
-    `Grass \u2212 Hard` = Grass - Hard
+    `Grass - Clay` = Grass - Clay,
+    `Hard - Clay`  = Hard  - Clay,
+    `Grass - Hard` = Grass - Hard
   ) |>
-  pivot_longer(c(`Grass \u2212 Clay`, `Hard \u2212 Clay`, `Grass \u2212 Hard`),
+  pivot_longer(c(`Grass - Clay`, `Hard - Clay`, `Grass - Hard`),
                names_to = "gap", values_to = "pct_pts")
 ```
 
@@ -445,9 +445,9 @@ edge_df |>
 #| fig-cap: "Surface edge: gap in serve dominance between surfaces (1995–2025)"
 
 gap_cols <- c(
-  "Grass \u2212 Clay" = "#27AE60",
-  "Hard \u2212 Clay"  = "#2171B5",
-  "Grass \u2212 Hard" = "#8E44AD"
+  "Grass - Clay" = "#27AE60",
+  "Hard - Clay"  = "#2171B5",
+  "Grass - Hard" = "#8E44AD"
 )
 
 gap_df |>
