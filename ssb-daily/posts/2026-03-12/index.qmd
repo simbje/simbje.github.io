@@ -45,7 +45,8 @@ tryCatch({
   tmp <- raw_pop[[1]]
   print(names(tmp))
   
-  time_col <- names(tmp)[grepl("tid|aar|year", names(tmp), ignore.case = TRUE)][1]
+  time_col <- names(tmp)[grepl("tid|år|kvartal|måned|aar|maaned|year|month|quarter", names(tmp), ignore.case = TRUE)][1]
+  if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
   message("Time column: ", time_col)
   
   df_pop <- tmp |>
@@ -139,7 +140,8 @@ tryCatch({
   tmp <- raw_fert[[1]]
   print(names(tmp))
   
-  time_col <- names(tmp)[grepl("tid|aar|year", names(tmp), ignore.case = TRUE)][1]
+  time_col <- names(tmp)[grepl("tid|år|kvartal|måned|aar|maaned|year|month|quarter", names(tmp), ignore.case = TRUE)][1]
+  if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
   message("Time column: ", time_col)
   
   df_fert <- tmp |>
@@ -178,7 +180,7 @@ if (!is.null(df_fert)) {
                         levels = c("20-29 år", "30-39 år", "40-49 år"))
     )
   
-  p2 <- ggplot(df_fert_recent, aes(x = value, y = decade, fill = stat(x))) +
+  p2 <- ggplot(df_fert_recent, aes(x = value, y = decade, fill = after_stat(x))) +
     geom_density_ridges_gradient(
       scale = 3, 
       rel_min_height = 0.01,
@@ -225,8 +227,8 @@ tryCatch({
   
   tmp <- raw_housing[[1]]
   print(names(tmp))
-  
-  time_col <- names(tmp)[grepl("tid|aar|year", names(tmp), ignore.case = TRUE)][1]
+  time_col <- names(tmp)[grepl("tid|år|kvartal|måned|aar|maaned|year|month|quarter", names(tmp), ignore.case = TRUE)][1]
+  if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
   message("Time column: ", time_col)
   
   df_housing <- tmp |>

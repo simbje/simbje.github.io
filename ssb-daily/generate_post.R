@@ -273,6 +273,27 @@ tryCatch({{
 }}, error = function(e) message("Fetch failed: ", e$message))
 ```
 
+## Column handling rules (CRITICAL — silent failures hide all plots)
+- NEVER use hardcoded Norwegian column names in rename() or filter()
+  - BAD:  `rename(gender = kjønn)`  or  `filter(gender == "Begge kjønn")`
+  - GOOD: detect the column name first, then use .data[[col_name]]
+- Find the time column with the exact regex below — "aar"/"maaned" do NOT match "år"/"måned":
+  ```r
+  time_col <- names(tmp)[grepl(
+    "tid|\u00e5r|kvartal|m\u00e5ned|aar|maaned|year|month|quarter",
+    names(tmp), ignore.case = TRUE, perl = TRUE
+  )][1]
+  if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
+  ```
+- Find categorical columns by position or partial match, never by exact Norwegian name:
+  ```r
+  # Example: detect the gender/sex column safely
+  gender_col <- names(tmp)[grepl("kj.nn|gender|sex|kjonn", names(tmp), ignore.case=TRUE)][1]
+  # Then filter using the detected value:
+  both <- unique(df[[gender_col]])[grepl("begge|total|alle|both", unique(df[[gender_col]]), ignore.case=TRUE)][1]
+  df_filtered <- df |> filter(.data[[gender_col]] == both)
+  ```
+
 ## Plotting rules (CRITICAL — plots not showing is the most common failure)
 - ALWAYS assign every ggplot to a named variable first, then call print() on it explicitly
 - NEVER rely on implicit printing — it does not work reliably inside Quarto code chunks
@@ -382,8 +403,15 @@ tryCatch({{
   tmp <- raw[[1]]
   print(names(tmp))  # always print column names
 
-  # Find time column defensively (SSB uses varying names)
-  time_col <- names(tmp)[grepl("tid|aar|kvartal|maaned|year|month|quarter", names(tmp), ignore.case=TRUE)][1]
+  # Find time column defensively (SSB uses varying names including Norwegian)
+  # IMPORTANT: SSB returns "\u00e5r" (år), "kvartal", "m\u00e5ned" — NOT "aar"/"maaned"
+  time_col <- names(tmp)[grepl(
+    "tid|\u00e5r|kvartal|m\u00e5ned|aar|maaned|year|month|quarter",
+    names(tmp), ignore.case = TRUE, perl = TRUE
+  )][1]
+  # Fallback: SSB column order is always dims..., statistikkvariabel, time, value
+  # so second-to-last column is time if the regex above missed it
+  if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
   message("Time column: ", time_col)
 
   df <- tmp |>

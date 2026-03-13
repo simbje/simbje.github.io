@@ -65,6 +65,7 @@ tryCatch({
   
   # Discover time column
   time_col <- names(tmp)[grepl("tid|aar|kvartal|year|quarter", names(tmp), ignore.case = TRUE)][1]
+  if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
   message("Time column identified: ", time_col)
   
   # Discover industry column

@@ -68,6 +68,7 @@ tryCatch({
   
   # Find time column
   time_col <- names(tmp_elec)[grepl("tid|måned|month", names(tmp_elec), ignore.case = TRUE)][1]
+  if (is.na(time_col)) time_col <- names(tmp_elec)[length(names(tmp_elec)) - 1L]
   message("Time column identified: ", time_col)
   
   df_elec <- tmp_elec |>
@@ -239,6 +240,7 @@ tryCatch({
   print(names(tmp_energy))
   
   time_col <- names(tmp_energy)[grepl("tid|år|year", names(tmp_energy), ignore.case = TRUE)][1]
+  if (is.na(time_col)) time_col <- names(tmp_energy)[length(names(tmp_energy)) - 1L]
   message("Time column identified: ", time_col)
   
   df_energy <- tmp_energy |>
@@ -351,8 +353,8 @@ tryCatch({
   tmp_ev <- raw_ev[[1]]
   cat("\nColumn names in EV data:\n")
   print(names(tmp_ev))
-  
   time_col <- names(tmp_ev)[grepl("tid|måned|month", names(tmp_ev), ignore.case = TRUE)][1]
+  if (is.na(time_col)) time_col <- names(tmp_ev)[length(names(tmp_ev)) - 1L]
   message("Time column identified: ", time_col)
   
   df_ev <- tmp_ev |>

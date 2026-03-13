@@ -67,6 +67,7 @@ tryCatch({
   
   # Find time column
   time_col <- names(tmp)[grepl("tid|kvartal|quarter", names(tmp), ignore.case = TRUE)][1]
+  if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
   message("Time column: ", time_col)
   
   df_building <- tmp |>
@@ -123,6 +124,7 @@ tryCatch({
   print(names(tmp))
   
   time_col <- names(tmp)[grepl("tid|kvartal|quarter", names(tmp), ignore.case = TRUE)][1]
+  if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
   message("Time column: ", time_col)
   
   df_prices <- tmp |>
@@ -174,9 +176,9 @@ tryCatch({
   tmp <- raw_gdp[[1]]
   cat("Column names in GDP data:\n")
   print(names(tmp))
-  
   time_col <- names(tmp)[grepl("tid|kvartal|quarter", names(tmp), ignore.case = TRUE)][1]
-  
+  if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
+
   df_gdp <- tmp |>
     mutate(
       value = as.numeric(value),

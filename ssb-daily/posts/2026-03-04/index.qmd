@@ -67,6 +67,7 @@ tryCatch({
   
   # Find time column
   time_col <- names(tmp)[grepl("tid|år|year", names(tmp), ignore.case = TRUE)][1]
+  if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
   message("Time column identified: ", time_col)
   
   df_income <- tmp |>
@@ -124,6 +125,7 @@ tryCatch({
   
   # Find time column
   time_col <- names(tmp)[grepl("tid|år|year", names(tmp), ignore.case = TRUE)][1]
+  if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
   message("Time column identified: ", time_col)
   
   df_wealth <- tmp |>
@@ -181,6 +183,7 @@ tryCatch({
   
   # Find time column
   time_col <- names(tmp)[grepl("tid|år|year", names(tmp), ignore.case = TRUE)][1]
+  if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
   message("Time column identified: ", time_col)
   
   df_tax <- tmp |>
