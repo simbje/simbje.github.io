@@ -20,9 +20,11 @@ toc: false
 
 ## About Me
 
-I'm a financial analyst and quantitative researcher with a background spanning public sector finance management (Bærum Municipality, NOK 2.2bn budget), two master's degrees in applied finance and intelligence systems, and independent algorithmic trading development.
+I am a financial analyst and quantitative researcher with a background spanning public sector finance management (Bærum Municipality, NOK 2.2bn budget), two master's degrees in applied finance and intelligence systems, and independent algorithmic trading development.
 
-I build my own analytics tools in R and Shiny — covering trade performance attribution, ML-driven opportunity scanning, Monte Carlo risk simulation, and automated economic analysis of Norwegian SSB data. Currently writing a master's thesis on applied machine learning for bankruptcy prediction.
+I build analytics tools primarily in R and Shiny, covering trade performance attribution, ML-driven opportunity scanning, Monte Carlo risk simulation, and automated economic analysis of Norwegian SSB data. I also work with Python and SQL where needed, and I continuously explore how new AI tools can augment data analysis workflows.
+
+The purpose of this site is to explore, learn, and publish my data projects. Publishing them gives the work some skin in the game and helps raise both the quality and volume of output. The projects are driven by my own interests, but also follow news and trending topics.
 
 ```{=html}
 <div class="stats-bar">
