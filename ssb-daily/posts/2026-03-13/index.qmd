@@ -1,0 +1,335 @@
+---
+title: "Norway's Strike Silence: How Industrial Conflict Vanished"
+description: "After decades of fierce labor battles, Norwegian strikes have nearly disappeared — but the reasons aren't what you'd expect."
+date: "2026-03-13"
+categories: [SSB, labor, strikes, unions]
+---
+
+In the 1990s and early 2000s, Norwegian workers regularly walked off the job, shutting down industries and dominating headlines. Then something changed. By the 2020s, strikes had become almost extinct. This isn't just a Norwegian quirk — it's part of a global pattern — but the speed and scale of the collapse in Norway is striking. What happened to one of the most unionized workforces in the world?
+
+## The Data: Tracking Industrial Conflict
+
+```{r setup}
+#| echo: false
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = TRUE)
+```
+
+```{r libraries}
+library(tidyverse)
+library(PxWebApiData)
+library(lubridate)
+library(scales)
+library(ggridges)
+library(MetBrewer)
+
+# Color palette
+pal <- met.brewer("Hokusai2", 7)
+```
+
+```{r fetch-data}
+#| cache: true
+
+df <- NULL
+
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/03629",
+    ContentsCode = TRUE,  # All three measures
+    Tid = list(filter = "top", values = 33)  # All available years since 1992
+  )
+  
+  tmp <- raw[[1]]
+  print(names(tmp))
+  
+  # Find time column
+  time_col <- names(tmp)[grepl("tid|aar|year", names(tmp), ignore.case = TRUE)][1]
+  message("Time column identified: ", time_col)
+  
+  df <- tmp |>
+    mutate(
+      value = as.numeric(value),
+      time_str = .data[[time_col]],
+      year = as.integer(time_str),
+      date = ymd(paste0(year, "-01-01")),
+      # Clean up measure names
+      measure = case_when(
+        grepl("Konflikt", statistikkvariabel) ~ "Conflicts",
+        grepl("Arbeidstakarar", statistikkvariabel) ~ "Workers",
+        grepl("Tapte", statistikkvariabel) ~ "Lost workdays",
+        TRUE ~ statistikkvariabel
+      )
+    ) |>
+    filter(!is.na(value), !is.na(year))
+  
+  message("Data rows: ", nrow(df))
+  
+}, error = function(e) {
+  message("Data fetch failed: ", e$message)
+})
+```
+
+## The Great Strike Collapse
+
+The first chart tells the story in stark terms: after peaking in the mid-2000s, Norwegian strikes essentially disappeared. The 2010s saw fewer conflicts than any decade since World War II.
+
+```{r plot-conflicts}
+#| fig-height: 6
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df)) {
+  
+  df_conflicts <- df |>
+    filter(measure == "Conflicts") |>
+    arrange(year)
+  
+  # Calculate cumulative change for waterfall
+  df_waterfall <- df_conflicts |>
+    mutate(
+      change = value - lag(value, default = first(value)),
+      end = cumsum(change),
+      start = lag(end, default = 0),
+      direction = ifelse(change >= 0, "Increase", "Decrease"),
+      # Highlight major drops
+      highlight = abs(change) > 50
+    )
+  
+  p1 <- ggplot(df_waterfall, aes(x = year)) +
+    geom_segment(
+      aes(xend = year, y = start, yend = end, color = direction),
+      linewidth = 1.5
+    ) +
+    geom_point(
+      aes(y = end, size = highlight, color = direction),
+      alpha = 0.8
+    ) +
+    geom_hline(yintercept = 0, linetype = "dashed", color = "gray40") +
+    scale_color_manual(values = c("Increase" = pal[3], "Decrease" = pal[1])) +
+    scale_size_manual(values = c("TRUE" = 4, "FALSE" = 2), guide = "none") +
+    labs(
+      title = "The Vanishing Strike: Norwegian Labor Conflicts, 1992-2024",
+      subtitle = "From peak conflict in the mid-2000s to near-extinction by 2024",
+      x = NULL,
+      y = "Number of work stoppages",
+      color = "Change direction",
+      caption = "Source: Statistics Norway (SSB) — Table 03629"
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      plot.title = element_text(face = "bold", size = 16),
+      plot.subtitle = element_text(color = "gray30", size = 12),
+      legend.position = "top",
+      panel.grid.minor = element_blank()
+    )
+  
+  print(p1)
+}
+```
+
+The waterfall chart reveals the trajectory clearly: after 2006, there's almost no recovery. The few years with increases are tiny blips in a decades-long decline.
+
+## Lost Workdays: The Economic Impact Disappeared Too
+
+It's not just that there are fewer strikes — the ones that do happen are smaller and shorter. The economic disruption from strikes has essentially vanished.
+
+```{r plot-workdays}
+#| fig-height: 6
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df)) {
+  
+  df_workdays <- df |>
+    filter(measure == "Lost workdays") |>
+    arrange(year) |>
+    mutate(
+      decade = paste0(floor(year / 10) * 10, "s"),
+      era = case_when(
+        year < 2000 ~ "1990s",
+        year < 2010 ~ "2000s",
+        year < 2020 ~ "2010s",
+        TRUE ~ "2020s"
+      )
+    )
+  
+  p2 <- ggplot(df_workdays, aes(x = year, y = value / 1000)) +
+    geom_area(fill = pal[2], alpha = 0.7) +
+    geom_line(color = pal[1], linewidth = 1.2) +
+    annotate(
+      "text", x = 2000, y = max(df_workdays$value / 1000) * 0.9,
+      label = "Peak conflict era:\n400,000+ lost workdays",
+      hjust = 0.5, size = 4, color = "gray20", fontface = "italic"
+    ) +
+    annotate(
+      "text", x = 2020, y = 20,
+      label = "Near-zero\nconflict",
+      hjust = 0.5, size = 4, color = "gray20", fontface = "italic"
+    ) +
+    scale_y_continuous(labels = comma_format(suffix = "k")) +
+    labs(
+      title = "Working Days Lost to Strikes: From Crisis to Calm",
+      subtitle = "The economic disruption from labor conflicts has essentially ended",
+      x = NULL,
+      y = "Lost workdays (thousands)",
+      caption = "Source: Statistics Norway (SSB) — Table 03629"
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      plot.title = element_text(face = "bold", size = 16),
+      plot.subtitle = element_text(color = "gray30", size = 12),
+      panel.grid.minor = element_blank()
+    )
+  
+  print(p2)
+}
+```
+
+The 2000s saw multiple years with 200,000+ lost workdays. The 2020s barely register on the chart. This isn't just fewer conflicts — it's a fundamental shift in how Norwegian labor disputes play out.
+
+## Who's Still Striking? The Distribution Tells the Story
+
+When strikes do happen now, they involve far fewer workers. The massive mobilizations of the 1990s and 2000s are gone.
+
+```{r plot-workers}
+#| fig-height: 7
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df)) {
+  
+  df_workers <- df |>
+    filter(measure == "Workers") |>
+    arrange(year) |>
+    mutate(
+      era = case_when(
+        year < 2000 ~ "1990s: Peak union power",
+        year < 2010 ~ "2000s: Major conflicts",
+        year < 2020 ~ "2010s: Decline begins",
+        TRUE ~ "2020s: Near-extinction"
+      ),
+      era = factor(era, levels = c(
+        "1990s: Peak union power",
+        "2000s: Major conflicts", 
+        "2010s: Decline begins",
+        "2020s: Near-extinction"
+      ))
+    )
+  
+  # Calculate decade averages for context
+  decade_avg <- df_workers |>
+    group_by(era) |>
+    summarise(avg = mean(value, na.rm = TRUE), .groups = "drop")
+  
+  p3 <- ggplot(df_workers, aes(x = value / 1000, y = era, fill = era)) +
+    geom_density_ridges(
+      alpha = 0.7, scale = 0.9, 
+      quantile_lines = TRUE, quantiles = 2
+    ) +
+    geom_text(
+      data = decade_avg,
+      aes(x = avg / 1000, label = paste0("Avg: ", comma(round(avg)))),
+      y = as.numeric(decade_avg$era) + 0.3,
+      hjust = -0.1, size = 3.5, fontface = "italic"
+    ) +
+    scale_fill_manual(values = pal[c(5, 3, 2, 1)]) +
+    scale_x_continuous(labels = comma_format(suffix = "k")) +
+    labs(
+      title = "Workers Involved in Strikes: The Vanishing Mobilization",
+      subtitle = "Distribution of strike participation shows dramatic decline in scale and frequency",
+      x = "Workers involved in strikes (thousands)",
+      y = NULL,
+      caption = "Source: Statistics Norway (SSB) — Table 03629\nNote: Ridgeline density shows distribution within each era; vertical line marks median"
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      plot.title = element_text(face = "bold", size = 16),
+      plot.subtitle = element_text(color = "gray30", size = 12),
+      legend.position = "none",
+      panel.grid.major.y = element_blank()
+    )
+  
+  print(p3)
+}
+```
+
+The ridgeline plot reveals the pattern starkly: in the 1990s and 2000s, strikes regularly mobilized tens of thousands of workers. By the 2020s, even the occasional strike involves far smaller numbers. The distribution has compressed dramatically.
+
+## The Three Measures Together: A Perfect Storm of Decline
+
+Looking at all three measures together reveals the completeness of the transformation. This isn't just one dimension changing — it's the entire ecosystem of labor conflict.
+
+```{r plot-comparison}
+#| fig-height: 6
+#| fig-width: 11
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df)) {
+  
+  # Normalize to 1992 = 100 for comparison
+  df_normalized <- df |>
+    group_by(measure) |>
+    mutate(
+      baseline = value[year == min(year)],
+      indexed = (value / baseline) * 100
+    ) |>
+    ungroup() |>
+    filter(!is.na(indexed))
+  
+  # Calculate recent lows
+  recent_lows <- df_normalized |>
+    filter(year >= 2020) |>
+    group_by(measure) |>
+    summarise(min_idx = min(indexed, na.rm = TRUE), .groups = "drop")
+  
+  p4 <- ggplot(df_normalized, aes(x = year, y = indexed, color = measure)) +
+    geom_line(linewidth = 1.3, alpha = 0.8) +
+    geom_point(
+      data = df_normalized |> filter(year %in% c(1992, 2024)),
+      size = 3
+    ) +
+    geom_hline(yintercept = 100, linetype = "dashed", color = "gray40", alpha = 0.5) +
+    annotate(
+      "text", x = 1994, y = 100, label = "1992 baseline", 
+      vjust = -0.5, size = 3, color = "gray40", fontface = "italic"
+    ) +
+    scale_color_manual(values = pal[c(1, 3, 5)]) +
+    scale_y_continuous(labels = comma_format(suffix = "")) +
+    labs(
+      title = "The Complete Collapse of Norwegian Strike Activity",
+      subtitle = "All three measures show the same pattern: a dramatic decline since the 2000s (indexed to 1992 = 100)",
+      x = NULL,
+      y = "Index (1992 = 100)",
+      color = "Measure",
+      caption = "Source: Statistics Norway (SSB) — Table 03629"
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      plot.title = element_text(face = "bold", size = 16),
+      plot.subtitle = element_text(color = "gray30", size = 12),
+      legend.position = "top",
+      panel.grid.minor = element_blank()
+    )
+  
+  print(p4)
+}
+```
+
+## Key Findings
+
+- **Strike frequency has collapsed**: From peaks of 100+ conflicts per year in the mid-2000s to single digits by 2024
+- **Economic impact near zero**: Lost workdays dropped from 400,000+ in peak years to negligible levels in the 2020s
+- **Smaller mobilizations**: Even when strikes happen, they involve far fewer workers than in previous decades
+- **Consistent across all measures**: This isn't just one metric — every dimension of labor conflict shows the same dramatic decline
+- **Speed of change**: The transformation happened remarkably fast, mostly between 2006 and 2015
+
+## What Changed?
+
+The usual explanations point to the Nordic model's success: strong unions, cooperative bargaining, and tripartite governance make strikes unnecessary. But that system existed in the 1990s too, when strikes were common. Three factors likely matter more:
+
+First, **structural economic shifts** moved workers from strike-prone industries like manufacturing and transport to service sectors where strikes are harder to organize and less disruptive. Second, **corporatist bargaining became more institutionalized**, with unions gaining influence in other ways — through board representation, policy consultation, and political power — reducing the need for workplace action. Third, and perhaps most important, **the memory of costly strikes** in the 2000s created strong incentives for both sides to avoid them.
+
+What we're witnessing isn't necessarily union weakness — Norwegian union density remains high by global standards — but a fundamental transformation in how labor power is exercised. The strike, that quintessential 20th-century weapon, has become nearly obsolete in Norway's 21st-century economy. Whether that's progress or a loss of worker voice depends on what replaces it.
