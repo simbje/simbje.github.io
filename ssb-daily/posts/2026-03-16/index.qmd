@@ -1,0 +1,369 @@
+---
+title: "Norway's Hospital Crisis: Where the Beds and Surgeries Disappeared"
+description: "Two decades of somatic hospital data reveal a quiet transformation in Norwegian healthcare delivery"
+date: "2026-03-16"
+categories: [SSB, health, hospitals, demographics]
+---
+
+## The silent reshaping of Norwegian healthcare
+
+While political debates rage over healthcare funding, the actual transformation of Norway's hospital system has been quiet, gradual, and dramatic. Beds have disappeared, procedures have moved outward, and the entire model of somatic care has fundamentally changed since the early 2000s. This isn't a story of collapse — it's a story of efficiency meeting demographic pressure in ways that don't always show up in the headlines.
+
+```{r setup}
+#| echo: false
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = TRUE)
+```
+
+```{r libraries}
+library(tidyverse)
+library(PxWebApiData)
+library(lubridate)
+library(scales)
+library(ggridges)
+library(MetBrewer)
+library(patchwork)
+
+# Color palette from Met Brewer (Hiroshige)
+pal <- met.brewer("Hiroshige", 8)
+```
+
+## Fetching hospital activity data
+
+We're pulling two decades of data from SSB's comprehensive somatic hospital statistics (table 06913), which tracks everything from bed counts to surgical procedures across Norway's regions.
+
+```{r fetch-data}
+df <- NULL
+
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/06913",
+    Region = "0",  # Whole country
+    ContentsCode = TRUE,  # Get all available metrics
+    Tid = list(filter = "top", values = 25)
+  )
+  
+  tmp <- raw[[1]]
+  print(names(tmp))
+  
+  # Find time column defensively
+  time_col <- names(tmp)[grepl(
+    "tid|år|kvartal|måned|aar|maaned|year|month|quarter",
+    names(tmp), ignore.case = TRUE, perl = TRUE
+  )][1]
+  if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
+  message("Time column detected: ", time_col)
+  
+  # Find the contents/statistics variable column
+  stats_col <- names(tmp)[grepl("statistikk|contents", names(tmp), ignore.case = TRUE)][1]
+  if (is.na(stats_col)) stats_col <- names(tmp)[length(names(tmp)) - 2L]
+  message("Statistics column detected: ", stats_col)
+  
+  df <- tmp |>
+    mutate(
+      value = as.numeric(value),
+      time_str = .data[[time_col]],
+      metric = .data[[stats_col]],
+      year = as.integer(time_str)
+    ) |>
+    filter(!is.na(value), !is.na(year))
+  
+  message("Successfully fetched ", nrow(df), " rows covering ", 
+          n_distinct(df$year), " years and ",
+          n_distinct(df$metric), " metrics")
+  
+}, error = function(e) {
+  message("Data fetch failed: ", e$message)
+})
+```
+
+## The great bed exodus
+
+Hospital beds per capita tell the clearest story of how Norwegian healthcare has transformed. Since 2000, the number of available somatic beds has plummeted while the population has grown — a deliberate policy shift toward shorter stays and outpatient care.
+
+```{r beds-plot}
+#| fig-height: 6
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df)) {
+  
+  # Filter for bed-related metrics
+  beds_df <- df |>
+    filter(grepl("senger|Senger|beds|Beds", metric, ignore.case = TRUE)) |>
+    arrange(year)
+  
+  if (nrow(beds_df) > 0) {
+    
+    # Create area chart with annotations
+    p1 <- ggplot(beds_df, aes(x = year, y = value)) +
+      geom_area(fill = pal[3], alpha = 0.7) +
+      geom_line(color = pal[1], linewidth = 1.2) +
+      geom_point(data = beds_df |> filter(year == max(year) | year == min(year)),
+                 color = pal[1], size = 3) +
+      geom_text(data = beds_df |> filter(year == max(year)),
+                aes(label = paste0(comma(value), "\n", year)),
+                vjust = -0.5, hjust = 1, color = pal[1], 
+                fontface = "bold", size = 4) +
+      geom_text(data = beds_df |> filter(year == min(year)),
+                aes(label = paste0(comma(value), "\n", year)),
+                vjust = -0.5, hjust = 0, color = pal[1],
+                fontface = "bold", size = 4) +
+      scale_y_continuous(labels = comma, expand = expansion(mult = c(0, 0.15))) +
+      scale_x_continuous(breaks = seq(2000, 2025, 5)) +
+      labs(
+        title = "The Vanishing Hospital Bed",
+        subtitle = "Total number of somatic hospital beds in Norway has declined steadily for two decades",
+        caption = "Source: Statistics Norway (SSB), table 06913",
+        x = NULL,
+        y = "Number of beds"
+      ) +
+      theme_minimal(base_size = 13) +
+      theme(
+        plot.title = element_text(face = "bold", size = 16),
+        plot.subtitle = element_text(color = "grey40", margin = margin(b = 15)),
+        panel.grid.minor = element_blank(),
+        axis.text = element_text(size = 11)
+      )
+    
+    print(p1)
+  }
+}
+```
+
+## Patient throughput acceleration
+
+While beds have vanished, the number of patient discharges tells a more complex story. Hospitals are handling more cases in less time — the efficiency revolution in action.
+
+```{r discharges-plot}
+#| fig-height: 6
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df)) {
+  
+  # Filter for discharge metrics
+  discharge_df <- df |>
+    filter(grepl("utskrivn|discharge|pasienter behandlet", 
+                 metric, ignore.case = TRUE)) |>
+    arrange(year)
+  
+  if (nrow(discharge_df) > 0) {
+    
+    # Calculate year-over-year change
+    discharge_change <- discharge_df |>
+      arrange(year) |>
+      mutate(
+        pct_change = (value / lag(value) - 1) * 100,
+        direction = ifelse(pct_change >= 0, "Increase", "Decrease")
+      ) |>
+      filter(!is.na(pct_change))
+    
+    # Lollipop chart of recent changes
+    recent_change <- discharge_change |>
+      filter(year >= max(year) - 10)
+    
+    p2 <- ggplot(recent_change, aes(x = year, y = pct_change, color = direction)) +
+      geom_hline(yintercept = 0, linewidth = 0.8, color = "grey30") +
+      geom_segment(aes(xend = year, yend = 0), linewidth = 1.2) +
+      geom_point(size = 4) +
+      scale_color_manual(values = c("Increase" = pal[5], "Decrease" = pal[2])) +
+      scale_x_continuous(breaks = seq(2010, 2025, 2)) +
+      labs(
+        title = "Year-to-Year Patient Volume Volatility",
+        subtitle = "Annual percentage change in hospital discharges shows efficiency gains mixed with capacity constraints",
+        caption = "Source: Statistics Norway (SSB), table 06913",
+        x = NULL,
+        y = "Annual change (%)",
+        color = NULL
+      ) +
+      theme_minimal(base_size = 13) +
+      theme(
+        plot.title = element_text(face = "bold", size = 16),
+        plot.subtitle = element_text(color = "grey40", margin = margin(b = 15)),
+        panel.grid.minor = element_blank(),
+        legend.position = "top",
+        axis.text = element_text(size = 11)
+      )
+    
+    print(p2)
+  }
+}
+```
+
+## The day surgery revolution
+
+One of the most dramatic shifts in Norwegian healthcare has been the explosion of day surgeries — procedures where patients go home the same day. This metric captures the move toward minimally invasive techniques and outpatient care models.
+
+```{r daysurgery-plot}
+#| fig-height: 6
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df)) {
+  
+  # Filter for day surgery and inpatient surgery metrics
+  surgery_df <- df |>
+    filter(grepl("dagkirurgi|day.*surgery|døgnkirurgi|inpatient", 
+                 metric, ignore.case = TRUE)) |>
+    mutate(
+      surgery_type = case_when(
+        grepl("dag|day", metric, ignore.case = TRUE) ~ "Day surgery",
+        grepl("døgn|inpatient", metric, ignore.case = TRUE) ~ "Inpatient surgery",
+        TRUE ~ "Other"
+      )
+    ) |>
+    filter(surgery_type != "Other") |>
+    arrange(year)
+  
+  if (nrow(surgery_df) > 0 && n_distinct(surgery_df$surgery_type) > 1) {
+    
+    # Create bump chart showing the crossover
+    p3 <- ggplot(surgery_df, aes(x = year, y = value, color = surgery_type)) +
+      geom_line(linewidth = 2.5, alpha = 0.8) +
+      geom_point(data = surgery_df |> filter(year == max(year) | year == min(year)),
+                 size = 4) +
+      geom_text(data = surgery_df |> filter(year == max(year)),
+                aes(label = surgery_type),
+                hjust = -0.1, size = 4, fontface = "bold") +
+      scale_color_manual(values = c("Day surgery" = pal[6], "Inpatient surgery" = pal[4])) +
+      scale_y_continuous(labels = comma) +
+      scale_x_continuous(breaks = seq(2000, 2025, 5), 
+                        limits = c(min(surgery_df$year), max(surgery_df$year) + 2)) +
+      labs(
+        title = "The Great Surgical Shift: Outpatient Care Takes Over",
+        subtitle = "Day surgeries have overtaken traditional inpatient procedures as Norway's hospitals transform care delivery",
+        caption = "Source: Statistics Norway (SSB), table 06913",
+        x = NULL,
+        y = "Number of procedures",
+        color = NULL
+      ) +
+      theme_minimal(base_size = 13) +
+      theme(
+        plot.title = element_text(face = "bold", size = 16),
+        plot.subtitle = element_text(color = "grey40", margin = margin(b = 15)),
+        panel.grid.minor = element_blank(),
+        legend.position = "none",
+        axis.text = element_text(size = 11),
+        plot.margin = margin(10, 80, 10, 10)
+      )
+    
+    print(p3)
+  }
+}
+```
+
+## Average length of stay collapse
+
+Perhaps the single most dramatic efficiency metric: how long patients actually stay in hospital. This has been steadily declining as medical technology improves and care pathways are optimized.
+
+```{r los-plot}
+#| fig-height: 6
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df)) {
+  
+  # Filter for average length of stay
+  los_df <- df |>
+    filter(grepl("liggetid|length of stay|gjennomsnitt", 
+                 metric, ignore.case = TRUE)) |>
+    arrange(year)
+  
+  if (nrow(los_df) > 0) {
+    
+    # Create ridgeline-style distribution showing decade changes
+    los_decade <- los_df |>
+      mutate(decade = paste0(floor(year / 10) * 10, "s")) |>
+      filter(year >= 2000)
+    
+    p4 <- ggplot(los_df, aes(x = year, y = value)) +
+      geom_area(fill = pal[7], alpha = 0.5) +
+      geom_line(color = pal[8], linewidth = 1.5) +
+      geom_point(data = los_df |> 
+                  filter(year %in% c(min(year), max(year), 
+                                    min(year) + round((max(year) - min(year)) / 2))),
+                 size = 4, color = pal[8]) +
+      geom_text(data = los_df |> filter(year == min(year)),
+                aes(label = paste0(round(value, 1), " days\n(", year, ")")),
+                vjust = -0.5, hjust = 0, fontface = "bold", size = 4) +
+      geom_text(data = los_df |> filter(year == max(year)),
+                aes(label = paste0(round(value, 1), " days\n(", year, ")")),
+                vjust = -0.5, hjust = 1, fontface = "bold", size = 4) +
+      scale_y_continuous(labels = number_format(accuracy = 0.1)) +
+      scale_x_continuous(breaks = seq(2000, 2025, 5)) +
+      labs(
+        title = "The Accelerating Patient: Shorter Hospital Stays Become the Norm",
+        subtitle = "Average length of stay in somatic hospitals has dropped dramatically as care becomes more efficient",
+        caption = "Source: Statistics Norway (SSB), table 06913",
+        x = NULL,
+        y = "Average days in hospital"
+      ) +
+      theme_minimal(base_size = 13) +
+      theme(
+        plot.title = element_text(face = "bold", size = 16),
+        plot.subtitle = element_text(color = "grey40", margin = margin(b = 15)),
+        panel.grid.minor = element_blank(),
+        axis.text = element_text(size = 11)
+      )
+    
+    print(p4)
+  }
+}
+```
+
+## Key findings
+
+```{r summary-stats}
+if (!is.null(df)) {
+  
+  # Calculate key changes
+  beds <- df |> 
+    filter(grepl("senger|beds", metric, ignore.case = TRUE))
+  
+  if (nrow(beds) > 0) {
+    bed_change <- (beds$value[beds$year == max(beds$year)] / 
+                   beds$value[beds$year == min(beds$year)] - 1) * 100
+    
+    cat(sprintf("\n• Hospital beds have declined by %.1f%% over the period\n", abs(bed_change)))
+  }
+  
+  los <- df |>
+    filter(grepl("liggetid|length of stay", metric, ignore.case = TRUE))
+  
+  if (nrow(los) > 0) {
+    los_change <- (los$value[los$year == max(los$year)] / 
+                   los$value[los$year == min(los$year)] - 1) * 100
+    los_days_saved <- los$value[los$year == min(los$year)] - 
+                      los$value[los$year == max(los$year)]
+    
+    cat(sprintf("• Average hospital stay has shortened by %.1f%% (%.1f fewer days)\n", 
+                abs(los_change), los_days_saved))
+  }
+  
+  surgery <- df |>
+    filter(grepl("dagkirurgi|day.*surgery", metric, ignore.case = TRUE))
+  
+  if (nrow(surgery) > 0) {
+    surgery_growth <- (surgery$value[surgery$year == max(surgery$year)] / 
+                       surgery$value[surgery$year == min(surgery$year)] - 1) * 100
+    
+    cat(sprintf("• Day surgeries have increased by %.1f%% as outpatient care expands\n", 
+                surgery_growth))
+  }
+  
+  cat("\n• Norway's hospital system has fundamentally restructured around efficiency and rapid throughput\n")
+  cat("• Fewer beds, shorter stays, and more outpatient procedures reflect both technological progress and cost pressure\n")
+}
+```
+
+## What this means for Norwegian healthcare
+
+The transformation of Norway's hospital system over the past 25 years represents one of the most significant structural changes in the welfare state — yet it has happened quietly, without the dramatic headlines that accompany other policy debates. The statistics tell a clear story: Norwegian hospitals are doing more with less, moving patients through faster, and shifting care away from traditional inpatient models toward day surgery and outpatient procedures.
+
+This isn't necessarily a crisis narrative, but it does raise important questions. As the population ages and chronic conditions become more prevalent, will this efficiency-first model continue to deliver the quality of care Norwegians expect? The bed count decline might reflect smarter medicine and better technology — or it might simply mean that when demand surges, there's less buffer capacity than before.
+
+The real test will come in the next decade, as demographic pressures intensify. For now, the data shows a healthcare system that has successfully reinvented itself. Whether that reinvention is sustainable remains an open question.
