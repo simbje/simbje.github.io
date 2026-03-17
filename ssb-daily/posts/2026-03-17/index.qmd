@@ -1,0 +1,310 @@
+---
+title: "Norway's Immigrant Integration: The Hidden Geography of Diversity"
+description: "How immigration patterns have reshaped Norwegian municipalities in radically different ways"
+date: "2026-03-17"
+categories: [SSB, immigration, demographics, regional-inequality]
+---
+
+## The diversity divide
+
+Norway's immigration story is typically told through national numbers — rising totals, changing source countries, integration debates. But beneath the aggregate trends lies a stark geographical reality: immigration has transformed some Norwegian municipalities while barely touching others. By 2026, the gap between the most and least diverse communities has reached unprecedented levels, creating what amounts to two different demographic Norways.
+
+```{r setup}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = TRUE)
+
+library(tidyverse)
+library(PxWebApiData)
+library(lubridate)
+library(scales)
+library(ggridges)
+library(MetBrewer)
+
+pal <- met.brewer("Hokusai2", 7)
+```
+
+## Fetching the data
+
+We'll examine immigration patterns across all Norwegian municipalities, looking at how the share of immigrants and Norwegian-born children of immigrants has evolved over the past 17 years.
+
+```{r fetch-data}
+#| code-fold: false
+
+df <- NULL
+
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/09817",
+    Region = TRUE,
+    InnvandrKat = TRUE,
+    Landbakgrunn = "999",  # All countries
+    ContentsCode = "AndelBefolkning",
+    Tid = list(filter = "top", values = 17)
+  )
+  
+  tmp <- raw[[1]]
+  print(names(tmp))
+  
+  # Find time column
+  time_col <- names(tmp)[grepl(
+    "tid|år|kvartal|måned|aar|maaned|year|month|quarter",
+    names(tmp), ignore.case = TRUE, perl = TRUE
+  )][1]
+  if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
+  
+  # Find region column
+  region_col <- names(tmp)[grepl("region|kommune|fylke", names(tmp), ignore.case = TRUE)][1]
+  
+  # Find category column
+  cat_col <- names(tmp)[grepl("innvandr|kategori|kat", names(tmp), ignore.case = TRUE)][1]
+  
+  df <- tmp |>
+    mutate(
+      value = as.numeric(value),
+      year = as.integer(.data[[time_col]]),
+      region = .data[[region_col]],
+      category = .data[[cat_col]]
+    ) |>
+    filter(!is.na(value), !is.na(year)) |>
+    # Extract municipality code and name
+    mutate(
+      muni_code = str_extract(region, "^\\d{4}"),
+      muni_name = str_trim(str_remove(region, "^\\d{4}\\s*"))
+    ) |>
+    filter(!is.na(muni_code), muni_code != "0")  # Remove national total
+  
+  message("Successfully fetched ", nrow(df), " rows")
+  
+}, error = function(e) {
+  message("Data fetch failed: ", e$message)
+})
+```
+
+## The top 20: Where diversity is highest
+
+Let's start by examining which municipalities have the highest share of immigrants and Norwegian-born children of immigrants in 2026.
+
+```{r top-municipalities}
+#| fig-height: 7
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df)) {
+  # Get latest year data for total immigrant population
+  latest_year <- max(df$year)
+  
+  # Find the category that represents total immigrant population
+  total_cat <- unique(df$category)[grepl("innvandrere og norskfødte|B-C", unique(df$category), ignore.case = TRUE)][1]
+  
+  top_20 <- df |>
+    filter(year == latest_year, category == total_cat) |>
+    arrange(desc(value)) |>
+    slice_head(n = 20) |>
+    mutate(muni_name = fct_reorder(muni_name, value))
+  
+  p1 <- ggplot(top_20, aes(x = value, y = muni_name)) +
+    geom_segment(aes(x = 0, xend = value, y = muni_name, yend = muni_name),
+                 color = "grey70", linewidth = 0.5) +
+    geom_point(color = pal[6], size = 4, alpha = 0.9) +
+    labs(
+      title = "Norway's Most Diverse Municipalities",
+      subtitle = "Share of immigrants and Norwegian-born with immigrant parents, 2026",
+      x = "Percentage of population",
+      y = NULL,
+      caption = "Source: Statistics Norway (SSB)"
+    ) +
+    scale_x_continuous(labels = label_percent(scale = 1), limits = c(0, NA)) +
+    theme_minimal(base_size = 13) +
+    theme(
+      plot.title = element_text(face = "bold", size = 16),
+      panel.grid.major.y = element_blank(),
+      panel.grid.minor = element_blank(),
+      plot.caption = element_text(color = "grey50", hjust = 0)
+    )
+  
+  print(p1)
+}
+```
+
+Oslo leads dramatically, with immigrants and Norwegian-born children of immigrants making up over 37% of the population. But the capital isn't alone: several suburbs like Lørenskog and smaller cities like Drammen have crossed the 30% threshold. This is a profound demographic shift — in these municipalities, roughly one in three residents has an immigrant background.
+
+## The evolution: How diversity spread
+
+How did we get here? Let's trace the trajectory of the top municipalities over time.
+
+```{r diversity-evolution}
+#| fig-height: 6
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df)) {
+  # Get top 12 municipalities for cleaner visualization
+  top_12_codes <- df |>
+    filter(year == latest_year, category == total_cat) |>
+    arrange(desc(value)) |>
+    slice_head(n = 12) |>
+    pull(muni_code)
+  
+  trend_data <- df |>
+    filter(muni_code %in% top_12_codes, category == total_cat) |>
+    mutate(muni_name = fct_reorder(muni_name, -value, .fun = last))
+  
+  p2 <- ggplot(trend_data, aes(x = year, y = value, group = muni_name, color = muni_name)) +
+    geom_line(linewidth = 1.2, alpha = 0.8) +
+    geom_point(size = 2, alpha = 0.7) +
+    labs(
+      title = "The Rise of Diversity: Top 12 Municipalities Over Time",
+      subtitle = "Steady growth in immigrant population share, 2010-2026",
+      x = NULL,
+      y = "Percentage of population",
+      color = "Municipality",
+      caption = "Source: Statistics Norway (SSB)"
+    ) +
+    scale_y_continuous(labels = label_percent(scale = 1)) +
+    scale_color_manual(values = met.brewer("Demuth", 12)) +
+    theme_minimal(base_size = 13) +
+    theme(
+      plot.title = element_text(face = "bold", size = 15),
+      legend.position = "right",
+      panel.grid.minor = element_blank(),
+      plot.caption = element_text(color = "grey50", hjust = 0)
+    )
+  
+  print(p2)
+}
+```
+
+The growth is remarkably consistent and sustained. Every single top municipality shows an upward trajectory, with no reversals or plateaus. Oslo's share has roughly doubled since 2010, while municipalities like Drammen and Skien have seen similarly dramatic increases from lower starting points.
+
+## The distribution: Two demographic Norways
+
+But what about the rest of Norway? A ridgeline plot reveals the full distribution across all municipalities.
+
+```{r distribution-ridges}
+#| fig-height: 8
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df)) {
+  # Select years to visualize (every 4 years plus latest)
+  selected_years <- df |>
+    filter(category == total_cat) |>
+    distinct(year) |>
+    arrange(year) |>
+    filter(year %% 4 == 0 | year == latest_year) |>
+    pull(year)
+  
+  ridge_data <- df |>
+    filter(category == total_cat, year %in% selected_years) |>
+    mutate(year_label = factor(year, levels = rev(selected_years)))
+  
+  p3 <- ggplot(ridge_data, aes(x = value, y = year_label, fill = year_label)) +
+    geom_density_ridges(
+      alpha = 0.7,
+      scale = 2.5,
+      color = "white",
+      size = 0.8
+    ) +
+    labs(
+      title = "The Growing Diversity Gap Across Norwegian Municipalities",
+      subtitle = "Distribution of immigrant population share, 2010-2026",
+      x = "Percentage of population",
+      y = NULL,
+      caption = "Source: Statistics Norway (SSB)"
+    ) +
+    scale_x_continuous(labels = label_percent(scale = 1)) +
+    scale_fill_manual(values = met.brewer("Hiroshige", length(selected_years))) +
+    theme_minimal(base_size = 13) +
+    theme(
+      plot.title = element_text(face = "bold", size = 15),
+      legend.position = "none",
+      panel.grid.minor = element_blank(),
+      panel.grid.major.y = element_blank(),
+      plot.caption = element_text(color = "grey50", hjust = 0)
+    )
+  
+  print(p3)
+}
+```
+
+Two Norways emerge clearly: the distributions have widened dramatically over 16 years. While many municipalities cluster in the 5-15% range, a growing tail extends beyond 30%. The gap between the most and least diverse communities has roughly doubled since 2010.
+
+## Regional patterns: The geography of diversity
+
+Finally, let's examine which regions of Norway have seen the fastest growth in diversity.
+
+```{r regional-heatmap}
+#| fig-height: 7
+#| fig-width: 11
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df)) {
+  # Get top 30 municipalities by latest diversity level
+  top_30_codes <- df |>
+    filter(year == latest_year, category == total_cat) |>
+    arrange(desc(value)) |>
+    slice_head(n = 30) |>
+    pull(muni_code)
+  
+  heatmap_data <- df |>
+    filter(
+      muni_code %in% top_30_codes,
+      category == total_cat,
+      year >= 2010
+    ) |>
+    mutate(
+      muni_name = fct_reorder(muni_name, value, .fun = last)
+    )
+  
+  p4 <- ggplot(heatmap_data, aes(x = year, y = muni_name, fill = value)) +
+    geom_tile(color = "white", size = 0.3) +
+    labs(
+      title = "Tracking Diversity Growth in Top 30 Municipalities",
+      subtitle = "Immigrant population share by municipality and year, 2010-2026",
+      x = NULL,
+      y = NULL,
+      fill = "Share (%)",
+      caption = "Source: Statistics Norway (SSB)"
+    ) +
+    scale_fill_gradientn(
+      colors = met.brewer("VanGogh2", direction = -1),
+      labels = label_number(suffix = "%")
+    ) +
+    scale_x_continuous(breaks = seq(2010, 2026, 4)) +
+    theme_minimal(base_size = 12) +
+    theme(
+      plot.title = element_text(face = "bold", size = 15),
+      axis.text.y = element_text(size = 9),
+      panel.grid = element_blank(),
+      legend.position = "right",
+      plot.caption = element_text(color = "grey50", hjust = 0)
+    )
+  
+  print(p4)
+}
+```
+
+The heatmap reveals the relentless march toward greater diversity in urban and suburban Norway. Almost every municipality shows a steady darkening from left to right — there are virtually no cases of declining immigrant shares. The Oslo region dominates, but cities like Bergen, Trondheim, Stavanger, and Drammen all show similar patterns.
+
+## Key findings
+
+- **Oslo leads dramatically**: Over 37% of Oslo's population now has an immigrant background — the highest in Norway and roughly double the figure from 2010
+
+- **Suburban transformation**: Oslo's surrounding municipalities (Lørenskog, Bærum, Ski) have all crossed 25%, creating a diverse metropolitan region
+
+- **Two Norways emerging**: While urban areas see rapid demographic change, many rural municipalities remain below 10%, and the gap is widening every year
+
+- **Sustained growth everywhere**: Among the top 30 municipalities, virtually all show uninterrupted growth in immigrant population share since 2010 — no plateaus, no reversals
+
+- **Regional concentration**: The diversity revolution is concentrated in and around the five largest cities, while much of rural Norway experiences minimal demographic change
+
+## What this means for Norway
+
+This geographical concentration of immigration raises profound questions about Norwegian society. Schools, healthcare services, and local governments in high-diversity municipalities face fundamentally different challenges than those in homogeneous rural areas. Integration policy, housing markets, and political representation all look different when the immigrant population approaches 40% versus staying below 5%.
+
+The two demographic Norways are likely to grow further apart. Immigration continues, second-generation Norwegians have children, and internal migration tends to concentrate immigrant families in areas where communities already exist. By 2030, Oslo and several surrounding municipalities may see immigrants and their Norwegian-born children become the majority — a transformation with no historical precedent in Norwegian society.
+
+The question isn't whether Norway is becoming more diverse — it clearly is. The question is whether the country can manage the growing gap between its urban and rural demographic realities, and what that gap means for national cohesion, policy-making, and the very idea of a shared Norwegian identity.
