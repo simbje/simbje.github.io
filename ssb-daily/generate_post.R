@@ -500,6 +500,48 @@ qmd_raw <- gsub(
 qmd_raw <- gsub('\nimage: "thumbnail.png"', "", qmd_raw, fixed = TRUE)
 qmd_raw <- gsub("\nimage: 'thumbnail.png'", "", qmd_raw, fixed = TRUE)
 
+# ── Patch: fix time-column detection in generated code ────────────────────────
+# The LLM sometimes emits an incomplete regex that misses "år" (U+00E5+r),
+# causing time_col to be NA, which throws inside tryCatch and leaves df NULL.
+# Strategy: scan line-by-line; on any line with `time_col <- names(`,
+# replace the grepl string with the canonical pattern and ensure the NA fallback
+# appears on the very next non-blank line.
+local({
+  lines     <- strsplit(qmd_raw, "\n", fixed = TRUE)[[1]]
+  canonical <- 'grepl("tid|\u00e5r|kvartal|m\u00e5ned|aar|maaned|year|month|quarter"'
+  i <- 1L
+  while (i <= length(lines)) {
+    if (grepl("time_col\\s*<-\\s*names\\(", lines[i], perl = TRUE)) {
+      # 1. Replace whatever grepl string is present with the canonical pattern
+      lines[i] <- sub('grepl\\("[^"]*"', canonical, lines[i], perl = TRUE)
+      # 2. Ensure perl = TRUE is present (add it if only ignore.case = TRUE)
+      if (!grepl("perl\\s*=\\s*TRUE", lines[i], perl = TRUE)) {
+        lines[i] <- sub(
+          "ignore\\.case\\s*=\\s*TRUE\\)",
+          "ignore.case = TRUE, perl = TRUE)",
+          lines[i], perl = TRUE
+        )
+      }
+      # 3. Ensure the NA fallback is on the next line
+      next_i <- i + 1L
+      # skip blank lines when checking
+      while (next_i <= length(lines) && trimws(lines[next_i]) == "") next_i <- next_i + 1L
+      has_fallback <- next_i <= length(lines) &&
+        grepl("is\\.na\\(time_col\\)", lines[next_i], perl = TRUE)
+      if (!has_fallback) {
+        var_name <- sub(".*names\\((\\w+)\\).*", "\\1", lines[i], perl = TRUE)
+        indent   <- sub("^([ \t]*).*", "\\1", lines[i], perl = TRUE)
+        fallback <- paste0(indent, "if (is.na(time_col)) time_col <- names(",
+                           var_name, ")[length(names(", var_name, ")) - 1L]")
+        lines <- c(lines[seq_len(i)], fallback, lines[seq.int(i + 1L, length(lines))])
+        i <- i + 1L  # skip the newly inserted line
+      }
+    }
+    i <- i + 1L
+  }
+  qmd_raw <<- paste(lines, collapse = "\n")
+})
+
 # ── Write post file ───────────────────────────────────────────────────────────
 dir.create(POST_DIR, recursive = TRUE, showWarnings = FALSE)
 writeLines(qmd_raw, POST_FILE)
