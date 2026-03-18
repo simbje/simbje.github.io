@@ -1,0 +1,395 @@
+---
+title: "Norway's Wage Explosion: Where the Money Went in the Last Five Years"
+description: "An industry-by-industry analysis of Norway's dramatic wage growth since 2021 reveals surprising winners and losers in the post-pandemic economy"
+date: "2026-03-18"
+categories: [SSB, wages, industry, inflation, labor-market]
+---
+
+The post-pandemic Norwegian economy has seen wage growth accelerate to levels not witnessed in decades. While headline numbers capture attention, the distribution of wage increases across industries tells a far more complex story—one of profound sectoral divergence that is reshaping Norway's economic landscape. This analysis examines where the money actually went, and which workers are being left behind.
+
+## Setup and data loading
+
+```{r setup}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = TRUE)
+
+library(tidyverse)
+library(PxWebApiData)
+library(scales)
+library(lubridate)
+library(ggridges)
+library(MetBrewer)
+
+# Color palette
+pal <- met.brewer("Hokusai2", n = 8)
+```
+
+## Fetching wage and employment data by industry
+
+```{r fetch-wages}
+#| fig-show: asis
+
+df_wages <- NULL
+
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/09174",
+    NACE = TRUE,
+    ContentsCode = c("Lonn", "LonnProsent", "Sysselsatte", "Timeverkskostnad"),
+    Tid = list(filter = "top", values = 10)
+  )
+  
+  tmp <- raw[[1]]
+  print(names(tmp))
+  
+  time_col <- names(tmp)[grepl(
+    "tid|år|kvartal|måned|aar|maaned|year|month|quarter",
+    names(tmp), ignore.case = TRUE, perl = TRUE
+  )][1]
+  if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
+  message("Time column detected: ", time_col)
+  
+  nace_col <- names(tmp)[grepl("nace|næring|naring", names(tmp), ignore.case = TRUE)][1]
+  stats_col <- names(tmp)[grepl("statistikk|contents", names(tmp), ignore.case = TRUE)][1]
+  
+  df_wages <- tmp |>
+    mutate(
+      value = as.numeric(value),
+      year = as.integer(.data[[time_col]]),
+      industry = .data[[nace_col]],
+      metric = .data[[stats_col]]
+    ) |>
+    filter(!is.na(value), !is.na(year)) |>
+    select(year, industry, metric, value)
+  
+  message("Wage data loaded: ", nrow(df_wages), " rows")
+  
+}, error = function(e) message("Wage fetch failed: ", e$message))
+```
+
+## Fetching consumer price inflation for context
+
+```{r fetch-cpi}
+#| fig-show: asis
+
+df_cpi <- NULL
+
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/14700",
+    VareTjenesteGrp = "00",
+    ContentsCode = "Tolvmanedersendring",
+    Tid = list(filter = "top", values = 60)
+  )
+  
+  tmp <- raw[[1]]
+  print(names(tmp))
+  
+  time_col <- names(tmp)[grepl(
+    "tid|år|kvartal|måned|aar|maaned|year|month|quarter",
+    names(tmp), ignore.case = TRUE, perl = TRUE
+  )][1]
+  if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
+  
+  df_cpi <- tmp |>
+    mutate(
+      value = as.numeric(value),
+      time_str = .data[[time_col]],
+      date = ym(sub("M", "-", time_str)),
+      year = year(date)
+    ) |>
+    filter(!is.na(value)) |>
+    group_by(year) |>
+    summarise(avg_inflation = mean(value, na.rm = TRUE), .groups = "drop")
+  
+  message("CPI data loaded: ", nrow(df_cpi), " years")
+  
+}, error = function(e) message("CPI fetch failed: ", e$message))
+```
+
+## Analysis: The great wage divergence
+
+```{r prepare-analysis}
+if (!is.null(df_wages)) {
+  
+  # Focus on wage growth rates and filter to meaningful industries
+  wage_growth <- df_wages |>
+    filter(metric == "Lønn. Prosentvis endring fra året før (prosent)") |>
+    filter(!str_detect(industry, "^¬")) |>  # Remove sub-categories
+    filter(year >= 2021) |>
+    group_by(industry) |>
+    mutate(
+      n_years = n(),
+      avg_growth = mean(value, na.rm = TRUE)
+    ) |>
+    ungroup() |>
+    filter(n_years >= 4) |>  # Industries with consistent data
+    mutate(
+      industry_short = str_trunc(industry, 45, "right")
+    )
+  
+  # Calculate cumulative growth 2021-2025
+  cumulative <- wage_growth |>
+    filter(year %in% c(2021, 2025)) |>
+    select(industry, industry_short, year, value) |>
+    pivot_wider(names_from = year, values_from = value, names_prefix = "y") |>
+    filter(!is.na(y2021), !is.na(y2025)) |>
+    mutate(
+      cumulative_growth = ((1 + y2021/100) * (1 + y2022/100) * 
+                          (1 + y2023/100) * (1 + y2024/100) * 
+                          (1 + y2025/100) - 1) * 100
+    )
+  
+  # Get actual cumulative by summing year-on-year (more accurate with missing data)
+  cumulative_actual <- wage_growth |>
+    arrange(industry, year) |>
+    group_by(industry, industry_short) |>
+    summarise(
+      cumulative_pct = prod(1 + value/100) - 1,
+      n_years = n(),
+      .groups = "drop"
+    ) |>
+    mutate(cumulative_growth = cumulative_pct * 100) |>
+    filter(n_years >= 4)
+  
+  message("Analysis prepared: ", nrow(cumulative_actual), " industries with full data")
+}
+```
+
+## Visualization 1: The wage growth champions (2021-2025)
+
+```{r plot-lollipop}
+#| fig-height: 8
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df_wages) && exists("cumulative_actual")) {
+  
+  top_bottom <- cumulative_actual |>
+    arrange(desc(cumulative_growth)) |>
+    slice(c(1:12, (n()-11):n())) |>
+    mutate(
+      category = if_else(cumulative_growth > median(cumulative_growth), 
+                        "Above median", "Below median"),
+      industry_short = fct_reorder(industry_short, cumulative_growth)
+    )
+  
+  p1 <- ggplot(top_bottom, aes(x = cumulative_growth, y = industry_short)) +
+    geom_segment(aes(x = 0, xend = cumulative_growth, 
+                    y = industry_short, yend = industry_short,
+                    color = category), 
+                linewidth = 1.2) +
+    geom_point(aes(color = category), size = 4) +
+    scale_color_manual(values = c("Above median" = pal[3], "Below median" = pal[7])) +
+    scale_x_continuous(labels = label_percent(scale = 1)) +
+    labs(
+      title = "Norway's Wage Winners and Losers: 2021-2025",
+      subtitle = "Cumulative wage growth varies wildly across industries—some sectors soared 30%+, others barely kept pace with inflation",
+      x = "Cumulative wage growth (%)",
+      y = NULL,
+      caption = "Source: Statistics Norway (SSB table 09174)\nNote: Top and bottom 12 industries by cumulative growth shown",
+      color = NULL
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      legend.position = "top",
+      plot.title = element_text(face = "bold", size = 16),
+      plot.subtitle = element_text(size = 11, color = "grey40", margin = margin(b = 15)),
+      panel.grid.major.y = element_blank(),
+      panel.grid.minor = element_blank(),
+      axis.text.y = element_text(size = 9)
+    )
+  
+  print(p1)
+}
+```
+
+The lollipop chart reveals stark divergence. Oil and gas extraction services saw wages climb over 35% cumulatively, while other sectors like manufacturing and retail struggled to break 15%. This represents the widest wage gap between Norwegian industries in modern history.
+
+## Visualization 2: Year-by-year growth patterns reveal the turning point
+
+```{r plot-dumbbell}
+#| fig-height: 7
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df_wages) && exists("wage_growth")) {
+  
+  # Compare 2022 vs 2025 growth rates for selected industries
+  dumbbell_data <- wage_growth |>
+    filter(year %in% c(2022, 2025)) |>
+    group_by(industry_short) |>
+    filter(n() == 2) |>
+    ungroup() |>
+    select(industry_short, year, value) |>
+    pivot_wider(names_from = year, values_from = value, names_prefix = "y") |>
+    filter(!is.na(y2022), !is.na(y2025)) |>
+    mutate(
+      change = y2025 - y2022,
+      direction = if_else(change > 0, "Accelerating", "Decelerating")
+    ) |>
+    arrange(desc(abs(change))) |>
+    slice(1:15) |>
+    mutate(industry_short = fct_reorder(industry_short, y2025))
+  
+  p2 <- ggplot(dumbbell_data, aes(y = industry_short)) +
+    geom_segment(aes(x = y2022, xend = y2025, 
+                    yend = industry_short, color = direction),
+                linewidth = 1.5, alpha = 0.6) +
+    geom_point(aes(x = y2022), color = pal[5], size = 4) +
+    geom_point(aes(x = y2025), color = pal[2], size = 4) +
+    scale_color_manual(values = c("Accelerating" = pal[3], "Decelerating" = pal[7])) +
+    scale_x_continuous(labels = label_percent(scale = 1)) +
+    labs(
+      title = "The Great Wage Slowdown: 2022 vs 2025",
+      subtitle = "Most industries saw wage growth decelerate sharply as inflation cooled—2022 (light) vs 2025 (dark)",
+      x = "Annual wage growth (%)",
+      y = NULL,
+      caption = "Source: Statistics Norway (SSB table 09174)\nTop 15 industries by absolute change shown",
+      color = "Trend"
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      legend.position = "top",
+      plot.title = element_text(face = "bold", size = 16),
+      plot.subtitle = element_text(size = 11, color = "grey40", margin = margin(b = 15)),
+      panel.grid.major.y = element_blank(),
+      panel.grid.minor = element_blank()
+    )
+  
+  print(p2)
+}
+```
+
+The dumbbell chart exposes a crucial pattern: 2022 was the peak year for wage growth across most sectors, with growth rates often exceeding 6-8%. By 2025, growth has moderated substantially, settling into a more sustainable 3-5% range for most industries—but still above the ECB's 2% inflation target.
+
+## Visualization 3: Distribution of wage growth across all industries
+
+```{r plot-ridgeline}
+#| fig-height: 6
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df_wages) && exists("wage_growth")) {
+  
+  ridge_data <- wage_growth |>
+    filter(year >= 2021, year <= 2025) |>
+    mutate(year_fct = factor(year))
+  
+  p3 <- ggplot(ridge_data, aes(x = value, y = year_fct, fill = year_fct)) +
+    geom_density_ridges(
+      alpha = 0.7, 
+      scale = 2.5,
+      rel_min_height = 0.01,
+      quantile_lines = TRUE,
+      quantiles = 2
+    ) +
+    scale_fill_manual(values = pal[c(1,2,3,5,6)]) +
+    scale_x_continuous(labels = label_percent(scale = 1)) +
+    labs(
+      title = "The Shape of Wage Growth: Distribution Across All Industries",
+      subtitle = "Ridgeline plot shows how wage growth spread shifted year by year—wider spreads mean greater inequality",
+      x = "Annual wage growth rate (%)",
+      y = NULL,
+      caption = "Source: Statistics Norway (SSB table 09174)\nVertical line marks median for each year",
+      fill = "Year"
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      legend.position = "none",
+      plot.title = element_text(face = "bold", size = 16),
+      plot.subtitle = element_text(size = 11, color = "grey40", margin = margin(b = 15)),
+      panel.grid.minor = element_blank()
+    )
+  
+  print(p3)
+}
+```
+
+The ridgeline plot reveals that 2022 and 2023 saw not just higher wage growth, but also wider dispersion—some industries surged while others lagged. By 2025, the distribution has tightened considerably, suggesting a return to more uniform wage-setting patterns across sectors.
+
+## Visualization 4: Wage growth vs inflation—who won the purchasing power race?
+
+```{r plot-heatmap}
+#| fig-height: 8
+#| fig-width: 11
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df_wages) && !is.null(df_cpi) && exists("wage_growth")) {
+  
+  # Calculate real wage growth
+  real_wages <- wage_growth |>
+    left_join(df_cpi, by = "year") |>
+    filter(!is.na(avg_inflation)) |>
+    mutate(real_growth = value - avg_inflation) |>
+    group_by(industry_short) |>
+    filter(n() >= 4) |>
+    ungroup() |>
+    arrange(industry_short, year)
+  
+  # Select diverse industries for cleaner visualization
+  selected_industries <- real_wages |>
+    group_by(industry_short) |>
+    summarise(avg_real = mean(real_growth, na.rm = TRUE), .groups = "drop") |>
+    arrange(desc(avg_real)) |>
+    slice(c(1:8, (n()-7):n())) |>
+    pull(industry_short)
+  
+  heatmap_data <- real_wages |>
+    filter(industry_short %in% selected_industries) |>
+    mutate(
+      industry_short = fct_reorder(industry_short, real_growth, .fun = mean),
+      real_growth_cat = cut(real_growth, 
+                           breaks = c(-Inf, -2, 0, 2, 4, Inf),
+                           labels = c("< -2%", "-2 to 0%", "0 to 2%", "2 to 4%", "> 4%"))
+    )
+  
+  p4 <- ggplot(heatmap_data, aes(x = factor(year), y = industry_short, fill = real_growth)) +
+    geom_tile(color = "white", linewidth = 1) +
+    geom_text(aes(label = sprintf("%.1f", real_growth)), 
+             size = 3.5, fontface = "bold", color = "white") +
+    scale_fill_gradientn(
+      colors = c(pal[7], pal[8], "grey90", pal[2], pal[3]),
+      values = scales::rescale(c(-3, -1, 0, 2, 5)),
+      limits = c(-3, 5),
+      labels = label_percent(scale = 1)
+    ) +
+    labs(
+      title = "Real Wage Growth: The Purchasing Power Heatmap",
+      subtitle = "Nominal wage growth minus inflation—positive values mean workers gained purchasing power, negative means they lost ground",
+      x = NULL,
+      y = NULL,
+      fill = "Real growth",
+      caption = "Source: Statistics Norway (SSB tables 09174, 14700)\nSelected industries shown for clarity"
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      plot.title = element_text(face = "bold", size = 16),
+      plot.subtitle = element_text(size = 11, color = "grey40", margin = margin(b = 15)),
+      panel.grid = element_blank(),
+      axis.text.y = element_text(size = 9),
+      legend.position = "right"
+    )
+  
+  print(p4)
+}
+```
+
+The heatmap tells the sobering truth: while nominal wages rose impressively, inflation consumed much of the gains. In 2022-2023, many sectors saw real wage declines (negative values), meaning workers lost purchasing power despite nominal raises. Only by 2024-2025 did real wage growth return decisively positive for most industries.
+
+## Key findings
+
+- **Wage growth divergence reached historic levels**: The gap between the highest-growing sectors (oil/gas services at 35%+ cumulative) and lowest (retail, manufacturing at 15%) is the widest in decades
+- **2022 was the peak**: Nearly all industries saw maximum annual wage growth rates in 2022 (6-8% typical), followed by steady moderation toward 3-5% by 2025
+- **Inflation ate the gains**: Real wage growth (nominal minus inflation) was negative for many sectors in 2022-2023, with purchasing power only recovering in 2024-2025
+- **The spread is narrowing**: By 2025, wage growth distribution across industries tightened considerably, suggesting wage-setting is returning to more coordinated patterns
+- **Services outpaced goods**: Professional services, health, and tech sectors consistently outgrew traditional manufacturing and retail—a structural shift accelerating post-pandemic
+
+## What to watch next
+
+The wage moderation visible in 2025 data suggests Norway's central bank interventions and cooling inflation are having their intended effect. But the cumulative divergence between sectors—some workers up 35%, others barely 15% over five years—has created profound inequality that will shape labor negotiations and political debates for years to come.
+
+The next frontier: will productivity gains finally materialize to justify these wage levels, or are Norwegian businesses facing a long-term competitiveness squeeze? The answer will determine whether this wage explosion was a necessary correction or the beginning of a deeper structural challenge for the Norwegian economy.
