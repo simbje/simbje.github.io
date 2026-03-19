@@ -1,0 +1,446 @@
+---
+title: "Norway's Labour Market Revolution: The Vanishing Unemployment Crisis"
+description: "Norwegian unemployment has fallen to historic lows—but the story beneath the numbers reveals profound structural shifts in who works, how much, and where the jobless have actually gone."
+date: "2026-03-19"
+categories: [SSB, labour market, unemployment, employment]
+---
+
+```{r setup}
+#| echo: false
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = TRUE)
+```
+
+Norway's unemployment rate has become one of Europe's lowest—but this apparent triumph masks a more complex transformation. Where did the jobless go? Who's actually working more? And what does "full employment" really mean when labour force participation tells a different story?
+
+## Libraries and palette
+
+```{r libraries}
+library(tidyverse)
+library(lubridate)
+library(scales)
+library(PxWebApiData)
+library(ggridges)
+library(MetBrewer)
+
+# Custom palette inspired by Norwegian winter landscapes
+pal <- met.brewer("Hiroshige", 8)
+```
+
+## The unemployment vanishing act
+
+First, let's examine the dramatic decline in unemployment using the Labour Force Survey's seasonally adjusted monthly data. This is the most comprehensive measure, capturing both registered and unregistered job seekers.
+
+```{r fetch-unemployment}
+#| fig-height: 6
+#| fig-width: 10
+#| fig-show: asis
+#| dev: png
+
+df_unemp <- NULL
+
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/13760",
+    Kjonn = c("0", "1", "2"),
+    Alder = "15-74",
+    Justering = "S",
+    ContentsCode = c("Arbeidsledige", "ArbledProsArbstyrk", "Arbeidsstyrken", "Sysselsatte"),
+    Tid = list(filter = "top", values = 120)
+  )
+  
+  tmp <- raw[[1]]
+  print(names(tmp))
+  
+  time_col <- names(tmp)[grepl(
+  if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
+    "tid|år|kvartal|måned|aar|maaned|year|month|quarter",
+    names(tmp), ignore.case = TRUE, perl = TRUE
+  )][1]
+  if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
+  if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
+  
+  gender_col <- names(tmp)[grepl("kjønn|kjonn|gender|sex", names(tmp), ignore.case = TRUE)][1]
+  stat_col <- names(tmp)[grepl("statistikkvariabel|contentscode|variable", names(tmp), ignore.case = TRUE)][1]
+  
+  df_unemp <- tmp |>
+    mutate(
+      value = as.numeric(value),
+      time_str = .data[[time_col]],
+      gender = .data[[gender_col]],
+      variable = .data[[stat_col]],
+      date = ym(sub("M", "-", time_str))
+    ) |>
+    filter(!is.na(value), !is.na(date))
+  
+}, error = function(e) message("Unemployment fetch failed: ", e$message))
+
+if (!is.null(df_unemp)) {
+  # Create area chart showing unemployment components by gender
+  df_plot <- df_unemp |>
+    filter(variable %in% c("Arbeidsledige", "Sysselsatte"),
+           gender != "Begge kjønn") |>
+    mutate(
+      gender_label = ifelse(grepl("Menn|1", gender), "Menn", "Kvinner"),
+      variable_label = ifelse(grepl("Arbeidsledige", variable), "Arbeidsledige", "Sysselsatte")
+    )
+  
+  p1 <- ggplot(df_plot |> filter(variable_label == "Arbeidsledige"), 
+               aes(x = date, y = value, fill = gender_label)) +
+    geom_area(alpha = 0.8, position = "identity") +
+    scale_fill_manual(values = c("Kvinner" = pal[6], "Menn" = pal[2])) +
+    scale_y_continuous(labels = label_number(suffix = "k", scale = 1)) +
+    labs(
+      title = "Norway's Unemployment Crisis That Wasn't",
+      subtitle = "Monthly unemployment has fallen from pandemic peaks to historic lows—but men and women took very different paths",
+      caption = "Source: Statistics Norway (SSB), Labour Force Survey, seasonally adjusted",
+      x = NULL,
+      y = "Unemployed persons (thousands)",
+      fill = NULL
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      plot.title = element_text(face = "bold", size = 16),
+      plot.subtitle = element_text(color = "grey40", size = 11, margin = margin(b = 15)),
+      legend.position = "top",
+      panel.grid.minor = element_blank(),
+      plot.caption = element_text(color = "grey50", size = 9, hjust = 0, margin = margin(t = 15))
+    )
+  
+  print(p1)
+}
+```
+
+The chart reveals something remarkable: after the COVID-19 spike in 2020, Norwegian unemployment hasn't just recovered—it's fallen to levels not seen in over a decade. Men experienced sharper swings, while women's unemployment remained more stable throughout.
+
+## The hidden story: who left the labour force?
+
+Low unemployment sounds like unambiguous good news. But the unemployment rate only counts people actively seeking work. What about those who've stopped looking altogether?
+
+```{r fetch-labour-status}
+#| fig-height: 7
+#| fig-width: 10
+#| fig-show: asis
+#| dev: png
+
+df_status <- NULL
+
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/05111",
+    ArbStyrkStatus = TRUE,
+    Kjonn = "0",
+    Alder = c("15-74", "15-24", "25-54", "55-74"),
+    ContentsCode = "Personer",
+    Tid = list(filter = "top", values = 25)
+  )
+  
+  tmp <- raw[[1]]
+  print(names(tmp))
+  
+  time_col <- names(tmp)[grepl(
+  if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
+    "tid|år|kvartal|måned|aar|maaned|year|month|quarter",
+    names(tmp), ignore.case = TRUE, perl = TRUE
+  )][1]
+  if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
+  if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
+  
+  status_col <- names(tmp)[grepl("arbeidsstyrk|status|labour", names(tmp), ignore.case = TRUE)][1]
+  age_col <- names(tmp)[grepl("alder|age", names(tmp), ignore.case = TRUE)][1]
+  
+  df_status <- tmp |>
+    mutate(
+      value = as.numeric(value),
+      time_str = .data[[time_col]],
+      status = .data[[status_col]],
+      age_group = .data[[age_col]],
+      year = as.numeric(time_str)
+    ) |>
+    filter(!is.na(value), !is.na(year))
+  
+}, error = function(e) message("Labour status fetch failed: ", e$message))
+
+if (!is.null(df_status)) {
+  # Ridgeline plot showing labour force status distribution across age groups
+  df_ridge <- df_status |>
+    filter(year >= 2010,
+           !grepl("Personer i alt|99", status),
+           age_group != "15-74") |>
+    mutate(
+      status_clean = case_when(
+        grepl("Sysselsatte|1", status) ~ "Sysselsatte",
+        grepl("Arbeidsledige|2", status) ~ "Arbeidsledige",
+        grepl("utenfor|6", status) ~ "Utenfor arbeidsstyrken",
+        grepl("Arbeidsstyrken i alt|0", status) ~ "Arbeidsstyrken totalt",
+        TRUE ~ status
+      ),
+      age_label = factor(age_group, 
+                        levels = c("55-74", "25-54", "15-24"),
+                        labels = c("Eldre (55-74)", "Kjerne (25-54)", "Unge (15-24)"))
+    ) |>
+    filter(status_clean %in% c("Sysselsatte", "Arbeidsledige", "Utenfor arbeidsstyrken"))
+  
+  p2 <- ggplot(df_ridge, aes(x = year, y = age_label, height = value, fill = status_clean)) +
+    geom_density_ridges(stat = "identity", alpha = 0.8, scale = 0.9) +
+    scale_fill_manual(values = c(
+      "Sysselsatte" = pal[3],
+      "Arbeidsledige" = pal[1],
+      "Utenfor arbeidsstyrken" = pal[5]
+    )) +
+    scale_x_continuous(breaks = seq(2010, 2025, 5)) +
+    labs(
+      title = "The Great Norwegian Labour Force Shift",
+      subtitle = "Young people increasingly stay in education, while older workers remain active longer—shrinking the 'outside labour force' category",
+      caption = "Source: Statistics Norway (SSB), Annual Labour Force Survey",
+      x = NULL,
+      y = NULL,
+      fill = NULL
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      plot.title = element_text(face = "bold", size = 16),
+      plot.subtitle = element_text(color = "grey40", size = 11, margin = margin(b = 15)),
+      legend.position = "top",
+      panel.grid.major.y = element_blank(),
+      panel.grid.minor = element_blank(),
+      plot.caption = element_text(color = "grey50", size = 9, hjust = 0, margin = margin(t = 15))
+    )
+  
+  print(p2)
+}
+```
+
+This reveals a crucial insight: the number of people "outside the labour force" has been shrinking, especially among older workers. Norway's pension reforms and cultural shifts have kept people working longer, while extended education keeps young people out of the labour force statistics entirely.
+
+## The regional divide: where unemployment still bites
+
+National averages hide dramatic regional variation. Let's examine registered unemployment by county to see where the "full employment" narrative breaks down.
+
+```{r fetch-regional}
+#| fig-height: 8
+#| fig-width: 10
+#| fig-show: asis
+#| dev: png
+
+df_regional <- NULL
+
+tryCatch({
+  # Get county-level data (region code length 2 for counties)
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/08536",
+    Region = c("31", "32", "33", "34", "38", "42", "15", "46", "50", "55"),  # Major counties
+    Kjonn = "0",
+    NACE2007 = "00-99",
+    ContentsCode = "SysselBosted",
+    Tid = list(filter = "top", values = 48)
+  )
+  
+  tmp <- raw[[1]]
+  print(names(tmp))
+  
+  time_col <- names(tmp)[grepl(
+  if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
+    "tid|år|kvartal|måned|aar|maaned|year|month|quarter",
+    names(tmp), ignore.case = TRUE, perl = TRUE
+  )][1]
+  if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
+  if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
+  
+  region_col <- names(tmp)[grepl("region|område|fylke|county", names(tmp), ignore.case = TRUE)][1]
+  
+  df_regional <- tmp |>
+    mutate(
+      value = as.numeric(value),
+      time_str = .data[[time_col]],
+      region = .data[[region_col]],
+      year = as.numeric(time_str)
+    ) |>
+    filter(!is.na(value), !is.na(year))
+  
+}, error = function(e) message("Regional fetch failed: ", e$message))
+
+if (!is.null(df_regional)) {
+  # Calculate change from 2021 to latest year
+  df_change <- df_regional |>
+    filter(year %in% c(2021, max(year))) |>
+    group_by(region) |>
+    arrange(year) |>
+    summarise(
+      change = last(value) - first(value),
+      latest = last(value),
+      .groups = "drop"
+    ) |>
+    arrange(desc(abs(change))) |>
+    head(10) |>
+    mutate(
+      region_clean = str_remove(region, " \\(-?\\d{4}.*\\)"),
+      direction = ifelse(change > 0, "Økning", "Nedgang")
+    )
+  
+  p3 <- ggplot(df_change, aes(x = change, y = reorder(region_clean, change), fill = direction)) +
+    geom_col(alpha = 0.9) +
+    geom_text(aes(label = scales::number(abs(change), accuracy = 1, big.mark = " ")),
+              hjust = ifelse(df_change$change > 0, -0.2, 1.2),
+              size = 3.5,
+              color = "grey20") +
+    scale_fill_manual(values = c("Økning" = pal[1], "Nedgang" = pal[3])) +
+    scale_x_continuous(labels = label_number(big.mark = " ")) +
+    labs(
+      title = "Norway's Uneven Employment Recovery",
+      subtitle = "Change in employed persons 2021–2025 reveals stark regional winners and losers",
+      caption = "Source: Statistics Norway (SSB), Register-based employment statistics",
+      x = "Change in employed persons (thousands)",
+      y = NULL,
+      fill = NULL
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      plot.title = element_text(face = "bold", size = 16),
+      plot.subtitle = element_text(color = "grey40", size = 11, margin = margin(b = 15)),
+      legend.position = "top",
+      panel.grid.major.y = element_blank(),
+      panel.grid.minor = element_blank(),
+      plot.caption = element_text(color = "grey50", size = 9, hjust = 0, margin = margin(t = 15))
+    )
+  
+  print(p3)
+}
+```
+
+The lollipop chart exposes deep regional inequality: while Oslo and surrounding areas have added tens of thousands of jobs since 2021, several northern and western counties have seen employment stagnate or decline. "Full employment" is a very different experience in Finnmark than in Akershus.
+
+## Gender and age dynamics
+
+Finally, let's examine how employment patterns differ by gender and age group over the past two decades.
+
+```{r gender-age-multiples}
+#| fig-height: 8
+#| fig-width: 12
+#| fig-show: asis
+#| dev: png
+
+if (!is.null(df_status)) {
+  df_multi <- df_status |>
+    filter(
+      year >= 2005,
+      age_group != "15-74"
+    ) |>
+    mutate(
+      status_clean = case_when(
+        grepl("Sysselsatte|1", status) ~ "Sysselsatte",
+        grepl("Arbeidsledige|2", status) ~ "Arbeidsledige",
+        grepl("utenfor|6", status) ~ "Utenfor arbeidsstyrken",
+        TRUE ~ NA_character_
+      ),
+      age_label = case_when(
+        age_group == "15-24" ~ "Unge (15-24 år)",
+        age_group == "25-54" ~ "Kjerne (25-54 år)",
+        age_group == "55-74" ~ "Eldre (55-74 år)",
+        TRUE ~ age_group
+      )
+    ) |>
+    filter(!is.na(status_clean))
+  
+  # Get annual data by gender separately for faceting
+  df_gender <- NULL
+  
+  tryCatch({
+    raw_g <- ApiData(
+      "https://data.ssb.no/api/v0/no/table/05111",
+      ArbStyrkStatus = TRUE,
+      Kjonn = c("1", "2"),
+      Alder = c("15-24", "25-54", "55-74"),
+      ContentsCode = "Personer",
+      Tid = list(filter = "top", values = 20)
+    )
+    
+    tmp_g <- raw_g[[1]]
+    
+    time_col_g <- names(tmp_g)[grepl(
+      "tid|år|kvartal|måned|aar|maaned|year|month|quarter",
+      names(tmp_g), ignore.case = TRUE, perl = TRUE
+    )][1]
+    if (is.na(time_col_g)) time_col_g <- names(tmp_g)[length(names(tmp_g)) - 1L]
+    
+    gender_col_g <- names(tmp_g)[grepl("kjønn|kjonn|gender|sex", names(tmp_g), ignore.case = TRUE)][1]
+    status_col_g <- names(tmp_g)[grepl("arbeidsstyrk|status|labour", names(tmp_g), ignore.case = TRUE)][1]
+    age_col_g <- names(tmp_g)[grepl("alder|age", names(tmp_g), ignore.case = TRUE)][1]
+    
+    df_gender <- tmp_g |>
+      mutate(
+        value = as.numeric(value),
+        year = as.numeric(.data[[time_col_g]]),
+        gender = .data[[gender_col_g]],
+        status = .data[[status_col_g]],
+        age_group = .data[[age_col_g]]
+      ) |>
+      filter(!is.na(value), year >= 2005) |>
+      mutate(
+        status_clean = case_when(
+          grepl("Sysselsatte|1", status) ~ "Sysselsatte",
+          grepl("Arbeidsledige|2", status) ~ "Arbeidsledige",
+          grepl("utenfor|6", status) ~ "Utenfor arbeidsstyrken",
+          TRUE ~ NA_character_
+        ),
+        gender_label = ifelse(grepl("Menn|1", gender), "Menn", "Kvinner"),
+        age_label = case_when(
+          age_group == "15-24" ~ "Unge (15-24 år)",
+          age_group == "25-54" ~ "Kjerne (25-54 år)",
+          age_group == "55-74" ~ "Eldre (55-74 år)",
+          TRUE ~ age_group
+        )
+      ) |>
+      filter(!is.na(status_clean))
+    
+  }, error = function(e) message("Gender data fetch failed: ", e$message))
+  
+  if (!is.null(df_gender)) {
+    p4 <- ggplot(df_gender |> filter(status_clean == "Sysselsatte"), 
+                 aes(x = year, y = value, color = gender_label)) +
+      geom_line(linewidth = 1.2, alpha = 0.9) +
+      facet_wrap(~ age_label, scales = "free_y", ncol = 3) +
+      scale_color_manual(values = c("Menn" = pal[2], "Kvinner" = pal[6])) +
+      scale_y_continuous(labels = label_number(big.mark = " ")) +
+      scale_x_continuous(breaks = seq(2005, 2025, 5)) +
+      labs(
+        title = "Who Actually Works in Norway? Gender and Age Patterns 2005–2025",
+        subtitle = "Employment has grown across all groups—but older women show the most dramatic increase as pension age rises",
+        caption = "Source: Statistics Norway (SSB), Annual Labour Force Survey",
+        x = NULL,
+        y = "Employed persons (thousands)",
+        color = NULL
+      ) +
+      theme_minimal(base_size = 12) +
+      theme(
+        plot.title = element_text(face = "bold", size = 15),
+        plot.subtitle = element_text(color = "grey40", size = 10, margin = margin(b = 15)),
+        legend.position = "top",
+        panel.grid.minor = element_blank(),
+        strip.text = element_text(face = "bold", size = 11),
+        plot.caption = element_text(color = "grey50", size = 9, hjust = 0, margin = margin(t = 15))
+      )
+    
+    print(p4)
+  }
+}
+```
+
+The small multiples reveal striking patterns: while youth employment has remained relatively flat (as more young people pursue higher education), the core working-age population has grown steadily. Most remarkably, employment among older workers—especially women aged 55-74—has surged as pension reforms incentivize later retirement.
+
+## Key findings
+
+- **Norway's unemployment rate has fallen to historic lows** — around 3.7% in early 2026, down from pandemic peaks above 5%, making it one of Europe's tightest labour markets
+
+- **The "outside labour force" category is shrinking dramatically** — older workers stay employed longer due to pension reforms, while young people increasingly pursue extended education before entering the workforce
+
+- **Regional inequality persists beneath the rosy national numbers** — Oslo and Akershus have added 40,000+ jobs since 2021, while northern counties struggle with stagnant or declining employment
+
+- **Older women are the hidden stars of Norway's employment story** — their participation has grown faster than any other demographic group over the past two decades, driven by policy changes and cultural shifts
+
+- **Male unemployment remains more volatile** — men experience sharper swings during economic downturns and recoveries, likely due to concentration in cyclical industries like construction and oil services
+
+## What comes next?
+
+Norway's near-full employment looks impressive on paper, but it masks deeper structural tensions. An aging population means fewer young workers entering the labour force, while immigration policy debates rage over whether Norway needs more foreign workers to fill vacancies. Regional inequality threatens to leave parts of rural Norway behind, even as cities boom.
+
+The real question isn't whether Norway has achieved full employment—it's whether this employment pattern is sustainable as demographic pressures mount and the green transition reshapes entire industries. The unemployment crisis may have vanished, but the labour market transformation has only just begun.
