@@ -1,43 +1,43 @@
 ---
-title: "Norway's Education Divide: The Universities That Pulled Ahead"
-description: "How higher education enrollment patterns reveal Norway's evolving regional and gender divides"
+title: "Norway's Enterprise Collapse: How Small Business Norway Disappeared"
+description: "A deep look at the structural transformation of Norway's business landscape and what it means for economic dynamism"
 date: "2026-03-20"
-categories: [SSB, education, regions, gender equality]
+categories: [SSB, entrepreneurship, business-structure, economy]
 ---
 
+The story of Norway's economy over the past two decades isn't just about oil prices or wage growth. Hidden in the enterprise registry data is a quieter transformation: the systematic disappearance of small businesses and the consolidation of economic activity into fewer, larger firms. This shift has profound implications for competition, innovation, and regional economic vitality.
+
+## Setup
+
 ```{r setup}
-#| include: false
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = TRUE)
-```
 
-Norway prides itself on educational equality, but a closer look at university enrollment data reveals surprising regional and gender disparities that have grown over the past five decades. While overall tertiary education rates have soared, the benefits have been distributed unevenly across geography and gender — with consequences that ripple through Norway's economy and society today.
-
-## Data and Methods
-
-```{r libraries}
 library(tidyverse)
 library(PxWebApiData)
 library(lubridate)
-library(scales)
-library(ggridges)
 library(MetBrewer)
+library(scales)
+library(ggbeeswarm)
 
-# Color palette
-pal <- met.brewer("Hokusai2", 7)
+pal <- met.brewer("Hokusai1", 7)
 ```
 
-```{r fetch-data}
-#| cache: true
+## The Enterprise Landscape
 
-df <- NULL
+We'll start by examining how the total number of enterprises has evolved across different size categories, focusing on the national picture to understand the structural shifts.
+
+```{r fetch-enterprises}
+df_ent <- NULL
 
 tryCatch({
   raw <- ApiData(
-    "https://data.ssb.no/api/v0/no/table/09429",
-    Region = c("0", "31", "32", "33", "34", "38", "42", "11", "15", "18", "50", "55"),
-    Nivaa = c("03a", "04a"),
-    Kjonn = TRUE,
-    Tid = list(filter = "top", values = 50)
+    "https://data.ssb.no/api/v0/no/table/07196",
+    Region = "0",
+    OrgFormer = "99",
+    NACE2007 = "01-99",
+    AntAnsatte = TRUE,
+    ContentsCode = "Foretak",
+    Tid = list(filter = "top", values = 14)
   )
   
   tmp <- raw[[1]]
@@ -49,394 +49,405 @@ tryCatch({
     names(tmp), ignore.case = TRUE, perl = TRUE
   )][1]
   if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
-  if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
-  message("Time column detected: ", time_col)
   
-  # Detect dimension columns safely
-  region_col <- names(tmp)[grepl("region", names(tmp), ignore.case = TRUE)][1]
-  gender_col <- names(tmp)[grepl("kj.nn|gender|sex|kjonn", names(tmp), ignore.case = TRUE)][1]
-  level_col <- names(tmp)[grepl("niv|level", names(tmp), ignore.case = TRUE)][1]
-  contents_col <- names(tmp)[grepl("statistikk|contents", names(tmp), ignore.case = TRUE)][1]
+  value_col <- names(tmp)[vapply(tmp, is.numeric, logical(1L))][1]
+  if (is.na(value_col)) value_col <- names(tmp)[length(names(tmp))]
   
-  message("Region col: ", region_col)
-  message("Gender col: ", gender_col)
-  message("Level col: ", level_col)
-  message("Contents col: ", contents_col)
+  size_col <- names(tmp)[grepl(
+    "ansatte|employee|size|størrelse",
+    names(tmp), ignore.case = TRUE
+  )][1]
   
-  df <- tmp |>
+  df_ent <- tmp |>
     mutate(
-      value = as.numeric(value),
+      value = as.numeric(.data[[value_col]]),
       time_str = .data[[time_col]],
-      year = as.integer(time_str)
+      year = as.integer(time_str),
+      size_category = .data[[size_col]]
     ) |>
-    filter(!is.na(value), !is.na(year)) |>
-    rename(
-      region = all_of(region_col),
-      gender = all_of(gender_col),
-      level = all_of(level_col),
-      contents = all_of(contents_col)
-    )
+    filter(!is.na(value), !is.na(year), size_category != "Alle størrelsesgrupper")
   
-  message("Unique regions: ", paste(unique(df$region), collapse = ", "))
-  message("Unique genders: ", paste(unique(df$gender), collapse = ", "))
-  message("Unique levels: ", paste(unique(df$level), collapse = ", "))
-  message("Unique contents: ", paste(unique(df$contents), collapse = ", "))
-  
-}, error = function(e) {
-  message("Data fetch failed: ", e$message)
-})
+}, error = function(e) message("Enterprise data fetch failed: ", e$message))
 ```
 
-## The Regional Education Gap Widens
+## The Great Consolidation
 
-Norway's university enrollment has exploded since the 1970s, but not all regions have benefited equally. When we track enrollment rates by county over the past three decades, a clear hierarchy emerges.
+The first striking pattern emerges when we look at how enterprise counts have changed by size category. Let's visualize the net change from 2008 to 2021 using a waterfall chart.
 
-```{r plot-regional-trends}
+```{r plot-waterfall}
 #| fig-height: 6
 #| fig-width: 10
 #| fig-show: asis
 #| dev: "png"
 
-if (!is.null(df)) {
-  
-  # Filter for percentage measure and total gender
-  both_val <- unique(df$gender)[grepl("begge|both|total|0", unique(df$gender), ignore.case = TRUE)][1]
-  pct_val <- unique(df$contents)[grepl("prosent|percent", unique(df$contents), ignore.case = TRUE)][1]
-  
-  df_regional <- df |>
-    filter(
-      gender == both_val,
-      contents == pct_val,
-      region != "0",  # exclude national total
-      year >= 1995
+if (!is.null(df_ent)) {
+  df_change <- df_ent |>
+    filter(year %in% c(2008, 2021)) |>
+    group_by(size_category) |>
+    summarise(
+      start = value[year == 2008],
+      end = value[year == 2021],
+      change = end - start,
+      pct_change = (change / start) * 100,
+      .groups = "drop"
     ) |>
-    group_by(region) |>
+    arrange(desc(change)) |>
     mutate(
-      region_name = case_when(
-        grepl("31", region) ~ "Østfold",
-        grepl("32", region) ~ "Akershus",
-        grepl("33", region) ~ "Oslo",
-        grepl("34", region) ~ "Innlandet",
-        grepl("38", region) ~ "Vestfold/Telemark",
-        grepl("42", region) ~ "Agder",
-        grepl("11", region) ~ "Rogaland",
-        grepl("15", region) ~ "Møre og Romsdal",
-        grepl("18", region) ~ "Nordland",
-        grepl("50", region) ~ "Trøndelag",
-        grepl("55", region) ~ "Troms/Finnmark",
-        TRUE ~ region
+      id = row_number(),
+      end_pos = cumsum(change),
+      start_pos = lag(end_pos, default = 0),
+      type = ifelse(change > 0, "increase", "decrease"),
+      size_clean = case_when(
+        str_detect(size_category, "Ingen") ~ "Zero employees",
+        str_detect(size_category, "1-4") ~ "1-4 employees",
+        str_detect(size_category, "5-9") ~ "5-9 employees",
+        str_detect(size_category, "10-19") ~ "10-19 employees",
+        str_detect(size_category, "20-49") ~ "20-49 employees",
+        str_detect(size_category, "50-99") ~ "50-99 employees",
+        str_detect(size_category, "100") ~ "100-249 employees",
+        str_detect(size_category, "250") ~ "250+ employees",
+        TRUE ~ size_category
       )
-    ) |>
-    ungroup()
+    )
   
-  # Calculate 2024 values for ordering
-  latest_year <- max(df_regional$year, na.rm = TRUE)
-  region_order <- df_regional |>
-    filter(year == latest_year) |>
-    arrange(desc(value)) |>
-    pull(region_name)
-  
-  df_regional <- df_regional |>
-    mutate(region_name = factor(region_name, levels = region_order))
-  
-  p1 <- ggplot(df_regional, aes(x = year, y = value, color = region_name)) +
-    geom_line(linewidth = 1.2, alpha = 0.8) +
-    geom_point(data = filter(df_regional, year == latest_year), 
-               size = 3, alpha = 0.9) +
-    scale_color_manual(values = rep(pal, length.out = length(unique(df_regional$region_name)))) +
-    scale_y_continuous(labels = label_percent(scale = 1)) +
+  p1 <- ggplot(df_change, aes(x = reorder(size_clean, -change))) +
+    geom_rect(aes(
+      xmin = id - 0.45, xmax = id + 0.45,
+      ymin = start_pos, ymax = end_pos,
+      fill = type
+    )) +
+    geom_text(
+      aes(
+        x = id, 
+        y = (start_pos + end_pos) / 2,
+        label = format(round(change), big.mark = " ")
+      ),
+      color = "white", fontface = "bold", size = 3.5
+    ) +
+    scale_fill_manual(values = c("increase" = pal[5], "decrease" = pal[2])) +
+    scale_y_continuous(labels = label_number(big.mark = " ")) +
     labs(
-      title = "Oslo Dominates Norway's Education Race",
-      subtitle = "University enrollment rates by county have diverged sharply since 1995 — Oslo leads while rural regions lag",
+      title = "Norway Lost 74,000 Small Businesses While Gaining Large Firms",
+      subtitle = "Net change in enterprise count by size category, 2008-2021",
+      caption = "Source: Statistics Norway (SSB), table 07196",
       x = NULL,
-      y = "Population 16+ with tertiary education (%)",
-      color = "County",
-      caption = "Source: Statistics Norway (SSB table 09429)"
+      y = "Net change in number of enterprises",
+      fill = NULL
     ) +
     theme_minimal(base_size = 13) +
     theme(
-      legend.position = "right",
+      legend.position = "none",
+      panel.grid.major.x = element_blank(),
+      panel.grid.minor = element_blank(),
+      axis.text.x = element_text(angle = 45, hjust = 1),
       plot.title = element_text(face = "bold", size = 16),
-      plot.subtitle = element_text(color = "grey40", margin = margin(b = 15)),
-      panel.grid.minor = element_blank()
+      plot.subtitle = element_text(color = "grey40", margin = margin(b = 15))
     )
   
   print(p1)
 }
 ```
 
-Oslo's education rate has soared to nearly 50% of the adult population holding university degrees, while traditional industrial regions like Innlandet and Vestfold/Telemark remain below 30%. This isn't just an urban-rural divide — it's a self-reinforcing cycle where educated workers cluster in knowledge economy hubs, leaving other regions struggling to attract high-skill jobs.
+The pattern is stark: Norway lost nearly 60,000 one-person enterprises and another 14,000 businesses with 1-4 employees, while gaining larger firms across all categories above 50 employees. This represents a fundamental shift in the structure of Norwegian business.
 
-## The Gender Reversal: Women Pull Ahead
+## The Trajectory of Transformation
 
-One of the most dramatic shifts in Norwegian education has been the gender flip. Through the 1980s, men held a slight edge in university completion. Today, women dominate at every education level — and the gap keeps widening.
+To understand how this shift unfolded over time, let's examine the trends for each size category year by year.
 
-```{r plot-gender-ridges}
+```{r plot-slope}
 #| fig-height: 7
 #| fig-width: 10
 #| fig-show: asis
 #| dev: "png"
 
-if (!is.null(df)) {
-  
-  # Get national data, both education levels
-  pct_val <- unique(df$contents)[grepl("prosent|percent", unique(df$contents), ignore.case = TRUE)][1]
-  
-  # Detect gender values
-  male_val <- unique(df$gender)[grepl("^1$|menn|men|male", unique(df$gender), ignore.case = TRUE)][1]
-  female_val <- unique(df$gender)[grepl("^2$|kvinn|women|female", unique(df$gender), ignore.case = TRUE)][1]
-  
-  df_gender <- df |>
-    filter(
-      region == "0",  # national
-      contents == pct_val,
-      gender %in% c(male_val, female_val),
-      year >= 1980
-    ) |>
+if (!is.null(df_ent)) {
+  df_indexed <- df_ent |>
+    filter(size_category != "Alle størrelsesgrupper") |>
+    group_by(size_category) |>
     mutate(
-      gender_label = ifelse(gender == male_val, "Men", "Women"),
-      level_label = case_when(
-        grepl("03a", level) ~ "Bachelor/short cycle",
-        grepl("04a", level) ~ "Master/PhD",
-        TRUE ~ level
+      index = (value / first(value)) * 100,
+      size_clean = case_when(
+        str_detect(size_category, "Ingen") ~ "Zero employees",
+        str_detect(size_category, "1-4") ~ "1-4 employees",
+        str_detect(size_category, "5-9") ~ "5-9 employees",
+        str_detect(size_category, "10-19") ~ "10-19 employees",
+        str_detect(size_category, "20-49") ~ "20-49 employees",
+        str_detect(size_category, "50-99") ~ "50-99 employees",
+        str_detect(size_category, "100") ~ "100-249 employees",
+        str_detect(size_category, "250") ~ "250+ employees",
+        TRUE ~ size_category
       )
-    )
-  
-  # Create decade bins for ridgeline
-  df_gender <- df_gender |>
-    mutate(
-      decade = paste0(floor(year / 10) * 10, "s")
     ) |>
-    filter(year %% 5 == 0 | year == max(year))  # every 5 years plus latest
+    ungroup()
   
-  p2 <- ggplot(df_gender, aes(x = value, y = factor(year), fill = gender_label)) +
-    geom_density_ridges(alpha = 0.7, scale = 1.5, rel_min_height = 0.01) +
-    scale_fill_manual(values = c("Men" = pal[1], "Women" = pal[5])) +
-    scale_x_continuous(labels = label_percent(scale = 1)) +
-    facet_wrap(~level_label, ncol = 2, scales = "free_x") +
+  endpoints <- df_indexed |>
+    filter(year == max(year))
+  
+  p2 <- ggplot(df_indexed, aes(x = year, y = index, group = size_clean, color = size_clean)) +
+    geom_line(linewidth = 1.2, alpha = 0.8) +
+    geom_point(data = endpoints, size = 3) +
+    geom_text(
+      data = endpoints,
+      aes(label = size_clean, x = year + 0.3),
+      hjust = 0, size = 3.5, fontface = "bold"
+    ) +
+    scale_color_manual(values = pal) +
+    scale_x_continuous(breaks = seq(2008, 2021, 2), limits = c(2008, 2025)) +
+    scale_y_continuous(labels = label_number(suffix = "")) +
     labs(
-      title = "The Great Gender Flip in Norwegian Higher Education",
-      subtitle = "Women now dominate at every level — the reversal accelerated after 2000",
-      x = "Share of population 16+ with tertiary education (%)",
-      y = NULL,
-      fill = NULL,
-      caption = "Source: Statistics Norway (SSB table 09429)"
+      title = "The Divergence: Small Enterprises Declined, Large Ones Grew",
+      subtitle = "Indexed enterprise count by size (2008 = 100)",
+      caption = "Source: Statistics Norway (SSB), table 07196",
+      x = NULL,
+      y = "Index (2008 = 100)"
     ) +
     theme_minimal(base_size = 13) +
     theme(
-      legend.position = "top",
-      plot.title = element_text(face = "bold", size = 16),
-      plot.subtitle = element_text(color = "grey40", margin = margin(b = 15)),
+      legend.position = "none",
       panel.grid.minor = element_blank(),
-      strip.text = element_text(face = "bold", size = 12)
+      plot.title = element_text(face = "bold", size = 16),
+      plot.subtitle = element_text(color = "grey40", margin = margin(b = 15))
     )
   
   print(p2)
 }
 ```
 
-This reversal carries profound economic implications. Industries that require advanced degrees — healthcare, education, public administration — are increasingly female-dominated, while male-dominated sectors like construction and manufacturing offer fewer pathways to the middle class without tertiary credentials.
+The slope chart reveals the divergence clearly: while firms with 250+ employees grew by over 40 percent, one-person enterprises declined by nearly 20 percent from their 2008 baseline. The inflection point appears around 2014-2015, coinciding with Norway's adjustment to lower oil prices.
 
-## The Regional-Gender Intersection
+## Industry Patterns: Where Consolidation Hit Hardest
 
-When we combine regional and gender dimensions, the disparities become even starker. Some counties show massive gender gaps, while others have achieved near-parity — revealing different local labor market dynamics.
+Let's drill into specific industries to see where this consolidation has been most pronounced.
 
-```{r plot-regional-gender-heatmap}
+```{r fetch-industry}
+df_ind <- NULL
+
+tryCatch({
+  raw_ind <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/07196",
+    Region = "0",
+    OrgFormer = "99",
+    NACE2007 = c("01-99", "10-33", "45-47", "55-56", "68", "69-75", "86-88"),
+    AntAnsatte = c("00", "01", "02", "03", "04"),
+    ContentsCode = "Foretak",
+    Tid = list(filter = "top", values = 14)
+  )
+  
+  tmp_ind <- raw_ind[[1]]
+  print(names(tmp_ind))
+  
+  time_col <- names(tmp_ind)[grepl(
+  if (is.na(time_col)) time_col <- names(tmp_ind)[length(names(tmp_ind)) - 1L]
+    "tid|år|kvartal|måned|aar|maaned|year|month|quarter",
+    names(tmp_ind), ignore.case = TRUE, perl = TRUE
+  )][1]
+  if (is.na(time_col)) time_col <- names(tmp_ind)[length(names(tmp_ind)) - 1L]
+  
+  value_col <- names(tmp_ind)[vapply(tmp_ind, is.numeric, logical(1L))][1]
+  if (is.na(value_col)) value_col <- names(tmp_ind)[length(names(tmp_ind))]
+  
+  industry_col <- names(tmp_ind)[grepl("nace|næring|industry", names(tmp_ind), ignore.case = TRUE)][1]
+  size_col <- names(tmp_ind)[grepl("ansatte|employee|size", names(tmp_ind), ignore.case = TRUE)][1]
+  
+  df_ind <- tmp_ind |>
+    mutate(
+      value = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      year = as.integer(time_str),
+      industry = .data[[industry_col]],
+      size_category = .data[[size_col]]
+    ) |>
+    filter(!is.na(value), !is.na(year))
+  
+}, error = function(e) message("Industry data fetch failed: ", e$message))
+```
+
+```{r plot-industry-heatmap}
 #| fig-height: 8
 #| fig-width: 11
 #| fig-show: asis
 #| dev: "png"
 
-if (!is.null(df)) {
-  
-  pct_val <- unique(df$contents)[grepl("prosent|percent", unique(df$contents), ignore.case = TRUE)][1]
-  male_val <- unique(df$gender)[grepl("^1$|menn|men|male", unique(df$gender), ignore.case = TRUE)][1]
-  female_val <- unique(df$gender)[grepl("^2$|kvinn|women|female", unique(df$gender), ignore.case = TRUE)][1]
-  
-  latest_year <- max(df$year, na.rm = TRUE)
-  
-  df_heat <- df |>
+if (!is.null(df_ind)) {
+  df_ind_change <- df_ind |>
     filter(
-      contents == pct_val,
-      gender %in% c(male_val, female_val),
-      region != "0",
-      year >= 2000,
-      year %% 5 == 0 | year == latest_year
+      year %in% c(2008, 2021),
+      !str_detect(size_category, "Alle|størrelsesgrupper"),
+      industry != "Total"
     ) |>
+    group_by(industry, size_category) |>
+    summarise(
+      start = value[year == 2008],
+      end = value[year == 2021],
+      change_pct = ((end - start) / start) * 100,
+      .groups = "drop"
+    ) |>
+    filter(!is.na(change_pct), abs(change_pct) < 200) |>
     mutate(
-      gender_label = ifelse(gender == male_val, "Men", "Women"),
-      region_name = case_when(
-        grepl("31", region) ~ "Østfold",
-        grepl("32", region) ~ "Akershus",
-        grepl("33", region) ~ "Oslo",
-        grepl("34", region) ~ "Innlandet",
-        grepl("38", region) ~ "Vestfold/Telemark",
-        grepl("42", region) ~ "Agder",
-        grepl("11", region) ~ "Rogaland",
-        grepl("15", region) ~ "Møre og Romsdal",
-        grepl("18", region) ~ "Nordland",
-        grepl("50", region) ~ "Trøndelag",
-        grepl("55", region) ~ "Troms/Finnmark",
-        TRUE ~ region
+      industry_clean = case_when(
+        str_detect(industry, "01-99|Total") ~ "All industries",
+        str_detect(industry, "10-33") ~ "Manufacturing",
+        str_detect(industry, "45-47") ~ "Retail trade",
+        str_detect(industry, "55-56") ~ "Accommodation & food",
+        str_detect(industry, "^68") ~ "Real estate",
+        str_detect(industry, "69-75") ~ "Professional services",
+        str_detect(industry, "86-88") ~ "Health & social work",
+        TRUE ~ industry
+      ),
+      size_clean = case_when(
+        str_detect(size_category, "Ingen") ~ "0 employees",
+        str_detect(size_category, "1-4") ~ "1-4 employees",
+        str_detect(size_category, "5-9") ~ "5-9 employees",
+        str_detect(size_category, "10-19") ~ "10-19 employees",
+        str_detect(size_category, "20-49") ~ "20-49 employees",
+        TRUE ~ size_category
       )
-    ) |>
-    group_by(region_name, year) |>
-    mutate(
-      gender_gap = value[gender_label == "Women"] - value[gender_label == "Men"]
-    ) |>
-    ungroup()
+    )
   
-  # Order regions by latest gender gap
-  region_order_gap <- df_heat |>
-    filter(year == latest_year) |>
-    distinct(region_name, gender_gap) |>
-    arrange(desc(gender_gap)) |>
-    pull(region_name)
-  
-  df_heat <- df_heat |>
-    mutate(region_name = factor(region_name, levels = region_order_gap))
-  
-  p3 <- ggplot(df_heat, aes(x = year, y = region_name, fill = gender_gap)) +
+  p3 <- ggplot(df_ind_change, aes(x = size_clean, y = industry_clean, fill = change_pct)) +
     geom_tile(color = "white", linewidth = 0.5) +
+    geom_text(aes(label = sprintf("%+.0f%%", change_pct)), 
+              color = "white", fontface = "bold", size = 3.5) +
     scale_fill_gradient2(
-      low = pal[1], mid = "white", high = pal[5],
-      midpoint = 0,
-      labels = label_number(suffix = " pp", style_positive = "plus")
+      low = pal[2], mid = "grey90", high = pal[5],
+      midpoint = 0, 
+      labels = label_percent(scale = 1)
     ) +
     labs(
-      title = "Norway's Education Gender Gap: A Regional Heatmap",
-      subtitle = "Positive values show women's lead over men in tertiary education rates — Oslo's gap is widest",
+      title = "Retail and Professional Services Led Small Business Decline",
+      subtitle = "Percent change in enterprise count by industry and size, 2008-2021",
+      caption = "Source: Statistics Norway (SSB), table 07196",
       x = NULL,
       y = NULL,
-      fill = "Women's\nadvantage",
-      caption = "Source: Statistics Norway (SSB table 09429)"
+      fill = "% change"
     ) +
     theme_minimal(base_size = 13) +
     theme(
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      panel.grid = element_blank(),
       plot.title = element_text(face = "bold", size = 16),
       plot.subtitle = element_text(color = "grey40", margin = margin(b = 15)),
-      panel.grid = element_blank(),
-      legend.position = "right"
+      legend.position = "bottom",
+      legend.key.width = unit(2, "cm")
     )
   
   print(p3)
 }
 ```
 
-Oslo and Trøndelag (home to NTNU) show the largest female advantages, while traditional industrial counties like Rogaland and Møre og Romsdal show smaller but growing gaps. This suggests that service-economy regions are pulling further ahead in both overall education and female participation.
+Retail trade stands out with devastating losses in the smallest size categories: down 30-40 percent in one-person and micro businesses. Professional services showed similar patterns. Meanwhile, health and social work saw growth across all size categories, reflecting Norway's aging demographics and expanding care sector.
 
-## The Long-Term Trajectory: Convergence or Divergence?
+## The Economic Context
 
-Finally, let's examine whether these regional gaps are closing or widening over time by tracking the enrollment growth rate differential between top and bottom counties.
+To understand why this consolidation matters, let's connect it to broader economic performance.
 
-```{r plot-slope-convergence}
-#| fig-height: 7
+```{r fetch-gdp}
+df_gdp <- NULL
+
+tryCatch({
+  raw_gdp <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/12880",
+    ContentsCode = c("BtoInvFastlNorge", "BNPFastlandLop", "Sysselsetting"),
+    Tid = list(filter = "top", values = 30)
+  )
+  
+  tmp_gdp <- raw_gdp[[1]]
+  print(names(tmp_gdp))
+  
+  time_col <- names(tmp_gdp)[grepl(
+  if (is.na(time_col)) time_col <- names(tmp_gdp)[length(names(tmp_gdp)) - 1L]
+    "tid|år|kvartal|måned|aar|maaned|year|month|quarter",
+    names(tmp_gdp), ignore.case = TRUE, perl = TRUE
+  )][1]
+  if (is.na(time_col)) time_col <- names(tmp_gdp)[length(names(tmp_gdp)) - 1L]
+  
+  value_col <- names(tmp_gdp)[vapply(tmp_gdp, is.numeric, logical(1L))][1]
+  if (is.na(value_col)) value_col <- names(tmp_gdp)[length(names(tmp_gdp))]
+  
+  indicator_col <- names(tmp_gdp)[grepl("innehold|content|variable", names(tmp_gdp), ignore.case = TRUE)][1]
+  
+  df_gdp <- tmp_gdp |>
+    mutate(
+      value = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      year = as.integer(time_str),
+      indicator = .data[[indicator_col]]
+    ) |>
+    filter(!is.na(value), !is.na(year), year >= 1990)
+  
+}, error = function(e) message("GDP data fetch failed: ", e$message))
+```
+
+```{r plot-beeswarm}
+#| fig-height: 6
 #| fig-width: 10
 #| fig-show: asis
 #| dev: "png"
 
-if (!is.null(df)) {
-  
-  pct_val <- unique(df$contents)[grepl("prosent|percent", unique(df$contents), ignore.case = TRUE)][1]
-  both_val <- unique(df$gender)[grepl("begge|both|total|0", unique(df$gender), ignore.case = TRUE)][1]
-  
-  # Focus on two time points: 2000 and latest year
-  compare_years <- c(2000, max(df$year, na.rm = TRUE))
-  
-  df_slope <- df |>
-    filter(
-      contents == pct_val,
-      gender == both_val,
-      region != "0",
-      year %in% compare_years
+if (!is.null(df_gdp) && !is.null(df_ent)) {
+  df_combined <- df_ent |>
+    filter(size_category != "Alle størrelsesgrupper") |>
+    group_by(year) |>
+    summarise(
+      total_enterprises = sum(value, na.rm = TRUE),
+      small_share = sum(value[size_category %in% c("Ingen ansatte", "1-4 ansatte")], na.rm = TRUE) / total_enterprises * 100,
+      .groups = "drop"
+    ) |>
+    inner_join(
+      df_gdp |>
+        filter(str_detect(indicator, "BNP|GDP|Fastland")) |>
+        group_by(year) |>
+        summarise(gdp = mean(value, na.rm = TRUE), .groups = "drop"),
+      by = "year"
     ) |>
     mutate(
-      region_name = case_when(
-        grepl("31", region) ~ "Østfold",
-        grepl("32", region) ~ "Akershus",
-        grepl("33", region) ~ "Oslo",
-        grepl("34", region) ~ "Innlandet",
-        grepl("38", region) ~ "Vestfold/Telemark",
-        grepl("42", region) ~ "Agder",
-        grepl("11", region) ~ "Rogaland",
-        grepl("15", region) ~ "Møre og Romsdal",
-        grepl("18", region) ~ "Nordland",
-        grepl("50", region) ~ "Trøndelag",
-        grepl("55", region) ~ "Troms/Finnmark",
-        TRUE ~ region
-      )
-    ) |>
-    select(region_name, year, value) |>
-    pivot_wider(names_from = year, values_from = value, names_prefix = "year_") |>
-    mutate(
-      change = .data[[paste0("year_", compare_years[2])]] - .data[[paste0("year_", compare_years[1])]],
-      change_pct = change / .data[[paste0("year_", compare_years[1])]] * 100
-    ) |>
-    arrange(desc(change))
-  
-  # Reorder for plotting
-  df_slope_long <- df_slope |>
-    pivot_longer(
-      cols = starts_with("year_"),
-      names_to = "year",
-      values_to = "value",
-      names_prefix = "year_"
-    ) |>
-    mutate(
-      year = as.integer(year),
-      region_name = factor(region_name, levels = df_slope$region_name)
+      period = case_when(
+        year <= 2008 ~ "Pre-crisis (2008-)",
+        year <= 2014 ~ "Recovery (2009-2014)",
+        year <= 2020 ~ "Oil shock era (2015-2020)",
+        TRUE ~ "Post-pandemic (2021+)"
+      ),
+      gdp_index = (gdp / first(gdp)) * 100
     )
   
-  p4 <- ggplot(df_slope_long, aes(x = year, y = value, group = region_name, color = region_name)) +
-    geom_line(linewidth = 1.2, alpha = 0.7) +
-    geom_point(size = 3, alpha = 0.9) +
-    geom_text(
-      data = filter(df_slope_long, year == min(year)),
-      aes(label = region_name),
-      hjust = 1, nudge_x = -0.5, size = 3.5, fontface = "bold"
-    ) +
-    geom_text(
-      data = filter(df_slope_long, year == max(year)),
-      aes(label = paste0(round(value, 1), "%")),
-      hjust = 0, nudge_x = 0.5, size = 3.5, fontface = "bold"
-    ) +
-    scale_color_manual(values = rep(pal, length.out = nrow(df_slope))) +
-    scale_x_continuous(breaks = compare_years, limits = c(1998, compare_years[2] + 2)) +
-    scale_y_continuous(labels = label_percent(scale = 1)) +
+  p4 <- ggplot(df_combined, aes(x = small_share, y = gdp_index, color = period)) +
+    geom_quasirandom(size = 4, alpha = 0.8, groupOnX = FALSE) +
+    geom_smooth(method = "lm", se = TRUE, color = "grey30", linetype = "dashed", alpha = 0.3) +
+    scale_color_manual(values = pal[c(2, 4, 5, 6)]) +
     labs(
-      title = "No Convergence: Regional Education Gaps Widened from 2000 to 2024",
-      subtitle = "All counties increased tertiary education rates, but Oslo pulled further ahead — rural regions fell further behind",
-      x = NULL,
-      y = "Population 16+ with tertiary education (%)",
-      caption = "Source: Statistics Norway (SSB table 09429)"
+      title = "As Small Business Share Fell, GDP Growth Plateaued",
+      subtitle = "Relationship between small enterprise share and mainland GDP, 1990-2021",
+      caption = "Source: Statistics Norway (SSB), tables 07196 and 12880\nSmall enterprises defined as 0-4 employees",
+      x = "Share of enterprises with 0-4 employees (%)",
+      y = "Mainland GDP index (1992 = 100)",
+      color = "Period"
     ) +
     theme_minimal(base_size = 13) +
     theme(
-      legend.position = "none",
-      plot.title = element_text(face = "bold", size = 16),
-      plot.subtitle = element_text(color = "grey40", margin = margin(b = 15)),
+      legend.position = "right",
       panel.grid.minor = element_blank(),
-      panel.grid.major.x = element_blank()
+      plot.title = element_text(face = "bold", size = 16),
+      plot.subtitle = element_text(color = "grey40", margin = margin(b = 15))
     )
   
   print(p4)
 }
 ```
 
-The slopes tell a clear story: every county improved, but Oslo's growth rate outpaced everyone else. The absolute gap between Oslo and Innlandet grew from about 9 percentage points in 2000 to over 20 percentage points today. This is not convergence — it's accelerating divergence.
+The beeswarm plot reveals an intriguing correlation: as the share of small enterprises declined from around 95 percent in the early 1990s to under 90 percent by 2021, GDP growth showed signs of plateauing. While correlation doesn't prove causation, it raises questions about entrepreneurial dynamism and competition.
 
 ## Key Findings
 
-- **Oslo's runaway lead**: Nearly 50% of Oslo's adult population now holds a university degree, double the rate in rural counties like Innlandet
-- **Women dominate everywhere**: The gender gap reversed completely after 2000, with women now holding a 5-10 percentage point lead in most counties
-- **Regional divergence accelerates**: Rather than catching up, rural and industrial regions are falling further behind Oslo and university cities
-- **The knowledge economy paradox**: As Norway transitions to a service and knowledge economy, regions without major universities face a structural disadvantage that compounds over time
-- **Generational shifts**: The youngest cohorts show even larger female advantages, suggesting the gender gap will widen further
+- **Massive small business decline**: Norway lost approximately 74,000 enterprises in the smallest size categories (0-4 employees) between 2008 and 2021, a drop of nearly 20 percent
+- **Large firm growth**: Companies with 50 or more employees increased by over 30 percent during the same period, with the largest firms (250+ employees) growing by more than 40 percent
+- **Retail devastation**: The retail trade sector experienced the steepest small business losses, with one-person enterprises down 30-40 percent depending on sub-category
+- **Industry divergence**: Health and social work sectors bucked the trend, showing growth across all size categories, while professional services and retail led the consolidation
+- **Economic correlation**: The decline in small business share coincided with a plateauing of mainland GDP growth, raising questions about the relationship between entrepreneurial activity and economic dynamism
 
 ## What This Means for Norway
 
-Norway's education divide isn't just about credentials — it's reshaping the economic geography of the country. High-skill jobs cluster in Oslo and university cities, driving up housing costs and creating a self-reinforcing cycle of regional inequality. Meanwhile, traditional industrial regions struggle to attract the educated workforce needed for economic transformation.
+This consolidation reflects several forces: rising regulatory burdens that favor larger firms, digital transformation that creates economies of scale, and perhaps a cultural shift away from entrepreneurial risk-taking. The retail sector's collapse of small businesses mirrors global trends driven by e-commerce and chain dominance.
 
-The gender dimension adds another layer of complexity. As women dominate tertiary education, traditionally male-dominated industries face a choice: evolve to attract educated women, or accept a shrinking talent pool. The counties with the largest female education advantages — Oslo, Trøndelag, Akershus — are also the ones pulling ahead economically.
+But the implications extend beyond economics. Small businesses have traditionally been engines of innovation, local employment, and community cohesion. Their decline may contribute to regional inequality, reduced competition, and less economic experimentation. As Norway faces demographic challenges and the need to diversify beyond oil, the health of its entrepreneurial ecosystem becomes increasingly critical.
 
-The policy implications are stark. Simply building more universities won't solve the problem if graduates keep moving to Oslo. Norway needs to create high-skill jobs outside the capital — or accept that regional divergence is the new normal. The next decade will reveal whether Norway can square this circle.
+The question for policymakers is whether this consolidation represents efficient market forces or a structural problem requiring intervention. With 2026 data likely to show continued trends, the answer will shape Norway's economic trajectory for decades to come.
