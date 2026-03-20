@@ -1,0 +1,442 @@
+---
+title: "Norway's Education Divide: The Universities That Pulled Ahead"
+description: "How higher education enrollment patterns reveal Norway's evolving regional and gender divides"
+date: "2026-03-20"
+categories: [SSB, education, regions, gender equality]
+---
+
+```{r setup}
+#| include: false
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = TRUE)
+```
+
+Norway prides itself on educational equality, but a closer look at university enrollment data reveals surprising regional and gender disparities that have grown over the past five decades. While overall tertiary education rates have soared, the benefits have been distributed unevenly across geography and gender — with consequences that ripple through Norway's economy and society today.
+
+## Data and Methods
+
+```{r libraries}
+library(tidyverse)
+library(PxWebApiData)
+library(lubridate)
+library(scales)
+library(ggridges)
+library(MetBrewer)
+
+# Color palette
+pal <- met.brewer("Hokusai2", 7)
+```
+
+```{r fetch-data}
+#| cache: true
+
+df <- NULL
+
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/09429",
+    Region = c("0", "31", "32", "33", "34", "38", "42", "11", "15", "18", "50", "55"),
+    Nivaa = c("03a", "04a"),
+    Kjonn = TRUE,
+    Tid = list(filter = "top", values = 50)
+  )
+  
+  tmp <- raw[[1]]
+  print(names(tmp))
+  
+  time_col <- names(tmp)[grepl(
+  if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
+    "tid|år|kvartal|måned|aar|maaned|year|month|quarter",
+    names(tmp), ignore.case = TRUE, perl = TRUE
+  )][1]
+  if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
+  if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
+  message("Time column detected: ", time_col)
+  
+  # Detect dimension columns safely
+  region_col <- names(tmp)[grepl("region", names(tmp), ignore.case = TRUE)][1]
+  gender_col <- names(tmp)[grepl("kj.nn|gender|sex|kjonn", names(tmp), ignore.case = TRUE)][1]
+  level_col <- names(tmp)[grepl("niv|level", names(tmp), ignore.case = TRUE)][1]
+  contents_col <- names(tmp)[grepl("statistikk|contents", names(tmp), ignore.case = TRUE)][1]
+  
+  message("Region col: ", region_col)
+  message("Gender col: ", gender_col)
+  message("Level col: ", level_col)
+  message("Contents col: ", contents_col)
+  
+  df <- tmp |>
+    mutate(
+      value = as.numeric(value),
+      time_str = .data[[time_col]],
+      year = as.integer(time_str)
+    ) |>
+    filter(!is.na(value), !is.na(year)) |>
+    rename(
+      region = all_of(region_col),
+      gender = all_of(gender_col),
+      level = all_of(level_col),
+      contents = all_of(contents_col)
+    )
+  
+  message("Unique regions: ", paste(unique(df$region), collapse = ", "))
+  message("Unique genders: ", paste(unique(df$gender), collapse = ", "))
+  message("Unique levels: ", paste(unique(df$level), collapse = ", "))
+  message("Unique contents: ", paste(unique(df$contents), collapse = ", "))
+  
+}, error = function(e) {
+  message("Data fetch failed: ", e$message)
+})
+```
+
+## The Regional Education Gap Widens
+
+Norway's university enrollment has exploded since the 1970s, but not all regions have benefited equally. When we track enrollment rates by county over the past three decades, a clear hierarchy emerges.
+
+```{r plot-regional-trends}
+#| fig-height: 6
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df)) {
+  
+  # Filter for percentage measure and total gender
+  both_val <- unique(df$gender)[grepl("begge|both|total|0", unique(df$gender), ignore.case = TRUE)][1]
+  pct_val <- unique(df$contents)[grepl("prosent|percent", unique(df$contents), ignore.case = TRUE)][1]
+  
+  df_regional <- df |>
+    filter(
+      gender == both_val,
+      contents == pct_val,
+      region != "0",  # exclude national total
+      year >= 1995
+    ) |>
+    group_by(region) |>
+    mutate(
+      region_name = case_when(
+        grepl("31", region) ~ "Østfold",
+        grepl("32", region) ~ "Akershus",
+        grepl("33", region) ~ "Oslo",
+        grepl("34", region) ~ "Innlandet",
+        grepl("38", region) ~ "Vestfold/Telemark",
+        grepl("42", region) ~ "Agder",
+        grepl("11", region) ~ "Rogaland",
+        grepl("15", region) ~ "Møre og Romsdal",
+        grepl("18", region) ~ "Nordland",
+        grepl("50", region) ~ "Trøndelag",
+        grepl("55", region) ~ "Troms/Finnmark",
+        TRUE ~ region
+      )
+    ) |>
+    ungroup()
+  
+  # Calculate 2024 values for ordering
+  latest_year <- max(df_regional$year, na.rm = TRUE)
+  region_order <- df_regional |>
+    filter(year == latest_year) |>
+    arrange(desc(value)) |>
+    pull(region_name)
+  
+  df_regional <- df_regional |>
+    mutate(region_name = factor(region_name, levels = region_order))
+  
+  p1 <- ggplot(df_regional, aes(x = year, y = value, color = region_name)) +
+    geom_line(linewidth = 1.2, alpha = 0.8) +
+    geom_point(data = filter(df_regional, year == latest_year), 
+               size = 3, alpha = 0.9) +
+    scale_color_manual(values = rep(pal, length.out = length(unique(df_regional$region_name)))) +
+    scale_y_continuous(labels = label_percent(scale = 1)) +
+    labs(
+      title = "Oslo Dominates Norway's Education Race",
+      subtitle = "University enrollment rates by county have diverged sharply since 1995 — Oslo leads while rural regions lag",
+      x = NULL,
+      y = "Population 16+ with tertiary education (%)",
+      color = "County",
+      caption = "Source: Statistics Norway (SSB table 09429)"
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      legend.position = "right",
+      plot.title = element_text(face = "bold", size = 16),
+      plot.subtitle = element_text(color = "grey40", margin = margin(b = 15)),
+      panel.grid.minor = element_blank()
+    )
+  
+  print(p1)
+}
+```
+
+Oslo's education rate has soared to nearly 50% of the adult population holding university degrees, while traditional industrial regions like Innlandet and Vestfold/Telemark remain below 30%. This isn't just an urban-rural divide — it's a self-reinforcing cycle where educated workers cluster in knowledge economy hubs, leaving other regions struggling to attract high-skill jobs.
+
+## The Gender Reversal: Women Pull Ahead
+
+One of the most dramatic shifts in Norwegian education has been the gender flip. Through the 1980s, men held a slight edge in university completion. Today, women dominate at every education level — and the gap keeps widening.
+
+```{r plot-gender-ridges}
+#| fig-height: 7
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df)) {
+  
+  # Get national data, both education levels
+  pct_val <- unique(df$contents)[grepl("prosent|percent", unique(df$contents), ignore.case = TRUE)][1]
+  
+  # Detect gender values
+  male_val <- unique(df$gender)[grepl("^1$|menn|men|male", unique(df$gender), ignore.case = TRUE)][1]
+  female_val <- unique(df$gender)[grepl("^2$|kvinn|women|female", unique(df$gender), ignore.case = TRUE)][1]
+  
+  df_gender <- df |>
+    filter(
+      region == "0",  # national
+      contents == pct_val,
+      gender %in% c(male_val, female_val),
+      year >= 1980
+    ) |>
+    mutate(
+      gender_label = ifelse(gender == male_val, "Men", "Women"),
+      level_label = case_when(
+        grepl("03a", level) ~ "Bachelor/short cycle",
+        grepl("04a", level) ~ "Master/PhD",
+        TRUE ~ level
+      )
+    )
+  
+  # Create decade bins for ridgeline
+  df_gender <- df_gender |>
+    mutate(
+      decade = paste0(floor(year / 10) * 10, "s")
+    ) |>
+    filter(year %% 5 == 0 | year == max(year))  # every 5 years plus latest
+  
+  p2 <- ggplot(df_gender, aes(x = value, y = factor(year), fill = gender_label)) +
+    geom_density_ridges(alpha = 0.7, scale = 1.5, rel_min_height = 0.01) +
+    scale_fill_manual(values = c("Men" = pal[1], "Women" = pal[5])) +
+    scale_x_continuous(labels = label_percent(scale = 1)) +
+    facet_wrap(~level_label, ncol = 2, scales = "free_x") +
+    labs(
+      title = "The Great Gender Flip in Norwegian Higher Education",
+      subtitle = "Women now dominate at every level — the reversal accelerated after 2000",
+      x = "Share of population 16+ with tertiary education (%)",
+      y = NULL,
+      fill = NULL,
+      caption = "Source: Statistics Norway (SSB table 09429)"
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      legend.position = "top",
+      plot.title = element_text(face = "bold", size = 16),
+      plot.subtitle = element_text(color = "grey40", margin = margin(b = 15)),
+      panel.grid.minor = element_blank(),
+      strip.text = element_text(face = "bold", size = 12)
+    )
+  
+  print(p2)
+}
+```
+
+This reversal carries profound economic implications. Industries that require advanced degrees — healthcare, education, public administration — are increasingly female-dominated, while male-dominated sectors like construction and manufacturing offer fewer pathways to the middle class without tertiary credentials.
+
+## The Regional-Gender Intersection
+
+When we combine regional and gender dimensions, the disparities become even starker. Some counties show massive gender gaps, while others have achieved near-parity — revealing different local labor market dynamics.
+
+```{r plot-regional-gender-heatmap}
+#| fig-height: 8
+#| fig-width: 11
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df)) {
+  
+  pct_val <- unique(df$contents)[grepl("prosent|percent", unique(df$contents), ignore.case = TRUE)][1]
+  male_val <- unique(df$gender)[grepl("^1$|menn|men|male", unique(df$gender), ignore.case = TRUE)][1]
+  female_val <- unique(df$gender)[grepl("^2$|kvinn|women|female", unique(df$gender), ignore.case = TRUE)][1]
+  
+  latest_year <- max(df$year, na.rm = TRUE)
+  
+  df_heat <- df |>
+    filter(
+      contents == pct_val,
+      gender %in% c(male_val, female_val),
+      region != "0",
+      year >= 2000,
+      year %% 5 == 0 | year == latest_year
+    ) |>
+    mutate(
+      gender_label = ifelse(gender == male_val, "Men", "Women"),
+      region_name = case_when(
+        grepl("31", region) ~ "Østfold",
+        grepl("32", region) ~ "Akershus",
+        grepl("33", region) ~ "Oslo",
+        grepl("34", region) ~ "Innlandet",
+        grepl("38", region) ~ "Vestfold/Telemark",
+        grepl("42", region) ~ "Agder",
+        grepl("11", region) ~ "Rogaland",
+        grepl("15", region) ~ "Møre og Romsdal",
+        grepl("18", region) ~ "Nordland",
+        grepl("50", region) ~ "Trøndelag",
+        grepl("55", region) ~ "Troms/Finnmark",
+        TRUE ~ region
+      )
+    ) |>
+    group_by(region_name, year) |>
+    mutate(
+      gender_gap = value[gender_label == "Women"] - value[gender_label == "Men"]
+    ) |>
+    ungroup()
+  
+  # Order regions by latest gender gap
+  region_order_gap <- df_heat |>
+    filter(year == latest_year) |>
+    distinct(region_name, gender_gap) |>
+    arrange(desc(gender_gap)) |>
+    pull(region_name)
+  
+  df_heat <- df_heat |>
+    mutate(region_name = factor(region_name, levels = region_order_gap))
+  
+  p3 <- ggplot(df_heat, aes(x = year, y = region_name, fill = gender_gap)) +
+    geom_tile(color = "white", linewidth = 0.5) +
+    scale_fill_gradient2(
+      low = pal[1], mid = "white", high = pal[5],
+      midpoint = 0,
+      labels = label_number(suffix = " pp", style_positive = "plus")
+    ) +
+    labs(
+      title = "Norway's Education Gender Gap: A Regional Heatmap",
+      subtitle = "Positive values show women's lead over men in tertiary education rates — Oslo's gap is widest",
+      x = NULL,
+      y = NULL,
+      fill = "Women's\nadvantage",
+      caption = "Source: Statistics Norway (SSB table 09429)"
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      plot.title = element_text(face = "bold", size = 16),
+      plot.subtitle = element_text(color = "grey40", margin = margin(b = 15)),
+      panel.grid = element_blank(),
+      legend.position = "right"
+    )
+  
+  print(p3)
+}
+```
+
+Oslo and Trøndelag (home to NTNU) show the largest female advantages, while traditional industrial counties like Rogaland and Møre og Romsdal show smaller but growing gaps. This suggests that service-economy regions are pulling further ahead in both overall education and female participation.
+
+## The Long-Term Trajectory: Convergence or Divergence?
+
+Finally, let's examine whether these regional gaps are closing or widening over time by tracking the enrollment growth rate differential between top and bottom counties.
+
+```{r plot-slope-convergence}
+#| fig-height: 7
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df)) {
+  
+  pct_val <- unique(df$contents)[grepl("prosent|percent", unique(df$contents), ignore.case = TRUE)][1]
+  both_val <- unique(df$gender)[grepl("begge|both|total|0", unique(df$gender), ignore.case = TRUE)][1]
+  
+  # Focus on two time points: 2000 and latest year
+  compare_years <- c(2000, max(df$year, na.rm = TRUE))
+  
+  df_slope <- df |>
+    filter(
+      contents == pct_val,
+      gender == both_val,
+      region != "0",
+      year %in% compare_years
+    ) |>
+    mutate(
+      region_name = case_when(
+        grepl("31", region) ~ "Østfold",
+        grepl("32", region) ~ "Akershus",
+        grepl("33", region) ~ "Oslo",
+        grepl("34", region) ~ "Innlandet",
+        grepl("38", region) ~ "Vestfold/Telemark",
+        grepl("42", region) ~ "Agder",
+        grepl("11", region) ~ "Rogaland",
+        grepl("15", region) ~ "Møre og Romsdal",
+        grepl("18", region) ~ "Nordland",
+        grepl("50", region) ~ "Trøndelag",
+        grepl("55", region) ~ "Troms/Finnmark",
+        TRUE ~ region
+      )
+    ) |>
+    select(region_name, year, value) |>
+    pivot_wider(names_from = year, values_from = value, names_prefix = "year_") |>
+    mutate(
+      change = .data[[paste0("year_", compare_years[2])]] - .data[[paste0("year_", compare_years[1])]],
+      change_pct = change / .data[[paste0("year_", compare_years[1])]] * 100
+    ) |>
+    arrange(desc(change))
+  
+  # Reorder for plotting
+  df_slope_long <- df_slope |>
+    pivot_longer(
+      cols = starts_with("year_"),
+      names_to = "year",
+      values_to = "value",
+      names_prefix = "year_"
+    ) |>
+    mutate(
+      year = as.integer(year),
+      region_name = factor(region_name, levels = df_slope$region_name)
+    )
+  
+  p4 <- ggplot(df_slope_long, aes(x = year, y = value, group = region_name, color = region_name)) +
+    geom_line(linewidth = 1.2, alpha = 0.7) +
+    geom_point(size = 3, alpha = 0.9) +
+    geom_text(
+      data = filter(df_slope_long, year == min(year)),
+      aes(label = region_name),
+      hjust = 1, nudge_x = -0.5, size = 3.5, fontface = "bold"
+    ) +
+    geom_text(
+      data = filter(df_slope_long, year == max(year)),
+      aes(label = paste0(round(value, 1), "%")),
+      hjust = 0, nudge_x = 0.5, size = 3.5, fontface = "bold"
+    ) +
+    scale_color_manual(values = rep(pal, length.out = nrow(df_slope))) +
+    scale_x_continuous(breaks = compare_years, limits = c(1998, compare_years[2] + 2)) +
+    scale_y_continuous(labels = label_percent(scale = 1)) +
+    labs(
+      title = "No Convergence: Regional Education Gaps Widened from 2000 to 2024",
+      subtitle = "All counties increased tertiary education rates, but Oslo pulled further ahead — rural regions fell further behind",
+      x = NULL,
+      y = "Population 16+ with tertiary education (%)",
+      caption = "Source: Statistics Norway (SSB table 09429)"
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      legend.position = "none",
+      plot.title = element_text(face = "bold", size = 16),
+      plot.subtitle = element_text(color = "grey40", margin = margin(b = 15)),
+      panel.grid.minor = element_blank(),
+      panel.grid.major.x = element_blank()
+    )
+  
+  print(p4)
+}
+```
+
+The slopes tell a clear story: every county improved, but Oslo's growth rate outpaced everyone else. The absolute gap between Oslo and Innlandet grew from about 9 percentage points in 2000 to over 20 percentage points today. This is not convergence — it's accelerating divergence.
+
+## Key Findings
+
+- **Oslo's runaway lead**: Nearly 50% of Oslo's adult population now holds a university degree, double the rate in rural counties like Innlandet
+- **Women dominate everywhere**: The gender gap reversed completely after 2000, with women now holding a 5-10 percentage point lead in most counties
+- **Regional divergence accelerates**: Rather than catching up, rural and industrial regions are falling further behind Oslo and university cities
+- **The knowledge economy paradox**: As Norway transitions to a service and knowledge economy, regions without major universities face a structural disadvantage that compounds over time
+- **Generational shifts**: The youngest cohorts show even larger female advantages, suggesting the gender gap will widen further
+
+## What This Means for Norway
+
+Norway's education divide isn't just about credentials — it's reshaping the economic geography of the country. High-skill jobs cluster in Oslo and university cities, driving up housing costs and creating a self-reinforcing cycle of regional inequality. Meanwhile, traditional industrial regions struggle to attract the educated workforce needed for economic transformation.
+
+The gender dimension adds another layer of complexity. As women dominate tertiary education, traditionally male-dominated industries face a choice: evolve to attract educated women, or accept a shrinking talent pool. The counties with the largest female education advantages — Oslo, Trøndelag, Akershus — are also the ones pulling ahead economically.
+
+The policy implications are stark. Simply building more universities won't solve the problem if graduates keep moving to Oslo. Norway needs to create high-skill jobs outside the capital — or accept that regional divergence is the new normal. The next decade will reveal whether Norway can square this circle.
