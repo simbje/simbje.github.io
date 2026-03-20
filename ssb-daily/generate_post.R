@@ -6,9 +6,6 @@
 # Run by GitHub Actions every morning at 07:00 CET.
 # =============================================================================
 
-# Ensure correct library path
-# library paths managed by r-lib/actions/setup-r
-
 library(httr2)
 library(jsonlite)
 library(lubridate)
@@ -21,17 +18,35 @@ TODAY             <- Sys.Date()
 POST_SLUG         <- format(TODAY, "%Y-%m-%d")
 POST_DIR          <- file.path("ssb-daily", "posts", POST_SLUG)
 POST_FILE         <- file.path(POST_DIR, "index.qmd")
-SEED              <- as.integer(TODAY)  # deterministic topic variation
+SEED              <- as.integer(format(TODAY, "%Y%m%d"))  # stable, explicit
 
 if (nchar(ANTHROPIC_API_KEY) == 0) stop("ANTHROPIC_API_KEY not set")
 if (dir.exists(POST_DIR)) {
   message("Post already exists for ", POST_SLUG, " — skipping.")
-  quit(status = 0)
+  quit(save = "no", status = 0)
+}
+
+# ── Retry helper ──────────────────────────────────────────────────────────────
+with_retry <- function(fn, max_attempts = 3L, base_wait = 2) {
+  last_error <- NULL
+  for (attempt in seq_len(max_attempts)) {
+    result <- tryCatch(
+      list(value = fn(), error = NULL),
+      error = function(e) list(value = NULL, error = e)
+    )
+    if (is.null(result$error)) return(result$value)
+    last_error <- result$error
+    if (attempt < max_attempts) {
+      wait <- base_wait * 2^(attempt - 1L)
+      message("  Attempt ", attempt, " failed: ", conditionMessage(last_error),
+              " — retrying in ", wait, "s...")
+      Sys.sleep(wait)
+    }
+  }
+  stop(last_error)
 }
 
 # ── SSB Table list ─────────────────────────────────────────────────────────────
-# All candidate tables. We pre-fetch their real metadata before calling Claude,
-# so Claude receives exact parameter names/values and never has to guess.
 SSB_TABLE_LIST <- list(
   # Economy
   c("14700", "Consumer Price Index (new series from 2026, replaces 03013)"),
@@ -96,21 +111,33 @@ SSB_TABLE_LIST <- list(
 )
 
 # ── Pre-fetch real metadata from SSB ──────────────────────────────────────────
-# Shuffled so a different subset is sampled each day (seed = today's date).
-# We fetch up to MAX_TABLES to keep the prompt a reasonable size.
 MAX_TABLES <- 15
 
 message("Pre-fetching SSB metadata to validate tables and discover real parameters...")
 
 fetch_table_meta <- function(table_id, description) {
   url <- paste0("https://data.ssb.no/api/v0/no/table/", table_id)
-  tryCatch({
-    meta <- PxWebApiData::ApiData(url, returnMetaFrames = TRUE)
-    list(id = table_id, description = description, meta = meta, ok = TRUE)
-  }, error = function(e) {
-    message("  SKIP ", table_id, ": ", conditionMessage(e))
-    list(id = table_id, description = description, meta = NULL, ok = FALSE)
-  })
+  for (attempt in 1:3) {
+    result <- tryCatch({
+      meta <- PxWebApiData::ApiData(url, returnMetaFrames = TRUE)
+      # Validate: must be a named list of data frames
+      if (!is.list(meta) || is.null(names(meta)) ||
+          !all(vapply(meta, is.data.frame, logical(1L)))) {
+        stop("metadata is not a named list of data frames")
+      }
+      list(id = table_id, description = description, meta = meta, ok = TRUE)
+    }, error = function(e) {
+      list(id = table_id, description = description, meta = NULL, ok = FALSE,
+           err = conditionMessage(e))
+    })
+    if (result$ok) return(result)
+    if (attempt < 3) {
+      message("  Retry ", attempt, " for ", table_id, ": ", result$err)
+      Sys.sleep(2^attempt)
+    }
+  }
+  message("  SKIP ", table_id, ": ", result$err)
+  result
 }
 
 set.seed(SEED)
@@ -126,7 +153,7 @@ for (tbl in shuffled) {
     message("  OK  ", tbl[[1]], " — ", tbl[[2]])
     if (valid_count >= MAX_TABLES) break
   }
-  Sys.sleep(0.2)  # be polite to SSB API
+  Sys.sleep(0.2)
 }
 
 valid_tables <- Filter(function(r) r$ok, table_results)
@@ -136,11 +163,11 @@ if (length(valid_tables) == 0L) stop("No SSB tables could be reached. Check netw
 
 # ── Build dynamic catalogue string from real metadata ─────────────────────────
 format_param <- function(frame, max_values = 8L) {
-  if (is.null(frame) || nrow(frame) == 0L) return("")
+  if (is.null(frame) || !is.data.frame(frame) || nrow(frame) == 0L) return(NA_character_)
   code_col  <- names(frame)[1]
   label_col <- if (ncol(frame) >= 2L) names(frame)[2L] else code_col
-  top       <- head(frame, max_values)
-  vals      <- if (code_col == label_col) {
+  top  <- head(frame, max_values)
+  vals <- if (code_col == label_col) {
     paste0('"', top[[code_col]], '"')
   } else {
     paste0('"', top[[code_col]], '" (', top[[label_col]], ')')
@@ -150,16 +177,16 @@ format_param <- function(frame, max_values = 8L) {
 }
 
 build_catalogue <- function(valid_tables) {
-  sections <- sapply(valid_tables, function(res) {
-    param_lines <- sapply(names(res$meta), function(p) {
+  sections <- lapply(valid_tables, function(res) {
+    param_lines <- lapply(names(res$meta), function(p) {
       formatted <- format_param(res$meta[[p]])
-      if (nchar(formatted) == 0L) return(NULL)
+      if (is.na(formatted) || nchar(formatted) == 0L) return(NULL)
       paste0("  - **", p, "**: ", formatted)
     })
     param_lines <- Filter(Negate(is.null), param_lines)
     paste0(
       "### ", res$id, " — ", res$description, "\n",
-      paste(param_lines, collapse = "\n")
+      paste(unlist(param_lines), collapse = "\n")
     )
   })
   paste0(
@@ -168,46 +195,47 @@ build_catalogue <- function(valid_tables) {
     "Use them EXACTLY as written. Do NOT invent or modify parameter names.\n",
     "For dimension parameters, pass TRUE to get all values, or a character vector of specific codes.\n",
     "For Tid use list(filter='top', values=N) to get the last N periods.\n\n",
-    paste(sections, collapse = "\n\n")
+    paste(unlist(sections), collapse = "\n\n")
   )
 }
 
 SSB_CATALOGUE <- build_catalogue(valid_tables)
 
-# ── Previous posts (for topic diversity — compact, token-safe) ───────────────
-# We never pass full post content. Instead we maintain a tiny index file:
-# ssb-daily/posts/_topic_index.csv  with columns: date, title, datasets, chart_types
-# Each row is ~80 chars. 365 rows ≈ 30k chars ≈ ~8k tokens — totally fine.
-# We pass only the last 60 entries to the prompt (covers 2 months).
-
+# ── Previous posts (topic diversity) ─────────────────────────────────────────
 TOPIC_INDEX_FILE <- file.path("ssb-daily", "posts", "_topic_index.csv")
 
 read_topic_index <- function(path) {
   if (!file.exists(path)) return(data.frame())
-  tryCatch(
-    read.csv(path, stringsAsFactors = FALSE),
-    error = function(e) data.frame()
-  )
+  tryCatch(read.csv(path, stringsAsFactors = FALSE), error = function(e) data.frame())
 }
 
 append_topic_index <- function(path, date, title, datasets, chart_types) {
-  existing <- read_topic_index(path)
-  new_row  <- data.frame(
+  existing     <- read_topic_index(path)
+  expected_cols <- c("date", "title", "datasets", "chart_types")
+  new_row <- data.frame(
     date        = as.character(date),
-    title       = substr(title, 1, 80),        # cap length
+    title       = substr(title, 1, 80),
     datasets    = substr(datasets, 1, 60),
     chart_types = substr(chart_types, 1, 60),
     stringsAsFactors = FALSE
   )
+  # Normalize existing schema to avoid rbind() errors on column drift
+  if (nrow(existing) > 0) {
+    for (col in expected_cols) {
+      if (!col %in% names(existing)) existing[[col]] <- NA_character_
+    }
+    existing <- existing[, expected_cols, drop = FALSE]
+  }
   updated <- rbind(existing, new_row)
+  dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
   write.csv(updated, path, row.names = FALSE)
 }
 
-topic_index    <- read_topic_index(TOPIC_INDEX_FILE)
+topic_index <- read_topic_index(TOPIC_INDEX_FILE)
 recent_topics_note <- if (nrow(topic_index) > 0) {
   recent <- tail(topic_index, 60)
-  rows   <- paste0(
-    "- ", recent$date, ": \"", recent$title, "\" | datasets: ",
+  rows <- paste0(
+    "- ", recent$date, ': "', recent$title, '" | datasets: ',
     recent$datasets, " | charts: ", recent$chart_types,
     collapse = "\n"
   )
@@ -222,7 +250,7 @@ recent_topics_note <- if (nrow(topic_index) > 0) {
 # ── System prompt ─────────────────────────────────────────────────────────────
 SYSTEM_PROMPT <- glue('
 You are a world-class data journalist and R programmer specializing in Norwegian economics and statistics.
-Your job is to write a complete, self-contained Quarto (.qmd) blog post that performs a fresh, insightful 
+Your job is to write a complete, self-contained Quarto (.qmd) blog post that performs a fresh, insightful
 analysis of Statistics Norway (SSB) data using R.
 
 ## Tone & Style
@@ -230,106 +258,108 @@ analysis of Statistics Norway (SSB) data using R.
 - Accessible to an educated general audience (not just economists)
 - Find the story in the numbers — surprises, trends, Norway-specific angles
 - Write like a TidyTuesday post: show your work, explain your choices
-- NO emojis, emoticons or decorative symbols anywhere in the post — not in headings, text, bullet points or captions
+- NO emojis, emoticons or decorative symbols anywhere in the post
 - Professional and clean throughout
 
-## Visualization requirements (CRITICAL)
-- Create 3-5 ggplot2 charts minimum per post
-- Rotate through these styles across posts: 
-  waffle charts, lollipop charts, slope charts, ridgeline plots (ggridges),
-  dumbbell charts, area charts with annotations, small multiples/facets,
-  animated plots (gganimate), bump charts, heatmaps, alluvial/sankey (ggalluvial),
-  geographic maps (sf + Norway shapefiles from "geodata" or "rnaturalearth"),
-  beeswarm plots (ggbeeswarm), waterfall charts, circular/polar plots,
-  and classic but beautifully styled line/bar/scatter combos
-- Use a cohesive, beautiful color palette (e.g., from MetBrewer, nord, wesanderson, or hand-picked)
+## Visualization requirements
+- Create 3-5 ggplot2 charts per post
+- Rotate through styles across posts: lollipop, slope, ridgeline (ggridges),
+  dumbbell, area with annotations, small multiples/facets, bump, heatmap,
+  alluvial (ggalluvial), waffle, beeswarm (ggbeeswarm), waterfall, polar,
+  and classic line/bar/scatter combinations
+- Available color packages: MetBrewer, nord, wesanderson, viridis — pick one cohesive palette
 - Every chart must have: clear title, subtitle with insight, caption citing SSB, clean theme
-- Use theme_minimal() or theme_void() as base, then customize heavily
-- Add annotations, reference lines, and labels directly on the chart where helpful
-- Aim for publication-ready quality
+- Use theme_minimal() or theme_void() as base, then customize
+- Add annotations, reference lines, and direct labels where helpful
+- Always assign every ggplot to a variable then call print() explicitly
 
-## Parameter usage (CRITICAL — use ONLY the names provided in the catalogue)
-The catalogue in the user prompt contains verified parameter names and valid values fetched
-directly from the SSB API moments before this call. Use them EXACTLY as written.
+## Parameter usage (CRITICAL)
+The catalogue in the user prompt contains verified parameter names from the SSB API.
+Use them EXACTLY as written — never invent or modify parameter names.
+For dimension parameters, pass TRUE for all values or a character vector of specific codes.
+Use Tid = list(filter="top", values=N) to get the last N time periods.
 
-Rules:
-- NEVER invent or modify parameter names — use only what is listed in the catalogue
-- For dimension parameters, pass TRUE to get all values, or a character vector of specific codes shown in the catalogue
-- Use Tid = list(filter="top", values=N) to get the last N time periods
-- Only use ContentsCode codes that appear in the catalogue for that table
-
-When calling ApiData():
+## Data fetching pattern
 ```{{r fetch-data}}
 df <- NULL
 tryCatch({{
   raw <- ApiData(
     "https://data.ssb.no/api/v0/no/table/TABLE_ID",
-    EXACT_PARAM_FROM_CATALOGUE = TRUE,   # use the name from the catalogue
+    EXACT_PARAM_FROM_CATALOGUE = TRUE,
     Tid = list(filter = "top", values = 40)
   )
   tmp <- raw[[1]]
-  print(names(tmp))  # always print column names so the output is visible
-  df <- tmp |> mutate(value = as.numeric(value), ...)
-}}, error = function(e) message("Fetch failed: ", e$message))
-```
+  print(names(tmp))
 
-## Column handling rules (CRITICAL — silent failures hide all plots)
-- NEVER use hardcoded Norwegian column names in rename() or filter()
-  - BAD:  `rename(gender = kjønn)`  or  `filter(gender == "Begge kjønn")`
-  - GOOD: detect the column name first, then use .data[[col_name]]
-- Find the time column with the exact regex below — "aar"/"maaned" do NOT match "år"/"måned":
-  ```r
+  # Detect time column (SSB uses Norwegian names: "år", "kvartal", "måned")
   time_col <- names(tmp)[grepl(
     "tid|\u00e5r|kvartal|m\u00e5ned|aar|maaned|year|month|quarter",
     names(tmp), ignore.case = TRUE, perl = TRUE
   )][1]
   if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
-  ```
-- Find categorical columns by position or partial match, never by exact Norwegian name:
+
+  # Detect numeric value column (SSB columns vary — never assume "value")
+  value_col <- names(tmp)[vapply(tmp, is.numeric, logical(1L))][1]
+  if (is.na(value_col)) value_col <- names(tmp)[length(names(tmp))]
+
+  df <- tmp |>
+    mutate(
+      value    = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      date     = case_when(
+        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
+        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
+    ) |>
+    filter(!is.na(value), !is.na(date))
+}}, error = function(e) message("Fetch failed: ", e$message))
+```
+
+## Column handling (CRITICAL)
+- NEVER use hardcoded Norwegian column names in rename() or filter()
+- Detect categorical columns by partial match:
   ```r
-  # Example: detect the gender/sex column safely
   gender_col <- names(tmp)[grepl("kj.nn|gender|sex|kjonn", names(tmp), ignore.case=TRUE)][1]
-  # Then filter using the detected value:
-  both <- unique(df[[gender_col]])[grepl("begge|total|alle|both", unique(df[[gender_col]]), ignore.case=TRUE)][1]
-  df_filtered <- df |> filter(.data[[gender_col]] == both)
+  both_val   <- unique(df[[gender_col]])[grepl("begge|total|alle|both",
+                  unique(df[[gender_col]]), ignore.case=TRUE)][1]
+  df_f <- df |> filter(.data[[gender_col]] == both_val)
   ```
 
-## Plotting rules (CRITICAL — plots not showing is the most common failure)
-- ALWAYS assign every ggplot to a named variable first, then call print() on it explicitly
-- NEVER rely on implicit printing — it does not work reliably inside Quarto code chunks
-- Every plot chunk must end with print(p) or print(p1), print(p2) etc.
-- ALWAYS guard with if (!is.null(df)) {{ p <- ggplot(...); print(p) }}
-- Use chunk options for every plot chunk like this:
+## Plotting rules (CRITICAL)
+- ALWAYS: assign plot to variable, then call print() explicitly
+- ALWAYS: guard with if (!is.null(df)) {{ ... }}
+- NEVER rely on implicit printing
+- Every plot chunk must use chunk options:
   ```{{r plot-name}}
   #| fig-height: 5
   #| fig-width: 9
   #| fig-show: asis
   #| dev: "png"
-- Never use the old knitr syntax fig.height=5 inside the backtick header — use #| options instead
+  ```
 
-Correct pattern — always do this:
-
-  p <- ggplot(df, aes(x, y)) +
-    geom_line() +
-    labs(title = \"Title\")
+Correct:
+  p <- ggplot(df, aes(x, y)) + geom_line()
   print(p)
 
-Wrong pattern — never do this:
-
-  ggplot(df, aes(x, y)) +   # no assignment, no print — plot may not show
-    geom_line()
-
+Wrong:
+  ggplot(df, aes(x, y)) + geom_line()   # no print — may not show
 
 ## R code requirements
-- Always wrap data fetching in tryCatch with informative error messages
-- Use tidyverse throughout (dplyr, tidyr, ggplot2, lubridate, scales)
-- Include all library() calls at the top
-- Code must be fully reproducible and runnable in a clean R session
-- Use echo: true so readers can see the code
-- Add brief prose comments explaining WHY you make analytical choices
+- Set error=TRUE in knitr opts so one chunk failure does not kill the whole post
+- Use tidyverse throughout; include all library() calls at the top
+- Code must be fully reproducible
+- Use echo: true
 
 ## Post structure
-Every post must have this exact YAML front matter format:
+1. Brief intro (2-3 sentences) — the hook, why this matters
+2. Data section — fetch + wrangle with exact parameter names, print column names
+3. Analysis sections — 2-3 distinct angles with charts
+4. Key findings — 3-5 bullet points with numbers
+5. Closing reflection — broader context or what to watch next
+
+## YAML front matter
 ```
 ---
 title: "COMPELLING TITLE"
@@ -339,23 +369,16 @@ categories: [SSB, category1, category2]
 ---
 ```
 
-Then structure:
-1. Brief intro (2-3 sentences) — the hook, why this matters today
-2. Data section — fetch + wrangle using exact parameter names from the catalogue, print column names
-3. Analysis section(s) — 2-3 distinct analytical angles with charts
-4. Key findings — 3-5 bullet points with the numbers
-5. Closing reflection — broader context or what to watch next
+## Output format (REQUIRED — exactly this structure, nothing else)
+Your entire response must consist of exactly two parts with no preamble:
 
-## Output format
-Return your response in TWO clearly separated sections:
+PART 1 — one line of metadata:
+METADATA: title="<post title>" datasets="<table IDs, comma separated>" chart_types="<styles used, comma separated>"
 
-SECTION 1 — a single line of metadata (used for deduplication tracking):
-METADATA: title="<post title>" datasets="<table IDs used, comma separated>" chart_types="<chart styles used, comma separated>"
+PART 2 — the raw .qmd file starting immediately with --- (YAML front matter).
+No markdown fences, no explanation, no text before or after these two parts.
 
-SECTION 2 — the raw .qmd file content, starting immediately with --- (YAML front matter).
-No markdown fences, no preamble, no explanation around the .qmd content.
-
-Example output structure:
+Example:
 METADATA: title="Norwegian wage growth" datasets="11350,05111" chart_types="lollipop,ridgeline,area"
 ---
 title: "Norwegian wage growth"
@@ -371,17 +394,16 @@ Random seed for topic selection: {SEED}
 
 {recent_topics_note}
 
-Please write a complete Quarto blog post for today. 
+Please write a complete Quarto blog post for today.
 
 Guidelines:
 - Pick 1-3 SSB datasets that tell an interesting story together, or go deep on one
 - The topic should feel timely, relevant, or surprising
 - Include at least one angle that connects to broader Norwegian society or economy
 - Use at least 3 different chart types
-- Make the thumbnail-worthy chart the first or most prominent one
-Remember: return ONLY the raw .qmd content, starting with ---
+- Make the most striking chart the first or most prominent one
 
-Every post MUST follow this skeleton exactly:
+Every post MUST follow this data chunk skeleton exactly:
 
 STEP 1 — Setup chunk:
 ```r
@@ -390,33 +412,29 @@ knitr::opts_chunk$set(echo=TRUE, warning=FALSE, message=FALSE, error=TRUE)
 
 STEP 2 — Data chunk using EXACT parameter names from the catalogue:
 ```r
-df <- NULL  # ALWAYS initialise to NULL outside tryCatch
+df <- NULL
 
 tryCatch({{
-  # Parameter names below come from the verified catalogue — do NOT change them
   raw <- ApiData(
     "https://data.ssb.no/api/v0/no/table/XXXXX",
-    EXACT_PARAM_NAME = TRUE,          # use the name from the catalogue
+    EXACT_PARAM_NAME = TRUE,
     Tid = list(filter="top", values=40)
   )
-
   tmp <- raw[[1]]
-  print(names(tmp))  # always print column names
+  print(names(tmp))
 
-  # Find time column defensively (SSB uses varying names including Norwegian)
-  # IMPORTANT: SSB returns "\u00e5r" (år), "kvartal", "m\u00e5ned" — NOT "aar"/"maaned"
   time_col <- names(tmp)[grepl(
     "tid|\u00e5r|kvartal|m\u00e5ned|aar|maaned|year|month|quarter",
     names(tmp), ignore.case = TRUE, perl = TRUE
   )][1]
-  # Fallback: SSB column order is always dims..., statistikkvariabel, time, value
-  # so second-to-last column is time if the regex above missed it
   if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
-  message("Time column: ", time_col)
+
+  value_col <- names(tmp)[vapply(tmp, is.numeric, logical(1L))][1]
+  if (is.na(value_col)) value_col <- names(tmp)[length(names(tmp))]
 
   df <- tmp |>
     mutate(
-      value    = as.numeric(value),
+      value    = as.numeric(.data[[value_col]]),
       time_str = .data[[time_col]],
       date     = case_when(
         stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
@@ -426,11 +444,10 @@ tryCatch({{
       )
     ) |>
     filter(!is.na(value), !is.na(date))
-
 }}, error = function(e) message("Data fetch failed: ", e$message))
 ```
 
-STEP 3 — Plot chunk (guard + print):
+STEP 3 — Plot chunk (guard + explicit print):
 ```r
 if (!is.null(df)) {{
   p <- ggplot(df, aes(x = date, y = value)) +
@@ -438,7 +455,7 @@ if (!is.null(df)) {{
     labs(title = "Your title", subtitle = "Your insight",
          caption = "Source: SSB", x = NULL, y = "Value") +
     theme_minimal()
-  print(p)  # ALWAYS call print() explicitly
+  print(p)
 }}
 ```
 '
@@ -447,74 +464,96 @@ if (!is.null(df)) {{
 # ── Call Anthropic API ────────────────────────────────────────────────────────
 message("Calling Anthropic API to generate post for ", POST_SLUG, "...")
 
-response <- request("https://api.anthropic.com/v1/messages") |>
-  req_headers(
-    "x-api-key"         = ANTHROPIC_API_KEY,
-    "anthropic-version" = "2023-06-01",
-    "content-type"      = "application/json"
-  ) |>
-  req_body_json(list(
-    model      = "claude-sonnet-4-5-20250929",
-    max_tokens = 16000,
-    system     = SYSTEM_PROMPT,
-    messages   = list(
-      list(role = "user", content = USER_PROMPT)
-    )
-  )) |>
-  req_timeout(300) |>
-  req_perform()
+response <- with_retry(function() {
+  request("https://api.anthropic.com/v1/messages") |>
+    req_headers(
+      "x-api-key"         = ANTHROPIC_API_KEY,
+      "anthropic-version" = "2023-06-01",
+      "content-type"      = "application/json"
+    ) |>
+    req_body_json(list(
+      model      = "claude-sonnet-4-5-20250929",
+      max_tokens = 16000,
+      system     = SYSTEM_PROMPT,
+      messages   = list(
+        list(role = "user", content = USER_PROMPT)
+      )
+    )) |>
+    req_timeout(300) |>
+    req_perform()
+}, max_attempts = 3L, base_wait = 5)
 
-result  <- resp_body_json(response)
+result <- resp_body_json(response)
 
-# ── Check for truncated response ─────────────────────────────────────────────
 stop_reason <- if (is.null(result$stop_reason)) "unknown" else result$stop_reason
 if (stop_reason == "max_tokens") {
   warning("API response was truncated (hit max_tokens). Post may have incomplete code chunks.")
 }
 
-raw_text <- result$content[[1]]$text
+# ── Concatenate all text blocks safely ────────────────────────────────────────
+text_blocks <- Filter(function(b) identical(b$type, "text"), result$content)
+if (length(text_blocks) == 0L) stop("No text blocks in API response.")
+raw_text <- paste(vapply(text_blocks, function(b) b$text, character(1L)), collapse = "")
 
-# ── Parse response — split metadata from .qmd content ────────────────────────
-
-# Extract METADATA line
-meta_match   <- regmatches(raw_text, regexpr("METADATA:.*", raw_text))
-meta_title   <- if (length(meta_match) > 0) gsub('.*title="([^"]+)".*',   "\\1", meta_match) else "SSB Analysis"
-meta_datasets<- if (length(meta_match) > 0) gsub('.*datasets="([^"]+)".*',"\\1", meta_match) else ""
-meta_charts  <- if (length(meta_match) > 0) gsub('.*chart_types="([^"]+)".*',"\\1",meta_match) else ""
-
-# Extract .qmd content — everything from first --- onwards
-qmd_raw <- sub("(?s).*?(---\\s*\ntitle:)", "---\ntitle:", raw_text, perl = TRUE)
-
-if (!startsWith(trimws(qmd_raw), "---")) {
-  stop("Could not parse .qmd content from API response. Raw output:\n", substr(raw_text, 1, 500))
+# ── Parse metadata (tolerates missing, lowercase, slightly different format) ──
+extract_meta_field <- function(text, field) {
+  pat <- paste0("(?i)", field, "\\s*=\\s*\"([^\"]+)\"")
+  m   <- regmatches(text, regexpr(pat, text, perl = TRUE))
+  if (length(m) == 0L || nchar(m) == 0L) return("")
+  sub(paste0("(?i)", field, "\\s*=\\s*\"([^\"]+)\""), "\\1", m, perl = TRUE)
 }
 
-# Enforce today's date
-qmd_raw <- gsub(
-  'date: "[^"]*"',
-  paste0('date: "', format(TODAY, "%Y-%m-%d"), '"'),
-  qmd_raw
+meta_line    <- tryCatch(
+  regmatches(raw_text, regexpr("(?i)metadata:[ \t]*[^\n]*", raw_text, perl = TRUE)),
+  error = function(e) character(0)
 )
+meta_title    <- extract_meta_field(meta_line, "title")
+meta_datasets <- extract_meta_field(meta_line, "datasets")
+meta_charts   <- extract_meta_field(meta_line, "chart_types")
+if (nchar(meta_title) == 0L) meta_title <- "SSB Analysis"
 
-# Remove image: field — thumbnail.png never exists and breaks rendering
-qmd_raw <- gsub('\nimage: "thumbnail.png"', "", qmd_raw, fixed = TRUE)
-qmd_raw <- gsub("\nimage: 'thumbnail.png'", "", qmd_raw, fixed = TRUE)
+# ── Extract .qmd — find first YAML front matter (--- at line start) ───────────
+m <- regexpr("(?m)^---[ \t]*$", raw_text, perl = TRUE)
+if (m[[1]] < 0L) {
+  stop("Could not find YAML front matter in API response. Raw output:\n",
+       substr(raw_text, 1, 500))
+}
+qmd_raw <- substring(raw_text, m[[1]])
 
-# ── Patch: fix time-column detection in generated code ────────────────────────
-# The LLM sometimes emits an incomplete regex that misses "år" (U+00E5+r),
-# causing time_col to be NA, which throws inside tryCatch and leaves df NULL.
-# Strategy: scan line-by-line; on any line with `time_col <- names(`,
-# replace the grepl string with the canonical pattern and ensure the NA fallback
-# appears on the very next non-blank line.
+# ── Enforce today's date — only within YAML front matter ─────────────────────
+local({
+  fm_m <- regexpr("(?s)^---[ \t]*\n.*?\n---", qmd_raw, perl = TRUE)
+  if (fm_m[[1]] > 0L && attr(fm_m, "match.length") > 0L) {
+    fm_len <- attr(fm_m, "match.length")
+    fm      <- substring(qmd_raw, 1L, fm_len)
+    rest    <- substring(qmd_raw, fm_len + 1L)
+    fm      <- gsub('date:\\s*"[^"]*"',
+                    paste0('date: "', format(TODAY, "%Y-%m-%d"), '"'), fm)
+    qmd_raw <<- paste0(fm, rest)
+  }
+})
+
+# ── Remove image: thumbnail.png — it never exists and breaks rendering ────────
+qmd_raw <- gsub('\nimage:\\s*["\']thumbnail\\.png["\']', "", qmd_raw)
+
+# ── Patch: harden time_col detection in generated code ───────────────────────
+# Strategy: scan line-by-line for any `*_col <- names(VAR)[...]` assignment
+# that uses a grepl pattern, and ensure the canonical Unicode-safe pattern and
+# NA fallback are both present. Handles arbitrary variable names including
+# expressions like raw[[1]].
 local({
   lines     <- strsplit(qmd_raw, "\n", fixed = TRUE)[[1]]
-  canonical <- 'grepl("tid|\u00e5r|kvartal|m\u00e5ned|aar|maaned|year|month|quarter"'
+  canonical <- paste0('grepl("tid|\u00e5r|kvartal|m\u00e5ned|aar|maaned|year|month|quarter"')
+
   i <- 1L
   while (i <= length(lines)) {
-    if (grepl("time_col\\s*<-\\s*names\\(", lines[i], perl = TRUE)) {
-      # 1. Replace whatever grepl string is present with the canonical pattern
+    if (grepl("time_col\\s*<-\\s*names\\(", lines[i], perl = TRUE) &&
+        grepl("grepl\\(", lines[i], perl = TRUE)) {
+
+      # 1. Replace the grepl pattern with the canonical one
       lines[i] <- sub('grepl\\("[^"]*"', canonical, lines[i], perl = TRUE)
-      # 2. Ensure perl = TRUE is present (add it if only ignore.case = TRUE)
+
+      # 2. Ensure perl = TRUE is present
       if (!grepl("perl\\s*=\\s*TRUE", lines[i], perl = TRUE)) {
         lines[i] <- sub(
           "ignore\\.case\\s*=\\s*TRUE\\)",
@@ -522,25 +561,56 @@ local({
           lines[i], perl = TRUE
         )
       }
-      # 3. Ensure the NA fallback is on the next line
+
+      # 3. Extract variable name — handles tmp, df, raw[[1]], etc.
+      var_match <- regmatches(lines[i], regexpr("names\\(([^)]+)\\)", lines[i], perl = TRUE))
+      var_name  <- if (length(var_match) > 0L) {
+        sub("names\\(([^)]+)\\)", "\\1", var_match, perl = TRUE)
+      } else {
+        "tmp"
+      }
+
+      # 4. Ensure NA fallback is on a nearby line
       next_i <- i + 1L
-      # skip blank lines when checking
       while (next_i <= length(lines) && trimws(lines[next_i]) == "") next_i <- next_i + 1L
       has_fallback <- next_i <= length(lines) &&
         grepl("is\\.na\\(time_col\\)", lines[next_i], perl = TRUE)
       if (!has_fallback) {
-        var_name <- sub(".*names\\((\\w+)\\).*", "\\1", lines[i], perl = TRUE)
         indent   <- sub("^([ \t]*).*", "\\1", lines[i], perl = TRUE)
         fallback <- paste0(indent, "if (is.na(time_col)) time_col <- names(",
                            var_name, ")[length(names(", var_name, ")) - 1L]")
         lines <- c(lines[seq_len(i)], fallback, lines[seq.int(i + 1L, length(lines))])
-        i <- i + 1L  # skip the newly inserted line
+        i <- i + 1L
       }
     }
     i <- i + 1L
   }
   qmd_raw <<- paste(lines, collapse = "\n")
 })
+
+# ── Validate generated QMD before writing ─────────────────────────────────────
+validate_qmd <- function(content) {
+  issues <- character(0)
+  if (!grepl("^---", trimws(content))) {
+    issues <- c(issues, "Missing YAML front matter")
+  }
+  fence_positions <- gregexpr("(?m)^```", content, perl = TRUE)[[1]]
+  if (!identical(fence_positions, -1L) && length(fence_positions) %% 2L != 0L) {
+    issues <- c(issues, paste0("Unbalanced code fences (", length(fence_positions), " occurrences)"))
+  }
+  if (!grepl("ApiData\\(", content)) {
+    issues <- c(issues, "No ApiData() call found")
+  }
+  if (!grepl("print\\(", content)) {
+    issues <- c(issues, "No print() call found — plots may not render")
+  }
+  issues
+}
+
+validation_issues <- validate_qmd(qmd_raw)
+if (length(validation_issues) > 0L) {
+  warning("QMD validation warnings:\n", paste("-", validation_issues, collapse = "\n"))
+}
 
 # ── Write post file ───────────────────────────────────────────────────────────
 dir.create(POST_DIR, recursive = TRUE, showWarnings = FALSE)
