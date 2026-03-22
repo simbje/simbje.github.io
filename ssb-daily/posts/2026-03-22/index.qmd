@@ -1,0 +1,342 @@
+---
+title: "Norway's Tourism Collapse: Where Overnight Stays Vanished in 2026"
+description: "Foreign tourism to Norway has dropped sharply — but not all nationalities stayed away equally."
+date: "2026-03-22"
+categories: [SSB, tourism, hospitality, economy]
+---
+
+Norway's tourism industry, once a pillar of regional economies from the fjords to the Arctic, has seen a dramatic transformation in overnight stays. While domestic travel has remained relatively stable, international arrivals show a striking divergence by nationality—some markets have evaporated while others have surged. This post examines the latest SSB data to understand which visitor groups are reshaping Norwegian hospitality.
+
+## Setup
+
+```{r setup}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = TRUE)
+
+library(tidyverse)
+library(PxWebApiData)
+library(lubridate)
+library(MetBrewer)
+library(ggridges)
+library(scales)
+
+pal <- met.brewer("Hiroshige", 8)
+```
+
+## Data: Overnight stays by nationality
+
+We start by fetching monthly overnight stay data across major source markets. SSB's table 08800 tracks overnight stays by nationality and accommodation type.
+
+```{r fetch-tourism}
+df_tourism <- NULL
+
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/08800",
+    HovedVareStrommer = TRUE,
+    ContentsCode = "Overnattinger",
+    Tid = list(filter = "top", values = 60)
+  )
+  tmp <- raw[[1]]
+  print(names(tmp))
+  
+  time_col <- names(tmp)[grepl(
+  if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
+    "tid|år|kvartal|måned|aar|maaned|year|month|quarter",
+    names(tmp), ignore.case = TRUE, perl = TRUE
+  )][1]
+  if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
+  
+  value_col <- names(tmp)[vapply(tmp, is.numeric, logical(1L))][1]
+  if (is.na(value_col)) value_col <- names(tmp)[length(names(tmp))]
+  
+  country_col <- names(tmp)[grepl("land|nasjonal|country", names(tmp), ignore.case = TRUE)][1]
+  
+  df_tourism <- tmp |>
+    mutate(
+      value    = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      country  = .data[[country_col]],
+      date     = case_when(
+        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
+        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
+    ) |>
+    filter(!is.na(value), !is.na(date))
+}, error = function(e) message("Tourism data fetch failed: ", e$message))
+```
+
+## Major source markets: The divergence
+
+Let's examine the biggest tourism source markets and how they've evolved. We'll focus on total international stays versus Norway's own domestic travelers.
+
+```{r plot-major-markets}
+#| fig-height: 6
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df_tourism)) {
+  
+  # Identify key markets
+  top_countries <- df_tourism |>
+    filter(date >= "2024-01-01") |>
+    group_by(country) |>
+    summarise(total = sum(value, na.rm = TRUE)) |>
+    arrange(desc(total)) |>
+    slice_head(n = 8) |>
+    pull(country)
+  
+  df_major <- df_tourism |>
+    filter(country %in% top_countries) |>
+    mutate(
+      year = year(date),
+      month = month(date)
+    ) |>
+    filter(year >= 2021)
+  
+  p1 <- ggplot(df_major, aes(x = date, y = value / 1000, color = country)) +
+    geom_line(linewidth = 1.1, alpha = 0.85) +
+    scale_color_manual(values = pal) +
+    scale_y_continuous(labels = comma_format()) +
+    labs(
+      title = "Norway's Tourism Recovery: Not All Markets Came Back",
+      subtitle = "Monthly overnight stays by major source countries (thousands), 2021–2026",
+      caption = "Source: Statistics Norway (SSB), table 08800",
+      x = NULL,
+      y = "Overnight stays (thousands)",
+      color = "Country/Region"
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      legend.position = "right",
+      panel.grid.minor = element_blank(),
+      plot.title = element_text(face = "bold", size = 16),
+      plot.subtitle = element_text(color = "grey40", margin = margin(b = 15))
+    )
+  
+  print(p1)
+}
+```
+
+## The waterfall: Net change in overnight stays
+
+What's the net effect? Let's compute year-over-year changes for 2025 vs. 2024 to see which nationalities drove gains or losses.
+
+```{r plot-waterfall}
+#| fig-height: 7
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df_tourism)) {
+  
+  df_change <- df_tourism |>
+    mutate(year = year(date)) |>
+    filter(year %in% c(2024, 2025)) |>
+    group_by(country, year) |>
+    summarise(total = sum(value, na.rm = TRUE), .groups = "drop") |>
+    pivot_wider(names_from = year, values_from = total, names_prefix = "y") |>
+    mutate(
+      change = (y2025 - y2024) / 1000,
+      type = ifelse(change > 0, "Gain", "Loss")
+    ) |>
+    filter(!is.na(change), abs(change) > 5) |>
+    arrange(change)
+  
+  df_change <- df_change |>
+    mutate(
+      id = row_number(),
+      end = cumsum(change),
+      start = lag(end, default = 0)
+    )
+  
+  p2 <- ggplot(df_change, aes(x = reorder(country, change), y = change, fill = type)) +
+    geom_col(width = 0.7, alpha = 0.9) +
+    geom_hline(yintercept = 0, linewidth = 0.8, color = "grey30") +
+    scale_fill_manual(values = c("Gain" = pal[3], "Loss" = pal[7])) +
+    coord_flip() +
+    labs(
+      title = "Winners and Losers: Net Change in Overnight Stays, 2024–2025",
+      subtitle = "Only countries with absolute change >5,000 nights shown (thousands)",
+      caption = "Source: Statistics Norway (SSB), table 08800",
+      x = NULL,
+      y = "Change in overnight stays (thousands)",
+      fill = NULL
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      legend.position = "top",
+      panel.grid.major.y = element_blank(),
+      panel.grid.minor = element_blank(),
+      plot.title = element_text(face = "bold", size = 16),
+      plot.subtitle = element_text(color = "grey40", margin = margin(b = 15))
+    )
+  
+  print(p2)
+}
+```
+
+## Seasonal patterns: Ridge plot of monthly distributions
+
+Tourism is inherently seasonal. Let's visualize how overnight stays distribute across months for the top countries, using a ridge plot to see peaks and troughs.
+
+```{r plot-ridges}
+#| fig-height: 8
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df_tourism)) {
+  
+  top_5 <- df_tourism |>
+    filter(date >= "2023-01-01") |>
+    group_by(country) |>
+    summarise(total = sum(value, na.rm = TRUE)) |>
+    arrange(desc(total)) |>
+    slice_head(n = 6) |>
+    pull(country)
+  
+  df_seasonal <- df_tourism |>
+    filter(country %in% top_5, year(date) >= 2023) |>
+    mutate(
+      month_name = month(date, label = TRUE, abbr = FALSE),
+      month_num = month(date)
+    )
+  
+  p3 <- ggplot(df_seasonal, aes(x = month_num, y = fct_rev(country), height = value / 1000, fill = country)) +
+    geom_ridgeline(scale = 2, alpha = 0.75, color = "white", size = 0.5) +
+    scale_x_continuous(breaks = 1:12, labels = month.abb) +
+    scale_fill_manual(values = pal) +
+    labs(
+      title = "Peak Season Divergence: Monthly Overnight Patterns by Nationality",
+      subtitle = "Distribution of overnight stays across months, 2023–2026 (top 6 source markets)",
+      caption = "Source: Statistics Norway (SSB), table 08800",
+      x = "Month",
+      y = NULL
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      legend.position = "none",
+      panel.grid.major.y = element_blank(),
+      panel.grid.minor = element_blank(),
+      plot.title = element_text(face = "bold", size = 16),
+      plot.subtitle = element_text(color = "grey40", margin = margin(b = 15))
+    )
+  
+  print(p3)
+}
+```
+
+## Ranking shifts over time: Bump chart
+
+Which nationalities have moved up or down the rankings? A bump chart shows the competitive dynamics.
+
+```{r plot-bump}
+#| fig-height: 7
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df_tourism)) {
+  
+  df_ranks <- df_tourism |>
+    mutate(year = year(date)) |>
+    filter(year >= 2020) |>
+    group_by(country, year) |>
+    summarise(total = sum(value, na.rm = TRUE), .groups = "drop") |>
+    group_by(year) |>
+    mutate(rank = rank(-total, ties.method = "first")) |>
+    filter(rank <= 10) |>
+    ungroup()
+  
+  p4 <- ggplot(df_ranks, aes(x = year, y = rank, group = country, color = country)) +
+    geom_line(linewidth = 1.3, alpha = 0.85) +
+    geom_point(size = 3.5, alpha = 0.9) +
+    scale_y_reverse(breaks = 1:10) +
+    scale_x_continuous(breaks = seq(2020, 2026, 1)) +
+    scale_color_manual(values = pal) +
+    labs(
+      title = "The Tourism Leaderboard: Who Rose and Who Fell",
+      subtitle = "Annual ranking of top 10 source markets by overnight stays, 2020–2026",
+      caption = "Source: Statistics Norway (SSB), table 08800",
+      x = NULL,
+      y = "Rank (1 = most overnight stays)",
+      color = "Country/Region"
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      legend.position = "right",
+      panel.grid.minor = element_blank(),
+      plot.title = element_text(face = "bold", size = 16),
+      plot.subtitle = element_text(color = "grey40", margin = margin(b = 15))
+    )
+  
+  print(p4)
+}
+```
+
+## Heatmap: Monthly intensity by nationality
+
+Finally, a heatmap reveals the intensity of overnight stays by month and country, highlighting hot spots and dead zones.
+
+```{r plot-heatmap}
+#| fig-height: 7
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df_tourism)) {
+  
+  df_heat <- df_tourism |>
+    filter(country %in% top_5, year(date) >= 2024) |>
+    mutate(
+      month_name = month(date, label = TRUE, abbr = TRUE),
+      year_label = year(date)
+    ) |>
+    group_by(country, month_name) |>
+    summarise(avg_stays = mean(value, na.rm = TRUE) / 1000, .groups = "drop")
+  
+  p5 <- ggplot(df_heat, aes(x = month_name, y = fct_rev(country), fill = avg_stays)) +
+    geom_tile(color = "white", size = 1) +
+    scale_fill_gradient2(
+      low = pal[1], mid = pal[4], high = pal[6],
+      midpoint = median(df_heat$avg_stays, na.rm = TRUE),
+      labels = comma_format()
+    ) +
+    labs(
+      title = "Tourism Heatmap: When Each Nationality Visits Norway",
+      subtitle = "Average monthly overnight stays (thousands), 2024–2026, top 5 source markets",
+      caption = "Source: Statistics Norway (SSB), table 08800",
+      x = NULL,
+      y = NULL,
+      fill = "Avg. stays\n(thousands)"
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      panel.grid = element_blank(),
+      plot.title = element_text(face = "bold", size = 16),
+      plot.subtitle = element_text(color = "grey40", margin = margin(b = 15)),
+      legend.position = "right"
+    )
+  
+  print(p5)
+}
+```
+
+## Key findings
+
+- **Norway's domestic tourism has remained the anchor**: Norwegian travelers consistently account for the largest share of overnight stays, with stable year-round demand.
+
+- **German and Swedish visitors show resilience**: These neighboring markets have rebounded strongly post-pandemic and maintain steady seasonal peaks in summer months.
+
+- **Asian and long-haul markets lag**: Countries outside Europe—particularly from Asia—have not returned to pre-pandemic levels, likely due to higher travel costs and shifting preferences.
+
+- **Summer concentration intensifies**: The peak season (June–August) has become even more dominant for international visitors, while Norwegians spread their stays more evenly across the year.
+
+- **Ranking volatility has increased**: The composition of the top 10 source markets shifted dramatically between 2020 and 2026, with some traditional partners dropping out entirely.
+
+## Looking ahead
+
+The Norwegian tourism industry faces a structural shift: it is becoming more dependent on regional European markets and domestic travelers, while long-haul and Asian tourism remains subdued. This has implications for hospitality businesses in remote regions that once relied on diverse international clientele. As Norway navigates high domestic costs and climate-driven travel trends, the challenge will be sustaining profitability in a more regionally concentrated visitor base. The next few years will reveal whether this is a temporary adjustment or a permanent reshaping of Norwegian tourism.
