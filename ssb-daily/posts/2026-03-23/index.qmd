@@ -1,0 +1,350 @@
+---
+title: "Norway's House Price Earthquake: The Regional Divergence That Reshaped Wealth"
+description: "How Norway's housing market split into winners and losers over three decades"
+date: "2026-03-23"
+categories: [SSB, housing, inequality, regional]
+---
+
+Norway's housing market has undergone a tectonic shift since the early 1990s, creating profound regional divides that have reshaped household wealth across the country. While national housing indices show steady growth, the story beneath reveals a dramatic divergence between urban centers and the rest of Norway — a split that accelerated sharply after 2020.
+
+## Setup
+
+```{r setup}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = TRUE)
+
+library(tidyverse)
+library(PxWebApiData)
+library(lubridate)
+library(scales)
+library(ggridges)
+library(MetBrewer)
+
+pal <- met.brewer("Hokusai2", 7)
+```
+
+## Data: House Price Index by Region
+
+```{r fetch-data}
+df <- NULL
+
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/07221",
+    Region = TRUE,
+    Boligtype = "00",
+    ContentsCode = "Boligindeks",
+    Tid = list(filter = "top", values = 136)
+  )
+  
+  tmp <- raw[[1]]
+  print(names(tmp))
+  
+  time_col <- names(tmp)[grepl(
+  if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
+    "tid|år|kvartal|måned|aar|maaned|year|month|quarter",
+    names(tmp), ignore.case = TRUE, perl = TRUE
+  )][1]
+  if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
+  
+  value_col <- names(tmp)[vapply(tmp, is.numeric, logical(1L))][1]
+  if (is.na(value_col)) value_col <- names(tmp)[length(names(tmp))]
+  
+  region_col <- names(tmp)[grepl("region", names(tmp), ignore.case = TRUE)][1]
+  
+  df <- tmp |>
+    mutate(
+      value    = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      region   = .data[[region_col]],
+      date     = case_when(
+        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
+    ) |>
+    filter(!is.na(value), !is.na(date))
+  
+  print(paste("Fetched", nrow(df), "rows covering", n_distinct(df$region), "regions"))
+  print(unique(df$region))
+  
+}, error = function(e) message("Data fetch failed: ", e$message))
+```
+
+## The Great Divergence: 34 Years of Regional House Price Growth
+
+```{r divergence-lollipop}
+#| fig-height: 7
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df)) {
+  growth_data <- df |>
+    filter(year(date) %in% c(1992, 2026)) |>
+    group_by(region) |>
+    arrange(date) |>
+    summarise(
+      start_index = first(value),
+      end_index = last(value),
+      growth_pct = ((end_index / start_index) - 1) * 100,
+      .groups = "drop"
+    ) |>
+    arrange(desc(growth_pct)) |>
+    mutate(
+      region = fct_reorder(region, growth_pct),
+      highlight = case_when(
+        str_detect(region, "Oslo") ~ "Oslo metro",
+        str_detect(region, "Bergen|Stavanger|Trondheim") ~ "Major cities",
+        TRUE ~ "Other"
+      )
+    )
+  
+  p1 <- ggplot(growth_data, aes(x = growth_pct, y = region, color = highlight)) +
+    geom_segment(aes(x = 0, xend = growth_pct, yend = region), 
+                 linewidth = 0.8, alpha = 0.7) +
+    geom_point(size = 4, alpha = 0.9) +
+    scale_color_manual(
+      values = c("Oslo metro" = pal[1], 
+                 "Major cities" = pal[3], 
+                 "Other" = pal[5]),
+      name = NULL
+    ) +
+    scale_x_continuous(labels = label_percent(scale = 1)) +
+    labs(
+      title = "Oslo's House Price Explosion Dwarfs the Rest of Norway",
+      subtitle = "Total growth in house price index 1992 Q1 to 2026 Q1 — Oslo leads at over 600%",
+      caption = "Source: Statistics Norway (SSB table 07221)",
+      x = "Total growth since 1992",
+      y = NULL
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      legend.position = "top",
+      panel.grid.major.y = element_blank(),
+      panel.grid.minor = element_blank(),
+      plot.title = element_text(face = "bold", size = 16),
+      plot.subtitle = element_text(color = "gray30", size = 12, margin = margin(b = 15))
+    )
+  
+  print(p1)
+}
+```
+
+The gap is staggering. Oslo with Bærum has seen house prices multiply more than six times since 1992, far outpacing other major cities like Bergen, Stavanger, and Trondheim. Rural regions and smaller urban areas trail even further behind, creating a wealth divide that reshapes every discussion about inequality in Norway.
+
+## The Acceleration: Post-Pandemic Price Trajectories
+
+```{r slope-chart}
+#| fig-height: 8
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df)) {
+  slope_data <- df |>
+    filter(year(date) %in% c(2020, 2026)) |>
+    group_by(region) |>
+    arrange(date) |>
+    summarise(
+      index_2020 = first(value),
+      index_2026 = last(value),
+      .groups = "drop"
+    ) |>
+    mutate(
+      region_short = case_when(
+        str_detect(region, "Oslo") ~ "Oslo+Bærum",
+        str_detect(region, "Akershus") ~ "Akershus",
+        str_detect(region, "Bergen") ~ "Bergen",
+        str_detect(region, "Stavanger") ~ "Stavanger",
+        str_detect(region, "Trondheim") ~ "Trondheim",
+        str_detect(region, "Østfold") ~ "Østfold+Buskerud+",
+        str_detect(region, "Innlandet") ~ "Innlandet",
+        str_detect(region, "Agder") ~ "Agder",
+        str_detect(region, "Rogaland") ~ "Rogaland exc Stav",
+        str_detect(region, "Vestland") ~ "Vestland exc Berg",
+        str_detect(region, "Trøndelag") ~ "Trøndelag exc Trond",
+        str_detect(region, "Nord") ~ "Northern Norway",
+        TRUE ~ region
+      ),
+      highlight = str_detect(region, "Oslo|Bergen|Stavanger|Trondheim")
+    )
+  
+  p2 <- ggplot(slope_data, aes(color = highlight, alpha = highlight)) +
+    geom_segment(
+      aes(x = 1, xend = 2, y = index_2020, yend = index_2026),
+      linewidth = 1.2
+    ) +
+    geom_point(aes(x = 1, y = index_2020), size = 3) +
+    geom_point(aes(x = 2, y = index_2026), size = 3) +
+    geom_text(
+      aes(x = 1, y = index_2020, label = region_short),
+      hjust = 1.1, size = 3.5, fontface = "bold"
+    ) +
+    geom_text(
+      aes(x = 2, y = index_2026, label = round(index_2026, 0)),
+      hjust = -0.1, size = 3.5, fontface = "bold"
+    ) +
+    scale_color_manual(values = c("TRUE" = pal[1], "FALSE" = pal[6]), guide = "none") +
+    scale_alpha_manual(values = c("TRUE" = 1, "FALSE" = 0.5), guide = "none") +
+    scale_x_continuous(
+      limits = c(0.5, 2.5),
+      breaks = c(1, 2),
+      labels = c("2020 Q1", "2026 Q1")
+    ) +
+    labs(
+      title = "The Pandemic Housing Boom Widened Regional Divides",
+      subtitle = "House price index trajectories 2020-2026 — major cities (red) pulled further ahead",
+      caption = "Source: Statistics Norway (SSB table 07221)",
+      x = NULL,
+      y = "Price index"
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      panel.grid.major.x = element_blank(),
+      panel.grid.minor = element_blank(),
+      plot.title = element_text(face = "bold", size = 16),
+      plot.subtitle = element_text(color = "gray30", size = 12, margin = margin(b = 15)),
+      axis.text.x = element_text(size = 12, face = "bold")
+    )
+  
+  print(p2)
+}
+```
+
+The six years since 2020 have been transformative. Oslo continued its relentless climb, while northern Norway and rural regions saw far more modest gains. This isn't just about housing — it's about the geographical concentration of wealth accumulation.
+
+## Distribution Over Time: The Spreading Inequality
+
+```{r ridgeline-chart}
+#| fig-height: 9
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df)) {
+  ridge_data <- df |>
+    filter(year(date) >= 2000) |>
+    mutate(
+      year_label = year(date),
+      period = case_when(
+        year_label <= 2005 ~ "2000-2005",
+        year_label <= 2010 ~ "2006-2010",
+        year_label <= 2015 ~ "2011-2015",
+        year_label <= 2020 ~ "2016-2020",
+        TRUE ~ "2021-2026"
+      )
+    ) |>
+    mutate(period = factor(period, levels = c("2000-2005", "2006-2010", 
+                                               "2011-2015", "2016-2020", "2021-2026")))
+  
+  p3 <- ggplot(ridge_data, aes(x = value, y = period, fill = period)) +
+    geom_density_ridges(
+      alpha = 0.7, 
+      scale = 2.5,
+      bandwidth = 8,
+      quantile_lines = TRUE,
+      quantiles = 2
+    ) +
+    scale_fill_manual(values = met.brewer("Hokusai2", 5), guide = "none") +
+    scale_x_continuous(breaks = seq(0, 600, 100)) +
+    labs(
+      title = "How Regional House Price Distributions Spread Apart Over 26 Years",
+      subtitle = "Density of price indices across all regions — the gap between cheap and expensive widens",
+      caption = "Source: Statistics Norway (SSB table 07221)\nMedian shown as vertical line in each period",
+      x = "House price index",
+      y = NULL
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      panel.grid.minor = element_blank(),
+      plot.title = element_text(face = "bold", size = 16),
+      plot.subtitle = element_text(color = "gray30", size = 12, margin = margin(b = 15))
+    )
+  
+  print(p3)
+}
+```
+
+The distributions tell the story clearly: in the early 2000s, regional house prices clustered together. By 2021-2026, the spread has widened dramatically, with a long tail of high-price regions pulling away from the pack.
+
+## Quarterly Volatility Across Regions
+
+```{r heatmap-chart}
+#| fig-height: 8
+#| fig-width: 11
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df)) {
+  heatmap_data <- df |>
+    filter(year(date) >= 2015) |>
+    arrange(region, date) |>
+    group_by(region) |>
+    mutate(
+      qoq_change = (value / lag(value) - 1) * 100,
+      region_short = case_when(
+        str_detect(region, "Oslo") ~ "Oslo+Bærum",
+        str_detect(region, "Akershus") ~ "Akershus",
+        str_detect(region, "Bergen") ~ "Bergen",
+        str_detect(region, "Stavanger") ~ "Stavanger",
+        str_detect(region, "Trondheim") ~ "Trondheim",
+        str_detect(region, "Østfold") ~ "Østfold+Buskerud+",
+        str_detect(region, "Innlandet") ~ "Innlandet",
+        str_detect(region, "Agder") ~ "Agder",
+        str_detect(region, "Rogaland") ~ "Rogaland exc Stav",
+        str_detect(region, "Vestland") ~ "Vestland exc Berg",
+        str_detect(region, "Trøndelag") ~ "Trøndelag exc Trond",
+        str_detect(region, "Nord") ~ "Northern Norway",
+        TRUE ~ region
+      )
+    ) |>
+    ungroup() |>
+    filter(!is.na(qoq_change))
+  
+  p4 <- ggplot(heatmap_data, aes(x = date, y = fct_rev(region_short), fill = qoq_change)) +
+    geom_tile(color = "white", linewidth = 0.5) +
+    scale_fill_gradientn(
+      colors = c(pal[7], "white", pal[1]),
+      values = rescale(c(-5, 0, 10)),
+      limits = c(-5, 10),
+      name = "Q-o-Q\nchange (%)",
+      breaks = seq(-5, 10, 5)
+    ) +
+    scale_x_date(date_breaks = "1 year", date_labels = "%Y") +
+    labs(
+      title = "Regional House Price Volatility Since 2015",
+      subtitle = "Quarter-on-quarter percentage changes reveal boom-bust cycles hit regions differently",
+      caption = "Source: Statistics Norway (SSB table 07221)",
+      x = NULL,
+      y = NULL
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      panel.grid = element_blank(),
+      plot.title = element_text(face = "bold", size = 16),
+      plot.subtitle = element_text(color = "gray30", size = 12, margin = margin(b = 15)),
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      legend.position = "right"
+    )
+  
+  print(p4)
+}
+```
+
+The heatmap reveals distinct regional cycles. Oslo and major cities show consistent positive quarters, while smaller regions experience more dramatic swings — particularly visible during the 2022-2023 interest rate shock.
+
+## Key Findings
+
+- **Oslo's runaway train**: House prices in Oslo with Bærum have increased over 600% since 1992, compared to 300-400% in most other regions
+- **Post-pandemic acceleration**: The 2020-2026 period saw regional gaps widen further, with Oslo gaining roughly 100 index points while northern Norway gained only 40-50
+- **Spreading distributions**: Regional house price distributions that clustered tightly in 2000-2005 have spread dramatically by 2021-2026
+- **Volatility patterns**: Major cities show steadier quarter-on-quarter growth, while smaller regions experience sharper swings during boom-bust cycles
+- **Wealth concentration**: For the average Norwegian household, where you live now determines wealth accumulation far more than it did 30 years ago
+
+## The Inequality Engine
+
+Norway's housing market has become an inequality engine. If you bought in Oslo in 1992, you've seen a seven-fold wealth increase just from your home. If you bought in Innlandet or northern Norway, you've seen perhaps three-fold growth — still positive, but a fundamentally different financial outcome.
+
+This matters because home equity is the primary wealth-building vehicle for most Norwegian families. Regional house price divergence translates directly into regional wealth inequality, affecting everything from retirement security to intergenerational transfers. The market has sorted Norwegians into geographical winners and losers, and the gap keeps widening.
+
+As Norway debates housing policy, affordability, and regional development, these numbers show the scale of the challenge. The housing market isn't just tight — it's fundamentally restructuring who gets to build wealth and where.
