@@ -550,10 +550,10 @@ local({
     if (grepl("time_col\\s*<-\\s*names\\(", lines[i], perl = TRUE) &&
         grepl("grepl\\(", lines[i], perl = TRUE)) {
 
-      # 1. Replace the grepl pattern with the canonical one
+      # 1. Replace the grepl pattern with the canonical one (same-line only)
       lines[i] <- sub('grepl\\("[^"]*"', canonical, lines[i], perl = TRUE)
 
-      # 2. Ensure perl = TRUE is present
+      # 2. Ensure perl = TRUE is present (same-line only)
       if (!grepl("perl\\s*=\\s*TRUE", lines[i], perl = TRUE)) {
         lines[i] <- sub(
           "ignore\\.case\\s*=\\s*TRUE\\)",
@@ -570,8 +570,23 @@ local({
         "tmp"
       }
 
-      # 4. Ensure NA fallback is on a nearby line
-      next_i <- i + 1L
+      # 4. Find where the time_col assignment expression ends (balance brackets).
+      #    The expression may span multiple lines, e.g. names(tmp)[grepl(\n  "...",\n  ...)][1]
+      #    We must NOT insert the fallback inside the still-open expression.
+      count_chars <- function(s, chars) {
+        nchar(gsub(paste0("[^", chars, "]"), "", s, perl = TRUE))
+      }
+      net_open <- count_chars(lines[i], "\\[\\(") - count_chars(lines[i], "\\]\\)")
+      end_i <- i
+      while (net_open > 0L && end_i < length(lines)) {
+        end_i    <- end_i + 1L
+        net_open <- net_open +
+          count_chars(lines[end_i], "\\[\\(") -
+          count_chars(lines[end_i], "\\]\\)")
+      }
+
+      # 5. Ensure NA fallback follows the completed expression
+      next_i <- end_i + 1L
       while (next_i <= length(lines) && trimws(lines[next_i]) == "") next_i <- next_i + 1L
       has_fallback <- next_i <= length(lines) &&
         grepl("is\\.na\\(time_col\\)", lines[next_i], perl = TRUE)
@@ -579,8 +594,9 @@ local({
         indent   <- sub("^([ \t]*).*", "\\1", lines[i], perl = TRUE)
         fallback <- paste0(indent, "if (is.na(time_col)) time_col <- names(",
                            var_name, ")[length(names(", var_name, ")) - 1L]")
-        lines <- c(lines[seq_len(i)], fallback, lines[seq.int(i + 1L, length(lines))])
-        i <- i + 1L
+        lines <- c(lines[seq_len(end_i)], fallback,
+                   lines[seq.int(end_i + 1L, length(lines))])
+        i <- end_i + 1L
       }
     }
     i <- i + 1L
