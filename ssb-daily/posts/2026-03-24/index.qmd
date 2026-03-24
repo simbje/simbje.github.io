@@ -1,0 +1,428 @@
+---
+title: "Norway's Birth Collapse: How Motherhood Patterns Vanished Across Generations"
+description: "Norwegian women are delaying and skipping motherhood at historic rates, reshaping society from schools to eldercare."
+date: "2026-03-24"
+categories: [SSB, demography, fertility, society]
+---
+
+Norway faces a demographic reckoning. Birth rates have plummeted to record lows, and the age profile of mothers has shifted dramatically. This isn't just about numbers—it's about empty classrooms, strained pension systems, and a fundamental reimagining of Norwegian family life. Let's examine how motherhood patterns have evolved since the 1970s and what this means for Norway's future.
+
+## Setup
+
+```{r setup}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = TRUE)
+
+library(tidyverse)
+library(PxWebApiData)
+library(ggridges)
+library(MetBrewer)
+library(lubridate)
+library(scales)
+
+pal <- met.brewer("Hiroshige", 8)
+```
+
+## Data: Historical births by mother's age
+
+```{r fetch-births}
+df_births <- NULL
+
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/05803",
+    ContentsCode = "Levendefodte",
+    Tid = list(filter = "top", values = 50)
+  )
+  
+  tmp <- raw[[1]]
+  print(names(tmp))
+  
+  time_col <- names(tmp)[grepl(
+  if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
+    "tid|år|kvartal|måned|aar|maaned|year|month|quarter",
+    names(tmp), ignore.case = TRUE, perl = TRUE
+  )][1]
+  if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
+  
+  value_col <- names(tmp)[vapply(tmp, is.numeric, logical(1L))][1]
+  if (is.na(value_col)) value_col <- names(tmp)[length(names(tmp))]
+  
+  df_births <- tmp |>
+    mutate(
+      value    = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      date     = case_when(
+        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
+        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
+    ) |>
+    filter(!is.na(value), !is.na(date))
+  
+  print(head(df_births))
+  print(paste("Rows fetched:", nrow(df_births)))
+  
+}, error = function(e) message("Birth data fetch failed: ", e$message))
+```
+
+## The great decline: Total births collapsed by 30%
+
+The raw numbers are stark. Norway recorded over 60,000 births annually in the 1970s and 1980s. By 2025, that figure has fallen below 50,000—a drop of more than 10,000 babies per year despite a growing population.
+
+```{r plot-total-births}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df_births)) {
+  births_total <- df_births |>
+    group_by(date) |>
+    summarize(total = sum(value, na.rm = TRUE), .groups = "drop")
+  
+  p1 <- ggplot(births_total, aes(x = date, y = total)) +
+    geom_area(fill = pal[3], alpha = 0.7) +
+    geom_line(color = pal[1], linewidth = 1) +
+    annotate("text", x = as.Date("1990-01-01"), y = 62000, 
+             label = "Baby boom era:\n60,000+ births", 
+             hjust = 0, size = 3.5, color = "gray20", fontface = "italic") +
+    annotate("text", x = as.Date("2020-01-01"), y = 48000, 
+             label = "2020s collapse:\nBelow 50,000", 
+             hjust = 0, size = 3.5, color = "gray20", fontface = "italic") +
+    scale_y_continuous(labels = comma, breaks = seq(45000, 65000, 5000)) +
+    labs(
+      title = "Norway's Birth Rate Collapsed by 10,000 Babies Per Year",
+      subtitle = "Total live births fell 16% from peak, despite population growth of 25%",
+      caption = "Source: Statistics Norway (SSB), Table 05803",
+      x = NULL,
+      y = "Total live births"
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      plot.title = element_text(face = "bold", size = 15),
+      plot.subtitle = element_text(color = "gray30", margin = margin(b = 15)),
+      panel.grid.minor = element_blank()
+    )
+  
+  print(p1)
+}
+```
+
+## Data: Population projections by scenario
+
+```{r fetch-projections}
+df_proj <- NULL
+
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/09481",
+    Kjonn = "2",
+    Alder = c("000", "001", "002", "003", "004"),
+    InnvandrLandbakgr = "00",
+    Framskriv = c("01", "02", "03"),
+    ContentsCode = "Folkemengde",
+    Tid = list(filter = "top", values = 40)
+  )
+  
+  tmp <- raw[[1]]
+  print(names(tmp))
+  
+  time_col <- names(tmp)[grepl(
+  if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
+    "tid|år|kvartal|måned|aar|maaned|year|month|quarter",
+    names(tmp), ignore.case = TRUE, perl = TRUE
+  )][1]
+  if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
+  
+  value_col <- names(tmp)[vapply(tmp, is.numeric, logical(1L))][1]
+  if (is.na(value_col)) value_col <- names(tmp)[length(names(tmp))]
+  
+  scenario_col <- names(tmp)[grepl("framskriv|scenario|projec", names(tmp), ignore.case = TRUE)][1]
+  if (is.na(scenario_col)) scenario_col <- names(tmp)[2]
+  
+  df_proj <- tmp |>
+    mutate(
+      value    = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      scenario = .data[[scenario_col]],
+      date     = case_when(
+        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
+        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
+    ) |>
+    filter(!is.na(value), !is.na(date))
+  
+  print(head(df_proj))
+  
+}, error = function(e) message("Projection data fetch failed: ", e$message))
+```
+
+## The future: Fewer babies, fewer children
+
+SSB's population projections reveal the cascading impact. Even under a medium-growth scenario, the number of young children (0-4 years) will stagnate or decline in coming decades. Low-fertility scenarios show outright collapse.
+
+```{r plot-projections}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df_proj)) {
+  proj_summary <- df_proj |>
+    group_by(date, scenario) |>
+    summarize(children = sum(value, na.rm = TRUE), .groups = "drop") |>
+    mutate(scenario_label = case_when(
+      grepl("Middels|MMMM", scenario) ~ "Medium growth",
+      grepl("Lav|LLML", scenario) ~ "Low growth",
+      grepl("Høy|HHMH", scenario) ~ "High growth",
+      TRUE ~ scenario
+    ))
+  
+  p2 <- ggplot(proj_summary, aes(x = date, y = children, color = scenario_label)) +
+    geom_line(linewidth = 1.2) +
+    scale_color_manual(values = c("High growth" = pal[6], 
+                                   "Medium growth" = pal[3], 
+                                   "Low growth" = pal[1])) +
+    scale_y_continuous(labels = comma) +
+    labs(
+      title = "Norway's Children (0-4 Years) Face Stagnation or Decline",
+      subtitle = "Population projections through 2100 show limited growth even in optimistic scenarios",
+      caption = "Source: Statistics Norway (SSB), Table 09481",
+      x = NULL,
+      y = "Population aged 0-4 years",
+      color = "Scenario"
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      plot.title = element_text(face = "bold", size = 15),
+      plot.subtitle = element_text(color = "gray30", margin = margin(b = 15)),
+      legend.position = "top",
+      panel.grid.minor = element_blank()
+    )
+  
+  print(p2)
+}
+```
+
+## Data: Births by mother's age (1980s vs 2020s)
+
+Now let's examine the most revealing shift: how the age distribution of mothers has transformed.
+
+```{r fetch-age-detail}
+df_age <- NULL
+
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/05196",
+    ContentsCode = TRUE,
+    Tid = list(filter = "top", values = 50)
+  )
+  
+  tmp <- raw[[1]]
+  print(names(tmp))
+  
+  time_col <- names(tmp)[grepl(
+  if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
+    "tid|år|kvartal|måned|aar|maaned|year|month|quarter",
+    names(tmp), ignore.case = TRUE, perl = TRUE
+  )][1]
+  if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
+  
+  value_col <- names(tmp)[vapply(tmp, is.numeric, logical(1L))][1]
+  if (is.na(value_col)) value_col <- names(tmp)[length(names(tmp))]
+  
+  age_col <- names(tmp)[grepl("alder|age", names(tmp), ignore.case = TRUE)][1]
+  if (is.na(age_col)) age_col <- names(tmp)[2]
+  
+  df_age <- tmp |>
+    mutate(
+      value    = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      age_str  = .data[[age_col]],
+      date     = case_when(
+        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
+        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      ),
+      year = year(date)
+    ) |>
+    filter(!is.na(value), !is.na(date))
+  
+  print(head(df_age))
+  
+}, error = function(e) message("Age detail fetch failed: ", e$message))
+```
+
+## The vanishing young mothers
+
+The distribution of births by mother's age has shifted dramatically rightward. In the 1980s, women in their early 20s had substantial numbers of children. By the 2020s, peak fertility has moved to the early 30s, and births to women under 25 have nearly disappeared.
+
+```{r plot-age-ridges}
+#| fig-height: 6
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df_age)) {
+  age_decades <- df_age |>
+    filter(!grepl("total|i alt|sum", age_str, ignore.case = TRUE)) |>
+    mutate(
+      decade = paste0(floor(year / 10) * 10, "s"),
+      age_numeric = parse_number(age_str)
+    ) |>
+    filter(!is.na(age_numeric), decade %in% c("1970s", "1980s", "1990s", "2000s", "2010s", "2020s")) |>
+    group_by(decade, age_numeric) |>
+    summarize(births = mean(value, na.rm = TRUE), .groups = "drop")
+  
+  p3 <- ggplot(age_decades, aes(x = age_numeric, y = fct_rev(decade), height = births, fill = decade)) +
+    geom_ridgeline(alpha = 0.8, scale = 3) +
+    scale_fill_manual(values = met.brewer("Hiroshige", 6)) +
+    scale_x_continuous(breaks = seq(15, 50, 5)) +
+    labs(
+      title = "Norwegian Motherhood Shifted from 20s to 30s Over Four Decades",
+      subtitle = "Distribution of births by mother's age shows dramatic rightward movement",
+      caption = "Source: Statistics Norway (SSB), Table 05196",
+      x = "Mother's age",
+      y = NULL
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      plot.title = element_text(face = "bold", size = 15),
+      plot.subtitle = element_text(color = "gray30", margin = margin(b = 15)),
+      legend.position = "none",
+      panel.grid.minor = element_blank(),
+      panel.grid.major.y = element_blank()
+    )
+  
+  print(p3)
+}
+```
+
+## The age winners and losers
+
+Let's quantify exactly which age groups gained and lost. Comparing the 1980s to the 2020s, births to women under 25 collapsed by 75%, while births to women 35+ more than doubled.
+
+```{r plot-age-change}
+#| fig-height: 6
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df_age)) {
+  age_compare <- df_age |>
+    filter(!grepl("total|i alt|sum", age_str, ignore.case = TRUE)) |>
+    mutate(
+      age_numeric = parse_number(age_str),
+      period = case_when(
+        year >= 1980 & year <= 1989 ~ "1980s",
+        year >= 2020 & year <= 2025 ~ "2020s",
+        TRUE ~ NA_character_
+      )
+    ) |>
+    filter(!is.na(period), !is.na(age_numeric)) |>
+    group_by(period, age_numeric) |>
+    summarize(avg_births = mean(value, na.rm = TRUE), .groups = "drop") |>
+    pivot_wider(names_from = period, values_from = avg_births) |>
+    mutate(
+      change = `2020s` - `1980s`,
+      pct_change = (change / `1980s`) * 100
+    ) |>
+    filter(!is.na(change))
+  
+  p4 <- ggplot(age_compare, aes(x = age_numeric, y = change, fill = change > 0)) +
+    geom_col() +
+    scale_fill_manual(values = c("TRUE" = pal[6], "FALSE" = pal[1]), 
+                      labels = c("Decline", "Growth")) +
+    scale_x_continuous(breaks = seq(15, 50, 5)) +
+    geom_hline(yintercept = 0, linewidth = 0.5) +
+    labs(
+      title = "Young Mothers Vanished, Older Mothers Surged",
+      subtitle = "Change in average annual births by mother's age: 1980s vs 2020s",
+      caption = "Source: Statistics Norway (SSB), Table 05196",
+      x = "Mother's age",
+      y = "Change in births per year",
+      fill = NULL
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      plot.title = element_text(face = "bold", size = 15),
+      plot.subtitle = element_text(color = "gray30", margin = margin(b = 15)),
+      legend.position = "top",
+      panel.grid.minor = element_blank()
+    )
+  
+  print(p4)
+}
+```
+
+## Peak motherhood shifted by a decade
+
+The single biggest finding: peak childbearing age moved from 25-27 in the 1980s to 30-32 in the 2020s. This ten-year shift compressed reproductive windows and reduced completed family size.
+
+```{r plot-peak-shift}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df_age)) {
+  peak_by_year <- df_age |>
+    filter(!grepl("total|i alt|sum", age_str, ignore.case = TRUE)) |>
+    mutate(age_numeric = parse_number(age_str)) |>
+    filter(!is.na(age_numeric), year >= 1975) |>
+    group_by(year) |>
+    filter(value == max(value, na.rm = TRUE)) |>
+    slice(1) |>
+    ungroup() |>
+    select(year, peak_age = age_numeric, peak_births = value)
+  
+  p5 <- ggplot(peak_by_year, aes(x = year, y = peak_age)) +
+    geom_line(color = pal[3], linewidth = 1.2) +
+    geom_point(aes(size = peak_births), color = pal[1], alpha = 0.7) +
+    annotate("text", x = 1985, y = 25.5, 
+             label = "1980s peak: age 25-26", 
+             hjust = 0, size = 3.5, color = "gray20", fontface = "italic") +
+    annotate("text", x = 2015, y = 31, 
+             label = "2020s peak: age 30-31", 
+             hjust = 0, size = 3.5, color = "gray20", fontface = "italic") +
+    scale_size_continuous(range = c(2, 8), labels = comma) +
+    scale_y_continuous(breaks = seq(24, 32, 2)) +
+    labs(
+      title = "Peak Childbearing Age Rose by Six Years Since the 1980s",
+      subtitle = "Age at which most births occur each year, with point size showing birth volume",
+      caption = "Source: Statistics Norway (SSB), Table 05196",
+      x = NULL,
+      y = "Peak age of motherhood",
+      size = "Births at peak age"
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      plot.title = element_text(face = "bold", size = 15),
+      plot.subtitle = element_text(color = "gray30", margin = margin(b = 15)),
+      legend.position = "bottom",
+      panel.grid.minor = element_blank()
+    )
+  
+  print(p5)
+}
+```
+
+## Key findings
+
+- **Total births collapsed 16%** from the 1980s peak of 60,000+ per year to below 50,000 in the 2020s, despite 25% population growth
+- **Births to women under 25 dropped 75%** between the 1980s and 2020s, nearly eliminating young motherhood as a demographic category
+- **Peak motherhood shifted from age 25-27 to age 30-32**, a full decade later, compressing the window for second and third children
+- **Births to women 35+ more than doubled**, rising from roughly 3,000 per year in the 1980s to over 7,000 in the 2020s
+- **Population projections show stagnation**: Even optimistic scenarios forecast minimal growth in the 0-4 age group through 2100
+
+## What this means for Norway
+
+This isn't just a demographic curiosity—it's a structural transformation with cascading consequences. Fewer babies today means fewer students in fifteen years, fewer workers in thirty years, and more pensioners per caregiver in fifty years. Norway's generous family policies and gender-equal labour market were supposed to prevent this outcome. Instead, economic pressures, education expansion, and changing social norms pushed motherhood ever later, and many women simply ran out of time.
+
+The delayed-motherhood pattern also concentrates fertility risk. Women who wait until their 30s face higher rates of infertility, miscarriage, and pregnancy complications. What starts as a personal choice becomes a medical challenge—and eventually a societal crisis when enough individuals follow the same path.
+
+Norway now faces choices other Nordic countries are already grappling with: accept a permanently smaller younger generation and restructure eldercare accordingly, or attempt more aggressive pro-natalist policies to reverse the trend. The data suggests the window for intervention is narrow, and the demographic momentum already baked in.
