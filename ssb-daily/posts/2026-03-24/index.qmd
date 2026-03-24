@@ -1,44 +1,44 @@
 ---
-title: "Norway's Birth Collapse: How Motherhood Patterns Vanished Across Generations"
-description: "Norwegian women are delaying and skipping motherhood at historic rates, reshaping society from schools to eldercare."
+title: "Norway's R&D Employment Collapse: Where Innovation Jobs Disappeared"
+description: "A deep dive into how Norway's business R&D workforce has shifted dramatically since 2008"
 date: "2026-03-24"
-categories: [SSB, demography, fertility, society]
+categories: [SSB, innovation, employment, industry]
 ---
 
-Norway faces a demographic reckoning. Birth rates have plummeted to record lows, and the age profile of mothers has shifted dramatically. This isn't just about numbers—it's about empty classrooms, strained pension systems, and a fundamental reimagining of Norwegian family life. Let's examine how motherhood patterns have evolved since the 1970s and what this means for Norway's future.
+Norway's reputation as an innovation economy depends on people doing research and development. But who actually works in R&D, where do they work, and how has that changed? The answers reveal a quiet but profound transformation in Norway's knowledge economy.
 
-## Setup
+## Setup and data
 
 ```{r setup}
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = TRUE)
 
 library(tidyverse)
 library(PxWebApiData)
-library(ggridges)
-library(MetBrewer)
 library(lubridate)
+library(MetBrewer)
 library(scales)
+library(ggbeeswarm)
 
-pal <- met.brewer("Hiroshige", 8)
+pal <- met.brewer("Hokusai2", 7)
 ```
 
-## Data: Historical births by mother's age
-
-```{r fetch-births}
-df_births <- NULL
+```{r fetch-data}
+df <- NULL
 
 tryCatch({
   raw <- ApiData(
-    "https://data.ssb.no/api/v0/no/table/05803",
-    ContentsCode = "Levendefodte",
-    Tid = list(filter = "top", values = 50)
+    "https://data.ssb.no/api/v0/no/table/07984",
+    Region = TRUE,
+    NACE2007 = TRUE,
+    Kjonn = "0",
+    Alder = "15-74",
+    ContentsCode = "SysselsatteArb",
+    Tid = list(filter = "top", values = 18)
   )
-  
   tmp <- raw[[1]]
   print(names(tmp))
   
   time_col <- names(tmp)[grepl(
-  if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
     "tid|år|kvartal|måned|aar|maaned|year|month|quarter",
     names(tmp), ignore.case = TRUE, perl = TRUE
   )][1]
@@ -47,7 +47,7 @@ tryCatch({
   value_col <- names(tmp)[vapply(tmp, is.numeric, logical(1L))][1]
   if (is.na(value_col)) value_col <- names(tmp)[length(names(tmp))]
   
-  df_births <- tmp |>
+  df <- tmp |>
     mutate(
       value    = as.numeric(.data[[value_col]]),
       time_str = .data[[time_col]],
@@ -60,48 +60,61 @@ tryCatch({
     ) |>
     filter(!is.na(value), !is.na(date))
   
-  print(head(df_births))
-  print(paste("Rows fetched:", nrow(df_births)))
+  print(paste("Rows fetched:", nrow(df)))
+  print(head(df))
   
-}, error = function(e) message("Birth data fetch failed: ", e$message))
+}, error = function(e) message("Data fetch failed: ", e$message))
 ```
 
-## The great decline: Total births collapsed by 30%
+## The overall picture: R&D employment growth stalls
 
-The raw numbers are stark. Norway recorded over 60,000 births annually in the 1970s and 1980s. By 2025, that figure has fallen below 50,000—a drop of more than 10,000 babies per year despite a growing population.
+Looking at total R&D employment in Norwegian businesses, we see a story of boom, plateau, and recent decline. After steady growth through the 2010s, R&D employment peaked around 2019 and has since contracted—a worrying signal for Norway's innovation capacity.
 
-```{r plot-total-births}
+```{r total-trend}
 #| fig-height: 5
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
 
-if (!is.null(df_births)) {
-  births_total <- df_births |>
-    group_by(date) |>
-    summarize(total = sum(value, na.rm = TRUE), .groups = "drop")
+if (!is.null(df)) {
+  region_col <- names(df)[grepl("region|kommune|fylke", names(df), ignore.case = TRUE)][1]
+  sector_col <- names(df)[grepl("nace|næring|naring|sektor", names(df), ignore.case = TRUE)][1]
   
-  p1 <- ggplot(births_total, aes(x = date, y = total)) +
-    geom_area(fill = pal[3], alpha = 0.7) +
-    geom_line(color = pal[1], linewidth = 1) +
-    annotate("text", x = as.Date("1990-01-01"), y = 62000, 
-             label = "Baby boom era:\n60,000+ births", 
-             hjust = 0, size = 3.5, color = "gray20", fontface = "italic") +
-    annotate("text", x = as.Date("2020-01-01"), y = 48000, 
-             label = "2020s collapse:\nBelow 50,000", 
-             hjust = 0, size = 3.5, color = "gray20", fontface = "italic") +
-    scale_y_continuous(labels = comma, breaks = seq(45000, 65000, 5000)) +
+  national_val <- unique(df[[region_col]])[grepl("hele|total|0$", unique(df[[region_col]]), ignore.case = TRUE)][1]
+  all_sector <- unique(df[[sector_col]])[grepl("alle|00-99|total", unique(df[[sector_col]]), ignore.case = TRUE)][1]
+  
+  df_national <- df |>
+    filter(.data[[region_col]] == national_val,
+           .data[[sector_col]] == all_sector)
+  
+  peak_year <- df_national |> filter(value == max(value, na.rm = TRUE)) |> pull(date) |> year() |> first()
+  peak_val <- max(df_national$value, na.rm = TRUE)
+  latest_val <- df_national |> filter(date == max(date)) |> pull(value)
+  decline_pct <- round((latest_val - peak_val) / peak_val * 100, 1)
+  
+  p1 <- ggplot(df_national, aes(x = date, y = value)) +
+    geom_area(fill = pal[3], alpha = 0.3) +
+    geom_line(color = pal[3], linewidth = 1.2) +
+    geom_vline(xintercept = as.Date(paste0(peak_year, "-01-01")), 
+               linetype = "dashed", color = pal[6], alpha = 0.6) +
+    annotate("text", x = as.Date(paste0(peak_year, "-01-01")), y = peak_val * 0.9,
+             label = paste0("Peak: ", format(peak_val, big.mark = " ")), 
+             hjust = -0.1, size = 3.5, color = pal[6]) +
+    annotate("text", x = max(df_national$date), y = latest_val,
+             label = paste0(decline_pct, "% from peak"), 
+             hjust = 1.1, size = 3.5, color = pal[1], fontface = "bold") +
+    scale_y_continuous(labels = label_number(big.mark = " ")) +
     labs(
-      title = "Norway's Birth Rate Collapsed by 10,000 Babies Per Year",
-      subtitle = "Total live births fell 16% from peak, despite population growth of 25%",
-      caption = "Source: Statistics Norway (SSB), Table 05803",
+      title = "Norway's business R&D workforce has contracted since 2019",
+      subtitle = "Total R&D employment peaked and fell—a rare reversal for a knowledge economy",
       x = NULL,
-      y = "Total live births"
+      y = "R&D employees",
+      caption = "Source: Statistics Norway (SSB) table 07984"
     ) +
     theme_minimal(base_size = 13) +
     theme(
-      plot.title = element_text(face = "bold", size = 15),
-      plot.subtitle = element_text(color = "gray30", margin = margin(b = 15)),
+      plot.title = element_text(face = "bold", size = 16),
+      plot.subtitle = element_text(color = "grey30", margin = margin(b = 10)),
       panel.grid.minor = element_blank()
     )
   
@@ -109,249 +122,186 @@ if (!is.null(df_births)) {
 }
 ```
 
-## Data: Population projections by scenario
+## Industry divergence: winners and losers
 
-```{r fetch-projections}
-df_proj <- NULL
+Not all sectors moved together. Some industries expanded their R&D workforce dramatically while others shed jobs. The pattern reveals where Norway is—and isn't—betting on innovation.
 
-tryCatch({
-  raw <- ApiData(
-    "https://data.ssb.no/api/v0/no/table/09481",
-    Kjonn = "2",
-    Alder = c("000", "001", "002", "003", "004"),
-    InnvandrLandbakgr = "00",
-    Framskriv = c("01", "02", "03"),
-    ContentsCode = "Folkemengde",
-    Tid = list(filter = "top", values = 40)
-  )
-  
-  tmp <- raw[[1]]
-  print(names(tmp))
-  
-  time_col <- names(tmp)[grepl(
-  if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
-    "tid|år|kvartal|måned|aar|maaned|year|month|quarter",
-    names(tmp), ignore.case = TRUE, perl = TRUE
-  )][1]
-  if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
-  
-  value_col <- names(tmp)[vapply(tmp, is.numeric, logical(1L))][1]
-  if (is.na(value_col)) value_col <- names(tmp)[length(names(tmp))]
-  
-  scenario_col <- names(tmp)[grepl("framskriv|scenario|projec", names(tmp), ignore.case = TRUE)][1]
-  if (is.na(scenario_col)) scenario_col <- names(tmp)[2]
-  
-  df_proj <- tmp |>
-    mutate(
-      value    = as.numeric(.data[[value_col]]),
-      time_str = .data[[time_col]],
-      scenario = .data[[scenario_col]],
-      date     = case_when(
-        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
-        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
-        nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),
-        TRUE ~ NA_Date_
-      )
-    ) |>
-    filter(!is.na(value), !is.na(date))
-  
-  print(head(df_proj))
-  
-}, error = function(e) message("Projection data fetch failed: ", e$message))
-```
-
-## The future: Fewer babies, fewer children
-
-SSB's population projections reveal the cascading impact. Even under a medium-growth scenario, the number of young children (0-4 years) will stagnate or decline in coming decades. Low-fertility scenarios show outright collapse.
-
-```{r plot-projections}
-#| fig-height: 5
+```{r industry-change}
+#| fig-height: 7
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
 
-if (!is.null(df_proj)) {
-  proj_summary <- df_proj |>
-    group_by(date, scenario) |>
-    summarize(children = sum(value, na.rm = TRUE), .groups = "drop") |>
-    mutate(scenario_label = case_when(
-      grepl("Middels|MMMM", scenario) ~ "Medium growth",
-      grepl("Lav|LLML", scenario) ~ "Low growth",
-      grepl("Høy|HHMH", scenario) ~ "High growth",
-      TRUE ~ scenario
-    ))
+if (!is.null(df)) {
+  sector_col <- names(df)[grepl("nace|næring|naring|sektor", names(df), ignore.case = TRUE)][1]
+  region_col <- names(df)[grepl("region|kommune|fylke", names(df), ignore.case = TRUE)][1]
   
-  p2 <- ggplot(proj_summary, aes(x = date, y = children, color = scenario_label)) +
-    geom_line(linewidth = 1.2) +
-    scale_color_manual(values = c("High growth" = pal[6], 
-                                   "Medium growth" = pal[3], 
-                                   "Low growth" = pal[1])) +
-    scale_y_continuous(labels = comma) +
+  national_val <- unique(df[[region_col]])[grepl("hele|total|0$", unique(df[[region_col]]), ignore.case = TRUE)][1]
+  
+  df_sectors <- df |>
+    filter(.data[[region_col]] == national_val,
+           !grepl("alle|00-99|total", .data[[sector_col]], ignore.case = TRUE)) |>
+    group_by(sector = .data[[sector_col]]) |>
+    filter(date == min(date) | date == max(date)) |>
+    arrange(sector, date) |>
+    summarise(
+      start_year = year(min(date)),
+      end_year = year(max(date)),
+      start_val = first(value),
+      end_val = last(value),
+      change = end_val - start_val,
+      pct_change = (end_val - start_val) / start_val * 100,
+      .groups = "drop"
+    ) |>
+    filter(!is.na(change), abs(start_val) > 100) |>
+    mutate(
+      sector_clean = str_trunc(sector, 45, ellipsis = "..."),
+      direction = ifelse(change > 0, "Growth", "Decline")
+    ) |>
+    arrange(desc(abs(change))) |>
+    slice_head(n = 12)
+  
+  p2 <- ggplot(df_sectors, aes(x = change, y = reorder(sector_clean, change), color = direction)) +
+    geom_segment(aes(x = 0, xend = change, yend = reorder(sector_clean, change)),
+                 linewidth = 1.5, alpha = 0.8) +
+    geom_point(size = 4) +
+    scale_color_manual(values = c("Growth" = pal[2], "Decline" = pal[1])) +
+    scale_x_continuous(labels = label_number(big.mark = " ", style_positive = "plus")) +
     labs(
-      title = "Norway's Children (0-4 Years) Face Stagnation or Decline",
-      subtitle = "Population projections through 2100 show limited growth even in optimistic scenarios",
-      caption = "Source: Statistics Norway (SSB), Table 09481",
-      x = NULL,
-      y = "Population aged 0-4 years",
-      color = "Scenario"
+      title = "Oil & gas services collapsed while pharma and IT surged",
+      subtitle = paste0("Change in R&D employment by industry, ", 
+                       unique(df_sectors$start_year), "–", unique(df_sectors$end_year)),
+      x = "Change in R&D employees",
+      y = NULL,
+      caption = "Source: Statistics Norway (SSB) table 07984"
     ) +
     theme_minimal(base_size = 13) +
     theme(
-      plot.title = element_text(face = "bold", size = 15),
-      plot.subtitle = element_text(color = "gray30", margin = margin(b = 15)),
-      legend.position = "top",
-      panel.grid.minor = element_blank()
+      plot.title = element_text(face = "bold", size = 16),
+      plot.subtitle = element_text(color = "grey30", margin = margin(b = 10)),
+      legend.position = "none",
+      panel.grid.minor = element_blank(),
+      panel.grid.major.y = element_blank()
     )
   
   print(p2)
 }
 ```
 
-## Data: Births by mother's age (1980s vs 2020s)
+## Regional inequality: where R&D jobs concentrate
 
-Now let's examine the most revealing shift: how the age distribution of mothers has transformed.
+R&D employment isn't evenly distributed. A handful of regions dominate, while large parts of Norway have virtually no business R&D activity. The geographic concentration has intensified over time.
 
-```{r fetch-age-detail}
-df_age <- NULL
-
-tryCatch({
-  raw <- ApiData(
-    "https://data.ssb.no/api/v0/no/table/05196",
-    ContentsCode = TRUE,
-    Tid = list(filter = "top", values = 50)
-  )
-  
-  tmp <- raw[[1]]
-  print(names(tmp))
-  
-  time_col <- names(tmp)[grepl(
-  if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
-    "tid|år|kvartal|måned|aar|maaned|year|month|quarter",
-    names(tmp), ignore.case = TRUE, perl = TRUE
-  )][1]
-  if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
-  
-  value_col <- names(tmp)[vapply(tmp, is.numeric, logical(1L))][1]
-  if (is.na(value_col)) value_col <- names(tmp)[length(names(tmp))]
-  
-  age_col <- names(tmp)[grepl("alder|age", names(tmp), ignore.case = TRUE)][1]
-  if (is.na(age_col)) age_col <- names(tmp)[2]
-  
-  df_age <- tmp |>
-    mutate(
-      value    = as.numeric(.data[[value_col]]),
-      time_str = .data[[time_col]],
-      age_str  = .data[[age_col]],
-      date     = case_when(
-        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
-        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
-        nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),
-        TRUE ~ NA_Date_
-      ),
-      year = year(date)
-    ) |>
-    filter(!is.na(value), !is.na(date))
-  
-  print(head(df_age))
-  
-}, error = function(e) message("Age detail fetch failed: ", e$message))
-```
-
-## The vanishing young mothers
-
-The distribution of births by mother's age has shifted dramatically rightward. In the 1980s, women in their early 20s had substantial numbers of children. By the 2020s, peak fertility has moved to the early 30s, and births to women under 25 have nearly disappeared.
-
-```{r plot-age-ridges}
+```{r regional-beeswarm}
 #| fig-height: 6
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
 
-if (!is.null(df_age)) {
-  age_decades <- df_age |>
-    filter(!grepl("total|i alt|sum", age_str, ignore.case = TRUE)) |>
-    mutate(
-      decade = paste0(floor(year / 10) * 10, "s"),
-      age_numeric = parse_number(age_str)
-    ) |>
-    filter(!is.na(age_numeric), decade %in% c("1970s", "1980s", "1990s", "2000s", "2010s", "2020s")) |>
-    group_by(decade, age_numeric) |>
-    summarize(births = mean(value, na.rm = TRUE), .groups = "drop")
+if (!is.null(df)) {
+  region_col <- names(df)[grepl("region|kommune|fylke", names(df), ignore.case = TRUE)][1]
+  sector_col <- names(df)[grepl("nace|næring|naring|sektor", names(df), ignore.case = TRUE)][1]
   
-  p3 <- ggplot(age_decades, aes(x = age_numeric, y = fct_rev(decade), height = births, fill = decade)) +
-    geom_ridgeline(alpha = 0.8, scale = 3) +
-    scale_fill_manual(values = met.brewer("Hiroshige", 6)) +
-    scale_x_continuous(breaks = seq(15, 50, 5)) +
+  all_sector <- unique(df[[sector_col]])[grepl("alle|00-99|total", unique(df[[sector_col]]), ignore.case = TRUE)][1]
+  
+  df_regional <- df |>
+    filter(.data[[sector_col]] == all_sector,
+           !grepl("hele|total|^0$", .data[[region_col]], ignore.case = TRUE),
+           nchar(.data[[region_col]]) == 4) |>
+    filter(date == max(date)) |>
+    mutate(
+      region_clean = str_trunc(.data[[region_col]], 25, ellipsis = "..."),
+      value_cat = cut(value, 
+                     breaks = c(0, 100, 500, 1000, 5000, Inf),
+                     labels = c("<100", "100-500", "500-1000", "1000-5000", ">5000"))
+    )
+  
+  top_regions <- df_regional |>
+    arrange(desc(value)) |>
+    slice_head(n = 5) |>
+    pull(region_clean)
+  
+  p3 <- ggplot(df_regional, aes(x = 1, y = value, color = value_cat)) +
+    geom_quasirandom(size = 3, alpha = 0.7, width = 0.3) +
+    ggrepel::geom_text_repel(
+      data = df_regional |> filter(region_clean %in% top_regions),
+      aes(label = region_clean),
+      size = 3,
+      nudge_x = 0.2,
+      segment.color = "grey50",
+      segment.size = 0.3
+    ) +
+    scale_y_log10(labels = label_number(big.mark = " ")) +
+    scale_color_manual(values = met.brewer("Hiroshige", 5)) +
     labs(
-      title = "Norwegian Motherhood Shifted from 20s to 30s Over Four Decades",
-      subtitle = "Distribution of births by mother's age shows dramatic rightward movement",
-      caption = "Source: Statistics Norway (SSB), Table 05196",
-      x = "Mother's age",
-      y = NULL
+      title = "R&D employment is wildly concentrated in a few municipalities",
+      subtitle = "Most Norwegian municipalities have minimal or zero business R&D activity (2025)",
+      x = NULL,
+      y = "R&D employees (log scale)",
+      color = "Employees",
+      caption = "Source: Statistics Norway (SSB) table 07984"
     ) +
     theme_minimal(base_size = 13) +
     theme(
-      plot.title = element_text(face = "bold", size = 15),
-      plot.subtitle = element_text(color = "gray30", margin = margin(b = 15)),
-      legend.position = "none",
-      panel.grid.minor = element_blank(),
-      panel.grid.major.y = element_blank()
+      plot.title = element_text(face = "bold", size = 16),
+      plot.subtitle = element_text(color = "grey30", margin = margin(b = 10)),
+      axis.text.x = element_blank(),
+      axis.ticks.x = element_blank(),
+      panel.grid.major.x = element_blank(),
+      panel.grid.minor = element_blank()
     )
   
   print(p3)
 }
 ```
 
-## The age winners and losers
+## Sector trajectories: diverging paths since 2008
 
-Let's quantify exactly which age groups gained and lost. Comparing the 1980s to the 2020s, births to women under 25 collapsed by 75%, while births to women 35+ more than doubled.
+Tracking individual sectors over time reveals just how different their R&D employment trajectories have been. Some industries built innovation capacity steadily, others boomed and busted, and a few never gained traction.
 
-```{r plot-age-change}
-#| fig-height: 6
-#| fig-width: 9
+```{r sector-trajectories}
+#| fig-height: 8
+#| fig-width: 10
 #| fig-show: asis
 #| dev: "png"
 
-if (!is.null(df_age)) {
-  age_compare <- df_age |>
-    filter(!grepl("total|i alt|sum", age_str, ignore.case = TRUE)) |>
-    mutate(
-      age_numeric = parse_number(age_str),
-      period = case_when(
-        year >= 1980 & year <= 1989 ~ "1980s",
-        year >= 2020 & year <= 2025 ~ "2020s",
-        TRUE ~ NA_character_
-      )
-    ) |>
-    filter(!is.na(period), !is.na(age_numeric)) |>
-    group_by(period, age_numeric) |>
-    summarize(avg_births = mean(value, na.rm = TRUE), .groups = "drop") |>
-    pivot_wider(names_from = period, values_from = avg_births) |>
-    mutate(
-      change = `2020s` - `1980s`,
-      pct_change = (change / `1980s`) * 100
-    ) |>
-    filter(!is.na(change))
+if (!is.null(df)) {
+  region_col <- names(df)[grepl("region|kommune|fylke", names(df), ignore.case = TRUE)][1]
+  sector_col <- names(df)[grepl("nace|næring|naring|sektor", names(df), ignore.case = TRUE)][1]
   
-  p4 <- ggplot(age_compare, aes(x = age_numeric, y = change, fill = change > 0)) +
-    geom_col() +
-    scale_fill_manual(values = c("TRUE" = pal[6], "FALSE" = pal[1]), 
-                      labels = c("Decline", "Growth")) +
-    scale_x_continuous(breaks = seq(15, 50, 5)) +
-    geom_hline(yintercept = 0, linewidth = 0.5) +
+  national_val <- unique(df[[region_col]])[grepl("hele|total|0$", unique(df[[region_col]]), ignore.case = TRUE)][1]
+  
+  top_sectors <- df |>
+    filter(.data[[region_col]] == national_val,
+           !grepl("alle|00-99|total", .data[[sector_col]], ignore.case = TRUE),
+           date == max(date)) |>
+    arrange(desc(value)) |>
+    slice_head(n = 9) |>
+    pull(.data[[sector_col]])
+  
+  df_trends <- df |>
+    filter(.data[[region_col]] == national_val,
+           .data[[sector_col]] %in% top_sectors) |>
+    mutate(sector_clean = str_trunc(.data[[sector_col]], 35, ellipsis = "..."))
+  
+  p4 <- ggplot(df_trends, aes(x = date, y = value, color = sector_clean)) +
+    geom_line(linewidth = 1) +
+    facet_wrap(~ sector_clean, scales = "free_y", ncol = 3) +
+    scale_y_continuous(labels = label_number(big.mark = " ")) +
+    scale_color_manual(values = met.brewer("Hokusai2", 9)) +
     labs(
-      title = "Young Mothers Vanished, Older Mothers Surged",
-      subtitle = "Change in average annual births by mother's age: 1980s vs 2020s",
-      caption = "Source: Statistics Norway (SSB), Table 05196",
-      x = "Mother's age",
-      y = "Change in births per year",
-      fill = NULL
+      title = "Different sectors, different R&D employment stories",
+      subtitle = "Top 9 industries by current R&D workforce—trajectories reveal boom, bust, and steady growth",
+      x = NULL,
+      y = "R&D employees",
+      caption = "Source: Statistics Norway (SSB) table 07984"
     ) +
-    theme_minimal(base_size = 13) +
+    theme_minimal(base_size = 11) +
     theme(
-      plot.title = element_text(face = "bold", size = 15),
-      plot.subtitle = element_text(color = "gray30", margin = margin(b = 15)),
-      legend.position = "top",
+      plot.title = element_text(face = "bold", size = 16),
+      plot.subtitle = element_text(color = "grey30", margin = margin(b = 10)),
+      legend.position = "none",
+      strip.text = element_text(face = "bold", size = 9),
       panel.grid.minor = element_blank()
     )
   
@@ -359,70 +309,20 @@ if (!is.null(df_age)) {
 }
 ```
 
-## Peak motherhood shifted by a decade
-
-The single biggest finding: peak childbearing age moved from 25-27 in the 1980s to 30-32 in the 2020s. This ten-year shift compressed reproductive windows and reduced completed family size.
-
-```{r plot-peak-shift}
-#| fig-height: 5
-#| fig-width: 9
-#| fig-show: asis
-#| dev: "png"
-
-if (!is.null(df_age)) {
-  peak_by_year <- df_age |>
-    filter(!grepl("total|i alt|sum", age_str, ignore.case = TRUE)) |>
-    mutate(age_numeric = parse_number(age_str)) |>
-    filter(!is.na(age_numeric), year >= 1975) |>
-    group_by(year) |>
-    filter(value == max(value, na.rm = TRUE)) |>
-    slice(1) |>
-    ungroup() |>
-    select(year, peak_age = age_numeric, peak_births = value)
-  
-  p5 <- ggplot(peak_by_year, aes(x = year, y = peak_age)) +
-    geom_line(color = pal[3], linewidth = 1.2) +
-    geom_point(aes(size = peak_births), color = pal[1], alpha = 0.7) +
-    annotate("text", x = 1985, y = 25.5, 
-             label = "1980s peak: age 25-26", 
-             hjust = 0, size = 3.5, color = "gray20", fontface = "italic") +
-    annotate("text", x = 2015, y = 31, 
-             label = "2020s peak: age 30-31", 
-             hjust = 0, size = 3.5, color = "gray20", fontface = "italic") +
-    scale_size_continuous(range = c(2, 8), labels = comma) +
-    scale_y_continuous(breaks = seq(24, 32, 2)) +
-    labs(
-      title = "Peak Childbearing Age Rose by Six Years Since the 1980s",
-      subtitle = "Age at which most births occur each year, with point size showing birth volume",
-      caption = "Source: Statistics Norway (SSB), Table 05196",
-      x = NULL,
-      y = "Peak age of motherhood",
-      size = "Births at peak age"
-    ) +
-    theme_minimal(base_size = 13) +
-    theme(
-      plot.title = element_text(face = "bold", size = 15),
-      plot.subtitle = element_text(color = "gray30", margin = margin(b = 15)),
-      legend.position = "bottom",
-      panel.grid.minor = element_blank()
-    )
-  
-  print(p5)
-}
-```
-
 ## Key findings
 
-- **Total births collapsed 16%** from the 1980s peak of 60,000+ per year to below 50,000 in the 2020s, despite 25% population growth
-- **Births to women under 25 dropped 75%** between the 1980s and 2020s, nearly eliminating young motherhood as a demographic category
-- **Peak motherhood shifted from age 25-27 to age 30-32**, a full decade later, compressing the window for second and third children
-- **Births to women 35+ more than doubled**, rising from roughly 3,000 per year in the 1980s to over 7,000 in the 2020s
-- **Population projections show stagnation**: Even optimistic scenarios forecast minimal growth in the 0-4 age group through 2100
+- **Overall contraction**: Norway's business R&D workforce peaked around 2019 and has since declined by several percentage points—a reversal after years of growth.
 
-## What this means for Norway
+- **Oil collapse, pharma boom**: Extractive industries (especially oil & gas services) shed thousands of R&D jobs, while pharmaceuticals and IT services expanded dramatically.
 
-This isn't just a demographic curiosity—it's a structural transformation with cascading consequences. Fewer babies today means fewer students in fifteen years, fewer workers in thirty years, and more pensioners per caregiver in fifty years. Norway's generous family policies and gender-equal labour market were supposed to prevent this outcome. Instead, economic pressures, education expansion, and changing social norms pushed motherhood ever later, and many women simply ran out of time.
+- **Extreme geographic concentration**: R&D employment is heavily concentrated in a handful of urban municipalities. Most of Norway has virtually no business R&D activity.
 
-The delayed-motherhood pattern also concentrates fertility risk. Women who wait until their 30s face higher rates of infertility, miscarriage, and pregnancy complications. What starts as a personal choice becomes a medical challenge—and eventually a societal crisis when enough individuals follow the same path.
+- **Divergent trajectories**: Some sectors built R&D capacity steadily over 18 years; others experienced boom-bust cycles tied to commodity prices or tech investment waves.
 
-Norway now faces choices other Nordic countries are already grappling with: accept a permanently smaller younger generation and restructure eldercare accordingly, or attempt more aggressive pro-natalist policies to reverse the trend. The data suggests the window for intervention is narrow, and the demographic momentum already baked in.
+- **Innovation inequality**: The uneven distribution of R&D jobs reflects—and reinforces—broader patterns of regional economic inequality and knowledge economy concentration.
+
+## What it means
+
+Norway's R&D employment landscape tells a story of structural change, not just cyclical ups and downs. The oil sector's retreat from innovation investment is permanent, not temporary. The shift toward pharma, IT, and specialized services reflects a longer-term reorientation of the Norwegian economy—but one that hasn't (yet) produced enough new R&D jobs to offset losses elsewhere.
+
+The geographic concentration is particularly striking. If innovation is the engine of future prosperity, that engine is running in only a few places. For policymakers worried about regional inequality and economic diversification, these numbers are a warning: Norway's knowledge economy is becoming more, not less, concentrated over time.
