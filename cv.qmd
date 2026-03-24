@@ -67,7 +67,7 @@ page-layout: full
       <div class="cv-body"><ul>
         <li>Responsible for reporting, analysis, budget, and forecasting within the business portfolio</li>
         <li>Monitored management data and KPIs</li>
-        <li>Oversaw procurement processes — managed procurement routines and analysed procurement data</li>
+        <li> Advisor for procurement routines and analysed procurement data</li>
         <li>Representative for the <em>Municipal network for management information and healthcare services</em> across the largest municipalities in Norway</li>
         <li>Automated data retrieval through VBA scripts and the use of APIs</li>
       </ul></div>
@@ -165,7 +165,7 @@ page-layout: full
 
   <div class="cv-section-title">Interests</div>
   <div class="cv-body" style="margin-bottom:2rem;">
-    Competitive tennis · Stocks and investments · Algorithmic trading · Coding projects · TidyTuesday data visualisation
+    Norwegian tennis champion (30-40 years) · Stocks and investments · Algorithmic trading · Coding projects · TidyTuesday data visualisation
   </div>
 
   <div style="text-align:center; padding-top:2rem; border-top:1px solid #e9ecef; color:#aaa; font-size:0.8rem;">
