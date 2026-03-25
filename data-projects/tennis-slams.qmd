@@ -577,3 +577,266 @@ fatigue_df |>
     )
   )
 ```
+
+## Playstyle Clusters — Last 30 Years
+
+Every player has a statistical "recipe" — the blend of serving aggression, consistency, and defensive resilience that defines how they win matches. K-means clustering on six serve-and-match metrics groups ATP players (1996–2025, ≥ 50 matches) into four distinct archetypes.
+
+**Features:**
+
+| Metric | What it captures |
+|---|---|
+| Ace rate | Serving firepower |
+| Double-fault rate | Serve risk tolerance |
+| 1st serve in % | Serve consistency |
+| 1st serve win % | Dominance when 1st serve lands |
+| 2nd serve win % | Baseline / net quality under pressure |
+| BP save rate | Clutch performance defending break points |
+
+```{r atp-load-clusters}
+#| echo: false
+
+atp_path <- here::here("data-projects", "data", "atp_matches.csv")
+
+atp_raw <- read_csv(atp_path, show_col_types = FALSE,
+                    col_types = cols(.default = "c")) |>
+  mutate(
+    year = as.integer(substr(tourney_date, 1, 4)),
+    across(c(w_ace, w_df, w_svpt, w_1stIn, w_1stWon, w_2ndWon,
+             w_bpSaved, w_bpFaced,
+             l_ace, l_df, l_svpt, l_1stIn, l_1stWon, l_2ndWon,
+             l_bpSaved, l_bpFaced),
+           \(x) suppressWarnings(as.numeric(x)))
+  ) |>
+  filter(year >= 1996, !is.na(w_svpt), !is.na(l_svpt),
+         w_svpt > 0, l_svpt > 0)
+```
+
+```{r player-profiles}
+#| echo: false
+
+winner_rows <- atp_raw |>
+  transmute(player = winner_name, won = 1L,
+            svpt = w_svpt, ace = w_ace, df = w_df,
+            first_in = w_1stIn, first_won = w_1stWon, second_won = w_2ndWon,
+            bp_saved = w_bpSaved, bp_faced = w_bpFaced)
+
+loser_rows <- atp_raw |>
+  transmute(player = loser_name, won = 0L,
+            svpt = l_svpt, ace = l_ace, df = l_df,
+            first_in = l_1stIn, first_won = l_1stWon, second_won = l_2ndWon,
+            bp_saved = l_bpSaved, bp_faced = l_bpFaced)
+
+player_profiles <- bind_rows(winner_rows, loser_rows) |>
+  filter(svpt > 0) |>
+  group_by(player) |>
+  summarise(
+    n_matches      = n(),
+    win_pct        = mean(won),
+    ace_rate       = sum(ace,       na.rm = TRUE) / sum(svpt, na.rm = TRUE),
+    df_rate        = sum(df,        na.rm = TRUE) / sum(svpt, na.rm = TRUE),
+    first_in_pct   = sum(first_in,  na.rm = TRUE) / sum(svpt, na.rm = TRUE),
+    first_win_pct  = sum(first_won, na.rm = TRUE) /
+                       pmax(sum(first_in, na.rm = TRUE), 1),
+    second_win_pct = sum(second_won, na.rm = TRUE) /
+                       pmax(sum(svpt, na.rm = TRUE) - sum(first_in, na.rm = TRUE), 1),
+    bp_save_rate   = sum(bp_saved, na.rm = TRUE) /
+                       pmax(sum(bp_faced, na.rm = TRUE), 1),
+    .groups = "drop"
+  ) |>
+  filter(n_matches >= 50,
+         first_win_pct > 0.01, second_win_pct > 0.01)
+```
+
+```{r kmeans-setup}
+#| echo: false
+
+set.seed(42)
+
+feat_cols <- c("ace_rate", "df_rate", "first_in_pct",
+               "first_win_pct", "second_win_pct", "bp_save_rate")
+
+feat_mat <- player_profiles |>
+  select(all_of(feat_cols)) |>
+  scale()
+
+wss_df <- tibble(
+  k   = 1:8,
+  wss = map_dbl(1:8, \(k) kmeans(feat_mat, centers = k, nstart = 25)$tot.withinss)
+)
+
+km <- kmeans(feat_mat, centers = 4, nstart = 50)
+
+# Name clusters: Big Server = highest ace rate,
+#                Counter-Puncher = lowest ace rate,
+#                Aggressive Baseliner = highest 2nd serve win% of the remaining two,
+#                All-Court = remainder
+centroids <- as_tibble(km$centers) |> mutate(cluster = row_number())
+
+big_srv_cl  <- centroids$cluster[which.max(centroids$ace_rate)]
+counter_cl  <- centroids$cluster[which.min(centroids$ace_rate)]
+remaining   <- centroids |> filter(!cluster %in% c(big_srv_cl, counter_cl))
+agg_cl      <- remaining$cluster[which.max(remaining$second_win_pct)]
+allcrt_cl   <- remaining$cluster[remaining$cluster != agg_cl]
+
+style_map <- tibble(
+  cluster = c(big_srv_cl, counter_cl, agg_cl, allcrt_cl),
+  style   = c("Big Server", "Counter-Puncher", "Aggressive Baseliner", "All-Court")
+)
+
+player_profiles <- player_profiles |>
+  mutate(cluster = km$cluster) |>
+  left_join(style_map, by = "cluster")
+
+cluster_cols <- c(
+  "Big Server"           = "#2171B5",
+  "Counter-Puncher"      = "#C8593C",
+  "Aggressive Baseliner" = "#27AE60",
+  "All-Court"            = "#6B4F8B"
+)
+
+feat_labels <- c(
+  ace_rate       = "Ace Rate",
+  df_rate        = "DF Rate",
+  first_in_pct   = "1st In%",
+  first_win_pct  = "1st Win%",
+  second_win_pct = "2nd Win%",
+  bp_save_rate   = "BP Save%"
+)
+```
+
+```{r elbow-plot}
+#| fig-height: 4
+#| fig-width: 7
+
+wss_df |>
+  ggplot(aes(k, wss)) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 3, colour = "#2171B5") +
+  geom_vline(xintercept = 4, linetype = "dashed", colour = "#CB4335", linewidth = 0.7) +
+  scale_x_continuous(breaks = 1:8) +
+  labs(
+    title    = "Choosing k: within-cluster sum of squares",
+    subtitle = "Elbow at k = 4 — four distinct playstyle archetypes",
+    x = "Number of clusters (k)", y = "Total within-cluster SS"
+  )
+```
+
+```{r cluster-fingerprints}
+#| fig-height: 5
+#| fig-width: 11
+
+centroids |>
+  left_join(style_map, by = "cluster") |>
+  pivot_longer(all_of(feat_cols), names_to = "feature", values_to = "z") |>
+  mutate(feature = factor(feat_labels[feature], levels = feat_labels)) |>
+  ggplot(aes(feature, z, fill = style)) +
+  geom_col(width = 0.7) +
+  geom_hline(yintercept = 0, linetype = "dashed", colour = "grey60") +
+  scale_fill_manual(values = cluster_cols) +
+  facet_wrap(~style, nrow = 2) +
+  labs(
+    title    = "Playstyle fingerprints — cluster centroids (z-scored)",
+    subtitle = "Above zero = above average for that metric across all players",
+    x = NULL, y = "Z-score vs. population mean", fill = NULL
+  ) +
+  theme(legend.position = "none",
+        axis.text.x = element_text(angle = 30, hjust = 1))
+```
+
+```{r cluster-scatter}
+#| fig-height: 5
+#| fig-width: 10
+
+player_profiles |>
+  ggplot(aes(ace_rate, second_win_pct, colour = style, size = n_matches)) +
+  geom_point(alpha = 0.5) +
+  scale_colour_manual(values = cluster_cols) +
+  scale_x_continuous(labels = percent) +
+  scale_y_continuous(labels = percent) +
+  scale_size_continuous(range = c(1, 4), guide = "none") +
+  labs(
+    title    = "Player playstyle clusters: Ace Rate vs 2nd Serve Win%",
+    subtitle = "Dot size = career matches played  ·  ATP 1996–2025",
+    x = "Ace Rate", y = "2nd Serve Win%", colour = NULL
+  )
+```
+
+```{r playstyle-win-table}
+
+player_profiles |>
+  group_by(style) |>
+  summarise(
+    Players        = n(),
+    `Win %`        = mean(win_pct),
+    `Ace Rate`     = mean(ace_rate),
+    `DF Rate`      = mean(df_rate),
+    `1st In%`      = mean(first_in_pct),
+    `1st Win%`     = mean(first_win_pct),
+    `2nd Win%`     = mean(second_win_pct),
+    `BP Save%`     = mean(bp_save_rate),
+    .groups = "drop"
+  ) |>
+  arrange(desc(`Win %`)) |>
+  gt() |>
+  tab_header(
+    title    = "Playstyles ranked by win %",
+    subtitle = "ATP 1996–2025 · players with ≥ 50 matches · k-means (k = 4)"
+  ) |>
+  fmt_percent(
+    columns  = c(`Win %`, `Ace Rate`, `DF Rate`, `1st In%`,
+                 `1st Win%`, `2nd Win%`, `BP Save%`),
+    decimals = 1
+  ) |>
+  fmt_number(columns = Players, decimals = 0) |>
+  cols_label(style = "Playstyle") |>
+  data_color(
+    columns = `Win %`,
+    palette = c("#FDECEA", "#A93226")
+  ) |>
+  tab_style(
+    style     = cell_text(weight = "bold"),
+    locations = cells_body(rows = 1)
+  ) |>
+  tab_footnote(
+    footnote  = "Raw win % across all tour-level ATP matches; not adjusted for opposition strength.",
+    locations = cells_column_labels(columns = `Win %`)
+  )
+```
+
+```{r notable-players-table}
+
+player_profiles |>
+  group_by(style) |>
+  slice_max(win_pct, n = 6, with_ties = FALSE) |>
+  ungroup() |>
+  arrange(style, desc(win_pct)) |>
+  select(style, player, n_matches, win_pct,
+         ace_rate, second_win_pct, bp_save_rate) |>
+  gt() |>
+  tab_header(
+    title    = "Top players by playstyle",
+    subtitle = "Highest win % within each cluster (min 50 matches · ATP 1996–2025)"
+  ) |>
+  fmt_percent(columns = c(win_pct, ace_rate, second_win_pct, bp_save_rate),
+              decimals = 1) |>
+  fmt_number(columns  = n_matches, decimals = 0) |>
+  cols_label(
+    style         = "Playstyle",  player        = "Player",
+    n_matches     = "Matches",    win_pct       = "Win %",
+    ace_rate      = "Ace Rate",   second_win_pct = "2nd Win%",
+    bp_save_rate  = "BP Save%"
+  ) |>
+  tab_row_group(label = "Big Server",           rows = style == "Big Server") |>
+  tab_row_group(label = "Aggressive Baseliner", rows = style == "Aggressive Baseliner") |>
+  tab_row_group(label = "Counter-Puncher",      rows = style == "Counter-Puncher") |>
+  tab_row_group(label = "All-Court",            rows = style == "All-Court") |>
+  tab_style(
+    style     = cell_fill(color = "#F4F4F4"),
+    locations = cells_row_groups()
+  ) |>
+  data_color(
+    columns = win_pct,
+    palette = c("#FDECEA", "#A93226")
+  )
+```
