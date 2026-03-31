@@ -1,0 +1,440 @@
+---
+title: "Hyttemarkedet i Vrådal - Formuesverdi"
+description: "Verdivurdering og formuesskattberegning for hytta (230 kvm, 1 mål tomt) basert på Finn.no-data fra mars 2026."
+author: "Simen Bjerkelund"
+date: "2026-03-31"
+categories: [Eiendom, Økonomi, Skatt, R]
+freeze: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+::: {.callout-warning}
+## Viktig forbehold
+Alle prisdata i denne rapporten er basert pa **prisantydninger fra Finn.no** (mars 2026),
+og **ikke faktiske salgspriser**. Erfaringsmessig ble bare 14% av hytter solgt over
+prisantydning i 2025, og selgere fikk i snitt 4,1% under prisantydning. De reelle
+markedsverdiene kan derfor avvike vesentlig.
+
+:::
+
+## Hytta
+
+| Egenskap | Verdi |
+|----------|-------|
+| Areal (BRA) | 230 kvm |
+| Tomt | 1 000 kvm (1 mal), eiet |
+| Beliggenhet | Ved vannet (Vravatn/Nisser) |
+| Bygget | 1970-tallet |
+| Pabygget | ca. 2000 |
+| Tak | Byttet 2025 |
+
+## Data fra Finn.no
+
+```{r data}
+library(tidyverse)
+library(leaflet)
+library(DT)
+library(scales)
+
+df <- read_csv("vradal_hytter.csv", show_col_types = FALSE)
+df <- df |> mutate(kvm_pris = prisantydning / areal_m2)
+n <- nrow(df)
+```
+
+Datasettet inneholder **`r n` hytter** fra Finn.no (mars 2026), alle til salgs i Vradal.
+
+```{r tabell}
+df |>
+  select(adresse, areal_m2, soverom, prisantydning, kvm_pris, megler, omrade) |>
+  arrange(desc(prisantydning)) |>
+  mutate(prisantydning = label_number(big.mark = " ", suffix = " kr")(prisantydning),
+         kvm_pris = label_number(big.mark = " ", suffix = " kr/m2")(round(kvm_pris))) |>
+  DT::datatable(
+    colnames = c("Adresse", "Areal", "Sov", "Prisantydning", "Kvm-pris", "Megler", "Omrade"),
+    options = list(pageLength = 15, scrollX = TRUE), filter = "top",
+    caption = "Alle hytter til salgs i Vradal (Finn.no, mars 2026)")
+```
+
+## Kart
+
+```{r kart}
+pal <- colorNumeric("RdYlGn", domain = df$prisantydning / 1e6, reverse = TRUE)
+
+leaflet(df) |>
+  addProviderTiles(providers$CartoDB.Positron, group = "Lyst") |>
+  addProviderTiles(providers$Esri.WorldImagery, group = "Satellitt") |>
+  addProviderTiles(providers$OpenTopoMap, group = "Topografisk") |>
+  addCircleMarkers(lng = ~longitude, lat = ~latitude,
+    radius = ~sqrt(areal_m2) * 0.7,
+    color = ~pal(prisantydning / 1e6), fillColor = ~pal(prisantydning / 1e6),
+    fillOpacity = 0.8, stroke = TRUE, weight = 2,
+    popup = ~paste0("<b>", adresse, "</b><br>",
+      format(prisantydning, big.mark = " "), " kr | ", areal_m2, " m2 | ", soverom, " sov<br>",
+      format(round(kvm_pris), big.mark = " "), " kr/m2<br><i>", omrade, "</i>"),
+    label = ~paste0(adresse, ": ", format(prisantydning, big.mark = " "), " kr")) |>
+  addLegend(pal = pal, values = ~prisantydning / 1e6, title = "Pris (mill)",
+            position = "bottomright", labFormat = labelFormat(suffix = " mill")) |>
+  addLayersControl(baseGroups = c("Lyst", "Satellitt", "Topografisk"),
+                   options = layersControlOptions(collapsed = FALSE)) |>
+  setView(lng = 8.435, lat = 59.312, zoom = 13)
+```
+
+## Prisanalyse
+
+```{r pris_areal}
+df |>
+  ggplot(aes(x = areal_m2, y = prisantydning / 1e6, color = factor(soverom))) +
+  geom_point(size = 3, alpha = 0.8) +
+  geom_smooth(method = "lm", se = TRUE, color = "grey40", linetype = "dashed") +
+  scale_y_continuous(labels = label_number(suffix = " mill")) +
+  scale_color_brewer(palette = "Set2", name = "Soverom") +
+  labs(title = "Prisantydning vs areal - alle Finn.no-annonser Vradal",
+       x = "Areal (m2)", y = "Pris (mill kr)") +
+  theme_minimal(base_size = 13)
+```
+
+```{r kvm_vs_areal}
+df |>
+  filter(!is.na(kvm_pris)) |>
+  ggplot(aes(x = areal_m2, y = kvm_pris)) +
+  geom_point(aes(color = factor(soverom)), size = 3, alpha = 0.8) +
+  geom_smooth(method = "loess", se = TRUE, color = "#C0504D", linewidth = 1.2, span = 0.9) +
+  geom_smooth(method = "lm", se = FALSE, color = "grey40", linetype = "dashed", linewidth = 0.8) +
+  scale_y_continuous(labels = label_number(big.mark = " ", suffix = " kr/m2")) +
+  scale_color_brewer(palette = "Set2", name = "Soverom") +
+  annotate("text", x = max(df$areal_m2) - 5, y = max(df$kvm_pris, na.rm = TRUE),
+           label = "Lineaer trend (stiplet)\nLOESS-trend (rod)",
+           hjust = 1, vjust = 1, size = 3, color = "grey40") +
+  labs(
+    title = "Kvadratmeterpris vs areal",
+    x = "Areal (m2)", y = "Pris per kvm (kr/m2)") +
+  theme_minimal(base_size = 13)
+```
+
+Grafen over viser sammenhengen mellom hyttestorrelse og pris per kvadratmeter.
+
+```{r kvm_omrade}
+df |>
+  filter(!is.na(kvm_pris)) |>
+  mutate(omrade = fct_reorder(omrade, kvm_pris, .fun = median)) |>
+  ggplot(aes(x = omrade, y = kvm_pris, fill = omrade)) +
+  geom_boxplot(alpha = 0.7, show.legend = FALSE) +
+  geom_jitter(width = 0.15, alpha = 0.5, size = 2) +
+  scale_y_continuous(labels = label_number(big.mark = " ", suffix = " kr/m2")) +
+  scale_fill_brewer(palette = "Set3") + coord_flip() +
+  labs(title = "Kvadratmeterpris per omrade", x = NULL, y = "Kr/m2") +
+  theme_minimal(base_size = 13)
+```
+
+## Verdivurdering - Tre modeller
+
+Formuesverdi for fritidsbolig = **30% av estimert markedsverdi** (skatteetatens sats).
+
+Formuesskatt beregnes som den **marginale skatteeffekten** av formuesverdien - altsa
+hva hytta alene bidrar med i formuesskatt, uavhengig av annen formue. Satsen er
+0,95% (2025) pa formue i trinn 1, som er det relevante trinnet her.
+
+$$\text{Formuesskatt fra hytta} = \text{Formuesverdi} \times 0{,}95\%$$
+
+```{r modell_params}
+din_areal <- 230
+formues_faktor <- 0.30
+marginal_skattesats <- 0.0095  # trinn 1-sats, relevant for dette nivaaet
+
+snitt_kvm <- mean(df$kvm_pris, na.rm = TRUE)
+med_kvm <- median(df$kvm_pris, na.rm = TRUE)
+max_areal <- max(df$areal_m2)
+```
+
+### Modell 1: Kvm-pris med premiumjustering
+
+Snitt kvm-pris fra Finn-data, med avtagende marginalverdi over 150 kvm,
+justert for vannbeliggenhet, stor tomt, nytt tak og alder.
+
+```{r modell1}
+basis <- snitt_kvm
+p_vann <- 1.20; p_tomt <- 1.10; p_tak <- 1.05; r_alder <- 0.90; r_avt <- 0.85
+
+v_basis <- (min(din_areal, 150) * basis) + (max(0, din_areal - 150) * basis * r_avt)
+markeds_m1 <- round(v_basis * p_vann * p_tomt * p_tak * r_alder)
+formue_m1 <- round(markeds_m1 * formues_faktor)
+skatt_m1 <- round(formue_m1 * marginal_skattesats)
+
+faktorer <- tibble(
+  Post = c(paste0("Basis kvm-pris (snitt ", n, " hytter)"),
+           paste0("Forste 150 kvm a ", format(round(basis), big.mark = " "), " kr/m2"),
+           paste0("Resterende ", din_areal - 150, " kvm a 85% = ", format(round(basis * r_avt), big.mark = " "), " kr/m2"),
+           "Sum for justering",
+           "Vannbeliggenhet +20%", "Stor tomt 1 mal +10%",
+           "Nytt tak 2025 +5%", "Alder 70-tall -10%",
+           "ESTIMERT MARKEDSVERDI",
+           "FORMUESVERDI (30%)",
+           "FORMUESSKATT (0.95%)"),
+  Verdi = c(
+    paste0(format(round(basis), big.mark = " "), " kr/m2"),
+    paste0(format(round(min(din_areal,150) * basis), big.mark = " "), " kr"),
+    paste0(format(round(max(0,din_areal-150) * basis * r_avt), big.mark = " "), " kr"),
+    paste0(format(round(v_basis), big.mark = " "), " kr"),
+    "x 1.20", "x 1.10", "x 1.05", "x 0.90",
+    paste0(format(markeds_m1, big.mark = " "), " kr"),
+    paste0(format(formue_m1, big.mark = " "), " kr"),
+    paste0(format(skatt_m1, big.mark = " "), " kr/ar")))
+knitr::kable(faktorer, caption = "Modell 1: Kvm-pris med premiumjustering")
+```
+
+### Modell 2: Nybyggverdi
+
+Hva det koster a bygge 230 kvm hytte i dag, minus aldersavskrivning, pluss tomt.
+Nybyggkostnad per kvm er satt til **43 000 kr/m2**, som er gjennomsnittlig
+byggekostnad for hytte ifølge [Byggstart.no](https://www.byggstart.no/pris/bygge-hytte) (2026), basert pa hundrevis av
+gjennomforte prosjekter. Normalomradet er 32 000 - 55 000 kr/m2 avhengig av
+standard, kompleksitet og beliggenhet.
+
+```{r modell2}
+nybygg_kvm <- 43000  # Kilde: Byggstart.no 2026, snitt av gjennomforte prosjekter
+bygge_kost <- din_areal * nybygg_kvm
+gjenv <- 0.65
+tomt_verdi <- 800000
+markeds_m2 <- round(bygge_kost * gjenv + tomt_verdi)
+formue_m2 <- round(markeds_m2 * formues_faktor)
+skatt_m2 <- round(formue_m2 * marginal_skattesats)
+
+teknisk <- tibble(
+  Post = c("Nybyggkostnad (230 kvm a 43 000 kr/m2)",
+           "Aldersavskrivning (65% gjenstaende)",
+           "Tomteverdi (1 mal ved vannet)",
+           "ESTIMERT MARKEDSVERDI",
+           "FORMUESVERDI (30%)",
+           "FORMUESSKATT (0.95%)"),
+  Belop = c(format(bygge_kost, big.mark = " "),
+            format(round(bygge_kost * gjenv), big.mark = " "),
+            format(tomt_verdi, big.mark = " "),
+            format(markeds_m2, big.mark = " "),
+            format(formue_m2, big.mark = " "),
+            format(skatt_m2, big.mark = " ")) |> paste0(" kr"))
+knitr::kable(teknisk, caption = "Modell 2: Nybyggverdi (kilde: Byggstart.no, snitt 43 000 kr/m2)")
+```
+
+### Modell 3: Sammenliknbare hytter
+
+Sammenligner med de mest relevante referansene, med avtagende marginalverdi
+(100% for 0-120 kvm, 75% for 120-200 kvm, 60% over 200 kvm).
+
+```{r modell3}
+cma_calc <- function(p, a, label) {
+  kvm <- p / a
+  v <- min(din_areal,120)*kvm + min(max(din_areal-120,0),80)*kvm*0.75 + max(din_areal-200,0)*kvm*0.60
+  tibble(Referanse = label, Kvm_pris = round(kvm), Estimat_230kvm = round(v))
+}
+
+cma <- bind_rows(
+  cma_calc(5450000, 124, "Bjoroeyvegen 67 (124 m2, golfbane/vann)"),
+  cma_calc(5990000, 115, "Ramnvegen 27 (115 m2, dyreste)"),
+  cma_calc(4590000, 82, "Storoddevegen 57 (82 m2, ved vannet)"),
+  cma_calc(4450000, 104, "Stormyrvegen 94 (104 m2, panorama)"),
+  cma_calc(3208433, 80, "Nasjonal fjellhytte-snitt (80 m2)"))
+cma$Vekt <- c(0.25, 0.20, 0.25, 0.15, 0.15)
+
+vektet <- round(sum(cma$Estimat_230kvm * cma$Vekt))
+markeds_m3 <- round(vektet * 1.10)  # +10% vann/tomt
+formue_m3 <- round(markeds_m3 * formues_faktor)
+skatt_m3 <- round(formue_m3 * marginal_skattesats)
+
+cma_vis <- cma |> mutate(
+  Kvm_pris = paste0(format(Kvm_pris, big.mark = " "), " kr/m2"),
+  Estimat_230kvm = paste0(format(Estimat_230kvm, big.mark = " "), " kr"),
+  Vekt = paste0(Vekt * 100, "%"))
+knitr::kable(cma_vis, caption = "Modell 3: Sammenliknbare hytter-referanser med avtagende marginalverdi")
+```
+
+```{r modell3_resultat}
+m3_resultat <- tibble(
+  Post = c("Vektet snitt (fra referansene over)",
+           "Tillegg vannbeliggenhet + stor tomt (+10%)",
+           "ESTIMERT MARKEDSVERDI",
+           "FORMUESVERDI (30%)",
+           "FORMUESSKATT (0.95%)"),
+  Belop = c(paste0(format(vektet, big.mark = " "), " kr"),
+            paste0(format(round(vektet * 0.10), big.mark = " "), " kr"),
+            paste0(format(markeds_m3, big.mark = " "), " kr"),
+            paste0(format(formue_m3, big.mark = " "), " kr"),
+            paste0(format(skatt_m3, big.mark = " "), " kr/ar")))
+knitr::kable(m3_resultat, caption = "Modell 3: Sammenliknbare hytter - Resultat")
+```
+
+## Samlet verdiestimat
+
+```{r sammendrag}
+estimater <- tibble(
+  Modell = c("1: Kvm-pris + premium", "2: Nybyggverdi", "3: Sammenliknbare hytter"),
+  Markedsverdi = c(markeds_m1, markeds_m2, markeds_m3),
+  Formuesverdi = c(formue_m1, formue_m2, formue_m3),
+  Formuesskatt = c(skatt_m1, skatt_m2, skatt_m3))
+
+samlet_marked <- round(mean(estimater$Markedsverdi))
+samlet_formue <- round(samlet_marked * formues_faktor)
+samlet_skatt <- round(samlet_formue * marginal_skattesats)
+
+snitt_rad <- tibble(
+  Modell = "SNITT (3 modeller)",
+  Markedsverdi = samlet_marked,
+  Formuesverdi = samlet_formue,
+  Formuesskatt = samlet_skatt)
+
+alle <- bind_rows(estimater, snitt_rad)
+
+knitr::kable(
+  alle |> mutate(
+    Markedsverdi = paste0(format(Markedsverdi, big.mark = " "), " kr"),
+    Formuesverdi = paste0(format(Formuesverdi, big.mark = " "), " kr"),
+    Formuesskatt = paste0(format(Formuesskatt, big.mark = " "), " kr/ar")),
+  col.names = c("Modell", "Markedsverdi", "Formuesverdi (30%)", "Formuesskatt (0.95%/ar)"),
+  caption = "Verdiestimat, formuesverdi og formuesskatt per modell")
+```
+
+### Korrigert for gjennomsnittlig avvik prisantydning vs salgspris
+
+Eiendom Norges fritidsboligprisstatistikk for 2025 viser at fritidsboliger i snitt ble
+solgt **4,1% under prisantydning** - det storste avviket som er malt (E24/Eiendom Norge, feb. 2026).
+Tabellen under korrigerer markedsverdien med dette avviket for a gi et mer realistisk estimat.
+
+```{r korrigert}
+avvik <- 0.041  # 4.1% under prisantydning (Eiendom Norge 2025)
+
+korrigert <- alle |>
+  mutate(
+    Markedsverdi_korr = round(Markedsverdi * (1 - avvik)),
+    Formuesverdi_korr = round(Markedsverdi_korr * formues_faktor),
+    Formuesskatt_korr = round(Formuesverdi_korr * marginal_skattesats)
+  )
+
+knitr::kable(
+  korrigert |> mutate(
+    Markedsverdi = paste0(format(Markedsverdi, big.mark = " "), " kr"),
+    Markedsverdi_korr = paste0(format(Markedsverdi_korr, big.mark = " "), " kr"),
+    Formuesverdi_korr = paste0(format(Formuesverdi_korr, big.mark = " "), " kr"),
+    Formuesskatt_korr = paste0(format(Formuesskatt_korr, big.mark = " "), " kr/ar")) |>
+    select(Modell, Markedsverdi, Markedsverdi_korr, Formuesverdi_korr, Formuesskatt_korr),
+  col.names = c("Modell", "Markedsverdi (prisantydning)",
+                "Markedsverdi (korr. -4.1%)", "Formuesverdi (30%)", "Formuesskatt (0.95%/ar)"),
+  caption = "Korrigert for snitt 4,1% avvik prisantydning vs salgspris (Eiendom Norge 2025)")
+```
+
+
+```{r skatt_plot}
+estimater |>
+  mutate(Modell = fct_reorder(Modell, Formuesskatt)) |>
+  ggplot(aes(x = Modell, y = Formuesskatt, fill = Modell)) +
+  geom_col(alpha = 0.8, show.legend = FALSE) +
+  geom_hline(yintercept = samlet_skatt, color = "red", linetype = "dashed") +
+  geom_text(aes(label = paste0(format(Formuesskatt, big.mark = " "), " kr")),
+            hjust = -0.1, size = 4) +
+  annotate("text", x = 0.6, y = samlet_skatt,
+           label = paste0("Snitt: ", format(samlet_skatt, big.mark = " "), " kr/ar"),
+           color = "red", hjust = -0.1, size = 3.5) +
+  scale_fill_brewer(palette = "Set2") +
+  scale_y_continuous(labels = label_number(big.mark = " ", suffix = " kr"),
+                     expand = expansion(mult = c(0, 0.35))) +
+  coord_flip() +
+  labs(title = "Estimert arlig formuesskatt fra hytta",
+       subtitle = "Marginal skatt: formuesverdi x 0.95% (2025-sats, trinn 1)",
+       x = NULL, y = "Formuesskatt (kr/ar)") +
+  theme_minimal(base_size = 13)
+```
+
+## Om formuesskatt-beregningen
+
+Formuesskatt beregnes her som **marginal skatteeffekt** av hyttas formuesverdi:
+
+- Formuesverdi = 30% av estimert markedsverdi
+- Marginal skattesats = 0,95% (trinn 1, 2025-satser)
+- Formuesskatt fra hytta = Formuesverdi x 0,95%
+
+Dette viser hva hytta *bidrar med* i formuesskatt, uavhengig av din ovrige formue.
+Den faktiske skatteeffekten avhenger av samlet nettoformue (eiendeler minus gjeld)
+og gjeldende bunnfradrag.
+
+## Forbehold
+
+- **Prisantydninger fra Finn.no**, ikke realiserte salgspriser
+- 14% solgt over prisantydning, snitt 4,1% under (Eiendom Norge 2025)
+- 230 kvm er langt utenfor utvalget (storste til salgs: `r max_areal` kvm)
+- Avtagende marginalverdi er antatt, ikke empirisk verifisert lokalt
+- Formuesskatt-satser kan endres (ny verdsettelsesmodell fra 2027)
+
+## Skatteetatens regler for formuesverdi pa fritidseiendom
+
+Skatteetaten har folgende regler for fastsettelse av formuesverdi pa fritidsboliger
+(hytter, ferieleiligheter o.l.):
+
+- **Nye fritidsboliger:** Formuesverdien settes til **30% av kostpris** (inkludert tomt),
+  eller 30% av markedsverdi ([skatteetaten.no](https://www.skatteetaten.no/en/person/taxes/get-the-taxes-right/property-and-belongings/houses-property-and-plots-of-land/tax-value/taxable-value-of-holiday-homes/)).
+- **Pabygg/oppgradering:** Formuesverdien skal okes ved vesentlige pabygg eller
+  oppgraderinger, men skal ikke overstige 30% av markedsverdi.
+- **Klageadgang:** Dersom formuesverdien overstiger 30% av dokumentert
+  markedsverdi, kan du kreve nedsettelse. Du trenger ikke sende dokumentasjon
+  umiddelbart, men ma kunne fremlegge den ved forespørsel.
+- **Forskjell fra bolig:** I motsetning til primaerboliger (25% av markedsverdi)
+  og sekundaerboliger (100% av markedsverdi) har fritidsboliger ingen
+  sjablongmodell fra SSB. Verdien baseres pa historisk kostpris pluss justeringer.
+
+### Krav til dokumentasjon av markedsverdi
+
+Dersom du onsker a endre formuesverdien pa fritidsboligen, stiller Skatteetaten
+folgende krav til dokumentasjon av markedsverdi:
+
+- **Takst fra kvalifisert takstmann** (besiktigelse innog utvendig er minstekrav)
+- **Verdivurdering / e-takst fra eiendomsmegler**
+- **Observerbar markedsverdi** - oppnadd salgspris for den aktuelle eiendommen
+  eller tilnaermet lik eiendom i samme omrade
+
+Dokumentasjonen ma skrive seg fra tiden **etter 1. juli i det aktuelle inntektsaret**
+for at den skal ha virkning for formuen ved arets utgang. Dersom formuesverdien ligger
+vesentlig over takstnivaaet for sammenlignbare eiendommer i kommunen, kan den
+settes ned etter individuell vurdering.
+
+*Kilde: [Skatteetaten](https://www.skatteetaten.no/en/person/taxes/get-the-taxes-right/property-and-belongings/houses-property-and-tools-of-land/tax-value/taxable-value-of-holiday-homes/),
+[Norges Huseierforbund](https://www.huseierforbundet.no/endrede-regler-for-endring-av-formuesverdi-pa-bolig),
+[Smartepenger.no](https://www.smartepenger.no/96-bolig/396-ligningsverdi-gammelt-system)*
+
+### Ny verdsettelsesmodell for fritidsboliger fra 2027
+
+Skatteetaten skal i 2026, i samarbeid med Kartverket og SSB, fortsette arbeidet med
+a legge til rette for innforing av en ny verdsettelsesmodell for fritidsboliger med
+**sikte mot en mulig innforing fra 2027**. Modellen er per mars 2026 *ikke* ferdig
+utviklet eller vedtatt tatt i bruk.
+
+Den nye modellen vil, i motsetning til dagens system, bruke en **sjablongbasert
+beregning** som tar hensyn til:
+
+- **Sonebasert verdi:** Hytter i ulike omrader far ulik verdi basert pa lokale
+  omsetningspriser, ikke kommunegjennomsnitt.
+- **Kvadratmeter og byggeaar** som faste variabler, i stedet for dagens skjonnsmessige
+  verdifastsettelse.
+- **Beliggenhetsfaktorer:** Naarhet til sjø, skibakker, strandlinje og andre
+  verdidrivende egenskaper.
+
+Konsekvensene kan bli store, saerlig for eiere av eldre hytter med lav historisk
+formuesverdi. NRK gir folgende eksempel: En hytte med markedsverdi pa 6 millioner
+kan fa formuesverdien okt fra 400 000 kr til 1 800 000 kr. Eiendom Norge, Huseierne og
+Norges Eiendomsmeglerforbund har alle advart mot at endringen kan gi et betydelig
+skattesjokk, og oppfordrer regjeringen til a justere bunnfradrag og satser dersom
+modellen innfores.
+
+*Kilde: [E24](https://e24.no/privatoekonomi/i/oE6PlW/skattebombe-for-fritidsboliger-paa-vei-frykter-mange-maa-selge) (feb. 2026),
+[NRK Vestland](https://www.nrk.no/vestland/skatt-pa-hytter_-dette-ma-du-vite-om-den-nye-verdsettingsmodellen-1.17756848) (feb. 2026),
+[Finansavisen](https://www.finansavisen.no/politikk/2026/02/01/8324954/feil-om-verdsettelse-av-fritidsboliger) (feb. 2026),
+[Kartverket](https://www.kartverket.no/eiendom/verdsettelsesmodell-for-fritidsbolig/landingsside-privat-fritidsbolig)*
+
+## Kilder
+
+- Finn.no: `r n` annonser i Vradal, mars 2026
+- Eiendom Norge: Fjellhyttepris snitt 3,21 mill (2025); avvik prisantydning/salgspris 4,1% (2025)
+- [E24 / Eiendom Norge](https://e24.no/norsk-oekonomi/i/Wvj2er/har-aldri-maalt-stoerre-avvik-mellom-pris-og-prisantydning): Storste malte avvik prisantydning vs salgspris (feb. 2026)
+- [Byggstart.no](https://www.byggstart.no/pris/bygge-hytte): Nybygg hytte snitt 43 000 kr/m2, spenn 32 000-55 000 kr/m2 (2026)
+- [Skatteetaten](https://www.skatteetaten.no/en/person/taxes/get-the-taxes-right/property-and-belongings/houses-property-and-plots-of-land/tax-value/taxable-value-of-holiday-homes/): Formuesverdi fritidsbolig 30% av markedsverdi/kostpris
+- Skatteetaten: Formuesskatt 0,95% (trinn 1), bunnfradrag 1,85 mill / 3,7 mill (2025)
+- Google Places API: Geokoding av adresser
