@@ -61,7 +61,7 @@ jobs:
               'MetBrewer', 'nord', 'wesanderson', 'viridis',
               'sf', 'rnaturalearth', 'rnaturalearthdata',
               'gt', 'gtExtras', 'knitr', 'rmarkdown',
-              'leaflet'
+              'leaflet', 'DT'
             )
             missing <- pkgs[!pkgs %in% installed.packages()[,'Package']]
             if (length(missing) > 0) {
