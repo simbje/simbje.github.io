@@ -60,7 +60,8 @@ jobs:
               'gganimate', 'gifski',
               'MetBrewer', 'nord', 'wesanderson', 'viridis',
               'sf', 'rnaturalearth', 'rnaturalearthdata',
-              'gt', 'gtExtras', 'knitr', 'rmarkdown'
+              'gt', 'gtExtras', 'knitr', 'rmarkdown',
+              'leaflet'
             )
             missing <- pkgs[!pkgs %in% installed.packages()[,'Package']]
             if (length(missing) > 0) {
@@ -92,6 +93,7 @@ jobs:
             echo "No new post to commit"
           else
             git commit -m "🇳🇴 SSB post — $(date +%Y-%m-%d) [skip ci]"
+            git pull --rebase origin main
             git push
           fi
 
@@ -112,6 +114,7 @@ jobs:
             echo "No freeze changes"
           else
             git commit -m "chore: update _freeze [skip ci]"
+            git pull --rebase origin main
             git push
           fi
 
