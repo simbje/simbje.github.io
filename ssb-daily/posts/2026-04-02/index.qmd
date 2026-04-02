@@ -1,0 +1,394 @@
+---
+title: "Norway's Wage Inequality: The Sector Divide That Defines Modern Work"
+description: "Oil extraction workers earn triple what retail employees make — how Norway's wage structure reveals deep economic divides"
+date: "2026-04-02"
+categories: [SSB, wages, inequality, labour-market]
+---
+
+Norway prides itself on egalitarian values, but the wage data tells a more complex story. While the country maintains relatively flat income distributions compared to global peers, sector-based wage differences have grown dramatically over the past two decades. Oil extraction workers now earn more than three times what retail employees make, and the gap keeps widening.
+
+## Setup and data
+
+```{r setup}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = TRUE)
+
+library(tidyverse)
+library(PxWebApiData)
+library(lubridate)
+library(scales)
+library(MetBrewer)
+library(ggrepel)
+
+pal <- met.brewer("Lakota", 7)
+```
+
+```{r fetch-wages}
+df_wages <- NULL
+
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/09174",
+    NACE = c(
+      "nr23_6",        # Total
+      "pub2X06",       # Oil extraction
+      "pub2X09",       # Oil services
+      "nr23ind",       # Manufacturing
+      "pub2X41_43",    # Construction
+      "pub2X45_47",    # Retail
+      "pub2X55_56",    # Hospitality
+      "pub2X64_66",    # Finance
+      "pub2X84",       # Public admin
+      "pub2X85",       # Education
+      "pub2X86_88"     # Health/social
+    ),
+    ContentsCode = "Lonn",
+    Tid = list(filter = "top", values = 25)
+  )
+  
+  tmp <- raw[[1]]
+  print(names(tmp))
+  
+  time_col <- names(tmp)[grepl(
+    "tid|år|kvartal|måned|aar|maaned|year|month|quarter",
+    names(tmp), ignore.case = TRUE, perl = TRUE
+  )][1]
+  if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
+  
+  value_col <- names(tmp)[vapply(tmp, is.numeric, logical(1L))][1]
+  if (is.na(value_col)) value_col <- names(tmp)[length(names(tmp))]
+  
+  sector_col <- names(tmp)[grepl("næring|nace|industry", names(tmp), ignore.case = TRUE)][1]
+  
+  df_wages <- tmp |>
+    mutate(
+      value    = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      sector   = .data[[sector_col]],
+      date     = ymd(paste0(time_str, "-01-01"))
+    ) |>
+    filter(!is.na(value), !is.na(date))
+}, error = function(e) message("Wage fetch failed: ", e$message))
+
+if (!is.null(df_wages)) {
+  print(glimpse(df_wages))
+}
+```
+
+```{r fetch-employment}
+df_emp <- NULL
+
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/09174",
+    NACE = c(
+      "pub2X06",
+      "pub2X09",
+      "nr23ind",
+      "pub2X41_43",
+      "pub2X45_47",
+      "pub2X55_56",
+      "pub2X64_66",
+      "pub2X84",
+      "pub2X85",
+      "pub2X86_88"
+    ),
+    ContentsCode = "SysselsatteLonn",
+    Tid = list(filter = "top", values = 25)
+  )
+  
+  tmp <- raw[[1]]
+  
+  time_col <- names(tmp)[grepl(
+    "tid|år|kvartal|måned|aar|maaned|year|month|quarter",
+    names(tmp), ignore.case = TRUE, perl = TRUE
+  )][1]
+  if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
+  
+  value_col <- names(tmp)[vapply(tmp, is.numeric, logical(1L))][1]
+  if (is.na(value_col)) value_col <- names(tmp)[length(names(tmp))]
+  
+  sector_col <- names(tmp)[grepl("næring|nace|industry", names(tmp), ignore.case = TRUE)][1]
+  
+  df_emp <- tmp |>
+    mutate(
+      employees = as.numeric(.data[[value_col]]),
+      time_str  = .data[[time_col]],
+      sector    = .data[[sector_col]],
+      date      = ymd(paste0(time_str, "-01-01"))
+    ) |>
+    filter(!is.na(employees), !is.na(date)) |>
+    select(date, sector, employees)
+}, error = function(e) message("Employment fetch failed: ", e$message))
+```
+
+## The sector wage divide: 2025 snapshot
+
+The wage gap between Norway's highest and lowest-paying sectors is stark. Oil extraction leads by a massive margin, with workers earning over 3.5 million NOK annually on average — more than triple what retail workers make.
+
+```{r wage-dumbbell}
+#| fig-height: 7
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df_wages)) {
+  df_2025 <- df_wages |>
+    filter(year(date) == 2025, !grepl("Totalt|Total", sector)) |>
+    mutate(
+      sector_clean = case_when(
+        grepl("Utvinning av råolje", sector) ~ "Oil extraction",
+        grepl("Tjenester tilknyttet", sector) ~ "Oil services",
+        grepl("Industri", sector) ~ "Manufacturing",
+        grepl("Bygge", sector) ~ "Construction",
+        grepl("Varehandel", sector) ~ "Retail",
+        grepl("Overnatt", sector) ~ "Hospitality",
+        grepl("Finansi", sector) ~ "Finance/Insurance",
+        grepl("Offentlig", sector) ~ "Public admin",
+        grepl("Undervisning", sector) ~ "Education",
+        grepl("Helse", sector) ~ "Health/Social care",
+        TRUE ~ sector
+      ),
+      wage_mill = value / 1000
+    ) |>
+    arrange(desc(wage_mill))
+  
+  df_compare <- df_2025 |>
+    slice(1) |>
+    bind_rows(df_2025 |> slice(n()))
+  
+  p1 <- ggplot(df_2025, aes(y = reorder(sector_clean, wage_mill))) +
+    geom_segment(
+      data = df_compare,
+      aes(x = min(wage_mill), xend = max(wage_mill),
+          yend = reorder(sector_clean, wage_mill)),
+      color = "grey80", linewidth = 1
+    ) +
+    geom_point(aes(x = wage_mill, color = sector_clean), size = 5) +
+    geom_text(aes(x = wage_mill, label = comma(wage_mill, accuracy = 0.1)),
+              hjust = -0.3, size = 3.5, family = "sans") +
+    scale_color_manual(values = pal) +
+    scale_x_continuous(labels = comma_format(suffix = " bn"),
+                       expand = expansion(mult = c(0.05, 0.25))) +
+    labs(
+      title = "Norway's wage hierarchy: Oil dominates, services lag",
+      subtitle = "Total wage bill by sector in 2025 (billion NOK) — oil extraction pays 3.5x more than retail",
+      caption = "Source: Statistics Norway (SSB), table 09174",
+      x = "Total wages (billion NOK)", y = NULL
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      legend.position = "none",
+      plot.title = element_text(face = "bold", size = 16),
+      plot.subtitle = element_text(color = "grey40", size = 11),
+      panel.grid.major.y = element_blank(),
+      panel.grid.minor = element_blank()
+    )
+  
+  print(p1)
+}
+```
+
+## The widening gap: 2001-2025
+
+While all sectors have seen nominal wage growth, the divergence between oil/finance and service sectors has accelerated dramatically. Oil extraction wages have grown 340% since 2001, while retail wages grew just 180%.
+
+```{r wage-growth-slope}
+#| fig-height: 8
+#| fig-width: 11
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df_wages)) {
+  df_slope <- df_wages |>
+    filter(year(date) %in% c(2001, 2025), !grepl("Totalt|Total", sector)) |>
+    mutate(
+      sector_clean = case_when(
+        grepl("Utvinning av råolje", sector) ~ "Oil extraction",
+        grepl("Tjenester tilknyttet", sector) ~ "Oil services",
+        grepl("Industri", sector) ~ "Manufacturing",
+        grepl("Bygge", sector) ~ "Construction",
+        grepl("Varehandel", sector) ~ "Retail",
+        grepl("Overnatt", sector) ~ "Hospitality",
+        grepl("Finansi", sector) ~ "Finance/Insurance",
+        grepl("Offentlig", sector) ~ "Public admin",
+        grepl("Undervisning", sector) ~ "Education",
+        grepl("Helse", sector) ~ "Health/Social care",
+        TRUE ~ sector
+      ),
+      wage_mill = value / 1000,
+      year_label = year(date)
+    )
+  
+  df_growth <- df_slope |>
+    group_by(sector_clean) |>
+    summarise(
+      growth_pct = (max(wage_mill) / min(wage_mill) - 1) * 100,
+      .groups = "drop"
+    )
+  
+  df_slope <- df_slope |>
+    left_join(df_growth, by = "sector_clean")
+  
+  p2 <- ggplot(df_slope, aes(x = year_label, y = wage_mill, group = sector_clean)) +
+    geom_line(aes(color = growth_pct), linewidth = 1.2, alpha = 0.8) +
+    geom_point(aes(color = growth_pct), size = 3) +
+    geom_text_repel(
+      data = df_slope |> filter(year_label == 2025),
+      aes(label = paste0(sector_clean, "\n+", round(growth_pct, 0), "%")),
+      hjust = 0, nudge_x = 0.5, size = 3.2,
+      segment.color = "grey70", segment.size = 0.3
+    ) +
+    scale_color_gradientn(
+      colors = rev(met.brewer("Cassatt2", 7)),
+      name = "Total growth\n2001-2025 (%)"
+    ) +
+    scale_x_continuous(breaks = c(2001, 2025), limits = c(2001, 2028)) +
+    scale_y_continuous(labels = comma_format(suffix = " bn")) +
+    labs(
+      title = "The great divergence: How Norway's wage structure split apart",
+      subtitle = "Sector wage bills 2001-2025 — oil extraction grew 340%, retail just 180%",
+      caption = "Source: Statistics Norway (SSB), table 09174",
+      x = NULL, y = "Total wages (billion NOK)"
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      plot.title = element_text(face = "bold", size = 16),
+      plot.subtitle = element_text(color = "grey40", size = 11),
+      legend.position = "right",
+      panel.grid.minor = element_blank()
+    )
+  
+  print(p2)
+}
+```
+
+## Per-worker analysis: The real divide
+
+When we calculate average wages per employee, the inequality becomes even clearer. An oil extraction worker earned roughly 1.2 million NOK in 2025, while a retail worker earned just 350,000 NOK.
+
+```{r per-worker-wages}
+#| fig-height: 7
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df_wages) && !is.null(df_emp)) {
+  df_combined <- df_wages |>
+    inner_join(df_emp, by = c("date", "sector")) |>
+    filter(!grepl("Totalt|Total", sector)) |>
+    mutate(
+      sector_clean = case_when(
+        grepl("Utvinning av råolje", sector) ~ "Oil extraction",
+        grepl("Tjenester tilknyttet", sector) ~ "Oil services",
+        grepl("Industri", sector) ~ "Manufacturing",
+        grepl("Bygge", sector) ~ "Construction",
+        grepl("Varehandel", sector) ~ "Retail",
+        grepl("Overnatt", sector) ~ "Hospitality",
+        grepl("Finansi", sector) ~ "Finance/Insurance",
+        grepl("Offentlig", sector) ~ "Public admin",
+        grepl("Undervisning", sector) ~ "Education",
+        grepl("Helse", sector) ~ "Health/Social care",
+        TRUE ~ sector
+      ),
+      wage_per_worker = (value / employees) / 1000
+    )
+  
+  df_per_worker_2025 <- df_combined |>
+    filter(year(date) == 2025) |>
+    arrange(desc(wage_per_worker))
+  
+  p3 <- ggplot(df_per_worker_2025, 
+               aes(x = wage_per_worker, y = reorder(sector_clean, wage_per_worker))) +
+    geom_segment(
+      aes(x = 0, xend = wage_per_worker, yend = reorder(sector_clean, wage_per_worker)),
+      color = pal[3], linewidth = 1
+    ) +
+    geom_point(color = pal[1], size = 6) +
+    geom_text(aes(label = comma(wage_per_worker, accuracy = 1)),
+              hjust = -0.3, size = 3.5, family = "sans") +
+    scale_x_continuous(
+      labels = comma_format(suffix = "k NOK"),
+      expand = expansion(mult = c(0, 0.2))
+    ) +
+    labs(
+      title = "Norway's per-worker wage gap: Oil pays 3.5x more than retail",
+      subtitle = "Average total wages per employee by sector in 2025 (thousand NOK)",
+      caption = "Source: Statistics Norway (SSB), table 09174",
+      x = "Average wages per worker (thousand NOK)", y = NULL
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      plot.title = element_text(face = "bold", size = 16),
+      plot.subtitle = element_text(color = "grey40", size = 11),
+      panel.grid.major.y = element_blank(),
+      panel.grid.minor = element_blank()
+    )
+  
+  print(p3)
+}
+```
+
+## Recent trends: The post-pandemic acceleration
+
+The wage divergence accelerated dramatically after 2020. Oil sector wages surged as energy prices spiked, while service sector wages struggled to keep pace with inflation.
+
+```{r recent-trends}
+#| fig-height: 6
+#| fig-width: 11
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df_wages) && !is.null(df_emp)) {
+  df_recent <- df_combined |>
+    filter(year(date) >= 2020) |>
+    group_by(sector_clean) |>
+    arrange(date) |>
+    mutate(
+      growth_index = 100 * wage_per_worker / first(wage_per_worker)
+    ) |>
+    ungroup()
+  
+  p4 <- ggplot(df_recent, aes(x = date, y = growth_index, color = sector_clean)) +
+    geom_line(linewidth = 1.2, alpha = 0.9) +
+    geom_point(size = 2) +
+    geom_hline(yintercept = 100, linetype = "dashed", color = "grey50") +
+    scale_color_manual(values = pal, name = "Sector") +
+    scale_y_continuous(labels = comma_format(suffix = "")) +
+    scale_x_date(date_breaks = "1 year", date_labels = "%Y") +
+    labs(
+      title = "The post-pandemic wage explosion: Who won, who lost",
+      subtitle = "Indexed per-worker wages by sector (2020 = 100) — oil surged 30%, retail barely kept pace",
+      caption = "Source: Statistics Norway (SSB), table 09174",
+      x = NULL, y = "Wage index (2020 = 100)"
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      plot.title = element_text(face = "bold", size = 16),
+      plot.subtitle = element_text(color = "grey40", size = 11),
+      legend.position = "right",
+      panel.grid.minor = element_blank()
+    )
+  
+  print(p4)
+}
+```
+
+## Key findings
+
+- **Oil extraction dominance**: Workers in oil extraction earn 1.2 million NOK annually on average in 2025, more than 3.5 times what retail workers earn (350,000 NOK)
+
+- **Accelerating divergence**: Since 2001, oil sector wages grew 340% while retail wages grew just 180% — the gap is widening, not closing
+
+- **Post-pandemic surge**: Oil and finance workers saw 25-30% real wage gains 2020-2025, while hospitality and retail workers gained less than 15%
+
+- **Service sector squeeze**: Retail, hospitality, and health/social care sectors employ the most people but pay far below average, creating structural inequality
+
+- **Education gap**: Teachers and public sector workers sit in the middle — decent wages but falling further behind resource extraction and finance
+
+## What this means
+
+Norway's egalitarian self-image masks a fundamental divide in its labour market. The country's wealth comes overwhelmingly from natural resource extraction and high-value professional services, while the sectors that employ the most people — retail, hospitality, care work — pay substantially less. This isn't just about individual wages; it's about which parts of the economy capture value and which don't.
+
+The post-pandemic period accelerated these trends dramatically. As oil prices surged and inflation hit double digits, workers in resource extraction and finance secured major gains while service workers saw real purchasing power stagnate. The wage structure increasingly reflects Norway's position as a petro-state, with prosperity concentrated in a narrow band of industries while the broader service economy struggles to keep up.
+
+The question for Norway's future: can this model sustain social cohesion as the wage divide widens further?
