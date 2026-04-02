@@ -84,19 +84,6 @@ jobs:
           fi
           Rscript ssb-daily/generate_post.R
 
-      - name: 💾 Commit generated post
-        run: |
-          git config user.name  "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git pull --rebase origin main
-          git add ssb-daily/posts/
-          if git diff --staged --quiet; then
-            echo "No new post to commit"
-          else
-            git commit -m "🇳🇴 SSB post — $(date +%Y-%m-%d) [skip ci]"
-            git push
-          fi
-
       - name: 🔧 Set up Quarto
         uses: quarto-dev/quarto-actions/setup@v2
         with:
@@ -105,16 +92,16 @@ jobs:
       - name: 🏗️ Render Quarto site
         run: quarto render
 
-      - name: 💾 Commit _freeze cache
+      - name: 💾 Commit post + freeze cache
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git pull --rebase origin main
-          git add _freeze/
+          git add ssb-daily/posts/ _freeze/
           if git diff --staged --quiet; then
-            echo "No freeze changes"
+            echo "Nothing to commit"
           else
-            git commit -m "chore: update _freeze [skip ci]"
+            git commit -m "🇳🇴 SSB post — $(date +%Y-%m-%d) [skip ci]"
             git push
           fi
 
