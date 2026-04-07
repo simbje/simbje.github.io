@@ -99,7 +99,7 @@ SSB_TABLE_LIST <- list(
   c("08419", "Retail trade index, monthly"),
   c("08800", "Overnight stays by nationality and accommodation type"),
   # Crime
-  c("08406", "Offences reported to police by type"),
+  c("08484", "Offences reported to police by type"),
   # Trade
   c("08807", "External trade in goods, imports and exports"),
   # KOSTRA (municipality-level, annual)
