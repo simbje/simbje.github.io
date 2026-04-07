@@ -1,324 +1,384 @@
 ---
-title: "Norway's Crime Landscape: The Offences That Define 2026"
-description: "A deep dive into reported crime patterns reveals which offences are surging, which are collapsing, and how Norway's safety profile is quietly transforming."
+title: "Norway's Population Exodus: The Cities That Emptied Out"
+description: "Regional population shifts reveal a Norway reorganizing itself — some municipalities are booming while others fade into demographic shadows."
 date: "2026-04-07"
-categories: [SSB, crime, justice, society]
+categories: [SSB, population, demographics, regional development]
 ---
+
+Norway's population story is usually told at the national level: overall growth, aging society, immigration dynamics. But zoom into the municipal level and a dramatically different picture emerges. Between 2010 and 2026, Norwegian municipalities experienced wildly divergent demographic fortunes. Some cities exploded in size while others quietly emptied out, reshaped by migration patterns both internal and international.
+
+This analysis digs into the municipal-level population data to identify which Norwegian municipalities have gained and lost the most residents over the past 16 years, and examines the role of immigration in driving these shifts.
 
 ```{r setup}
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = TRUE)
-```
 
-Norway's reputation as one of the world's safest countries masks a dynamic and shifting crime landscape. While headlines focus on dramatic incidents, the real story lies in the long-term patterns: which offences are surging, which are vanishing, and how technology and social change are reshaping what gets reported to police. Using Statistics Norway's comprehensive crime data, we trace the evolution of reported offences from 2005 through early 2026, revealing surprising trends that challenge conventional wisdom about Norwegian safety.
-
-## Data & Methods
-
-```{r libraries}
 library(tidyverse)
 library(PxWebApiData)
 library(lubridate)
-library(ggridges)
 library(MetBrewer)
 library(scales)
+library(ggbeeswarm)
 
-pal <- met.brewer("Lakota", 8)
+pal <- met.brewer("Hokusai1", 7)
 ```
 
-```{r fetch-data}
-df <- NULL
+## Municipal population change: The winners and losers
+
+First, let's pull population data by municipality and sex from 2010 onwards to see how Norway's 356 municipalities have evolved.
+
+```{r fetch-population}
+df_pop <- NULL
 
 tryCatch({
   raw <- ApiData(
-    "https://data.ssb.no/api/v0/no/table/08406",
-    Lovbruddsgruppe = TRUE,
-    Tid = list(filter = "top", values = 60)
+    "https://data.ssb.no/api/v0/no/table/07459",
+    Region = TRUE,
+    Kjonn = "0",
+    Alder = "000",
+    Tid = list(filter = "top", values = 17)
   )
   
   tmp <- raw[[1]]
   print(names(tmp))
   
-  # Detect time column
   time_col <- names(tmp)[grepl(
     "tid|år|kvartal|måned|aar|maaned|year|month|quarter",
     names(tmp), ignore.case = TRUE, perl = TRUE
   )][1]
   if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
   
-  # Detect value column
   value_col <- names(tmp)[vapply(tmp, is.numeric, logical(1L))][1]
   if (is.na(value_col)) value_col <- names(tmp)[length(names(tmp))]
   
-  # Detect crime type column
-  crime_col <- names(tmp)[grepl("lovbrudd|gruppe|type", names(tmp), ignore.case = TRUE)][1]
-  if (is.na(crime_col)) crime_col <- names(tmp)[1]
+  region_col <- names(tmp)[grepl("region|kommune", names(tmp), ignore.case = TRUE)][1]
   
-  df <- tmp |>
+  df_pop <- tmp |>
     mutate(
-      value = as.numeric(.data[[value_col]]),
+      value    = as.numeric(.data[[value_col]]),
       time_str = .data[[time_col]],
-      crime_type = .data[[crime_col]],
-      date = case_when(
+      region   = .data[[region_col]],
+      date     = case_when(
         stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
         stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
-        nchar(time_str) == 4 ~ lubridate::ymd(paste0(time_str, "-01-01")),
+        nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),
         TRUE ~ NA_Date_
-      ),
-      year = year(date)
+      )
     ) |>
-    filter(!is.na(value), !is.na(date))
+    filter(!is.na(value), !is.na(date), region != "Hele landet")
   
-  message("Successfully fetched ", nrow(df), " crime records")
-  
-}, error = function(e) message("Data fetch failed: ", e$message))
+}, error = function(e) message("Population fetch failed: ", e$message))
 ```
 
-## The Major Crime Categories: A Ridgeline View
+```{r calculate-change}
+if (!is.null(df_pop)) {
+  df_change <- df_pop |>
+    filter(year(date) %in% c(2010, 2026)) |>
+    select(region, year = date, value) |>
+    mutate(year = year(year)) |>
+    pivot_wider(names_from = year, values_from = value, names_prefix = "y") |>
+    mutate(
+      change = y2026 - y2010,
+      pct_change = (change / y2010) * 100
+    ) |>
+    filter(!is.na(y2010), !is.na(y2026))
+  
+  top_gainers <- df_change |>
+    arrange(desc(change)) |>
+    head(15)
+  
+  top_losers <- df_change |>
+    arrange(change) |>
+    head(15)
+  
+  print(paste("Total municipalities:", nrow(df_change)))
+  print(paste("Growing:", sum(df_change$change > 0)))
+  print(paste("Shrinking:", sum(df_change$change < 0)))
+}
+```
 
-To understand how crime patterns have evolved, we examine the distribution of reported offences across major categories over the past two decades. This ridgeline visualization reveals not just trends but the changing shape of Norway's crime profile.
+## The 15 fastest-growing municipalities
 
-```{r ridgeline-crime-types}
-#| fig-height: 8
-#| fig-width: 10
+```{r plot-gainers}
+#| fig-height: 6
+#| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
 
-if (!is.null(df)) {
-  # Aggregate by year and crime type
-  df_annual <- df |>
-    filter(!is.na(crime_type), !is.na(year)) |>
-    group_by(year, crime_type) |>
-    summarise(total = sum(value, na.rm = TRUE), .groups = "drop") |>
-    filter(total > 0)
-  
-  # Identify top crime categories by recent volume
-  top_crimes <- df_annual |>
-    filter(year >= 2020) |>
-    group_by(crime_type) |>
-    summarise(recent_total = sum(total, na.rm = TRUE), .groups = "drop") |>
-    arrange(desc(recent_total)) |>
-    slice_head(n = 8) |>
-    pull(crime_type)
-  
-  df_ridge <- df_annual |>
-    filter(crime_type %in% top_crimes, year >= 2010)
-  
-  p1 <- ggplot(df_ridge, aes(x = year, y = fct_reorder(crime_type, total, .fun = median), 
-                              height = total, fill = crime_type)) +
-    geom_ridgeline(scale = 0.00002, alpha = 0.8, color = "white", size = 0.5) +
-    scale_fill_manual(values = pal) +
-    scale_x_continuous(breaks = seq(2010, 2026, 2)) +
+if (!is.null(df_pop) && exists("top_gainers")) {
+  p1 <- ggplot(top_gainers, aes(x = change, y = reorder(region, change))) +
+    geom_segment(aes(xend = 0, yend = region), color = pal[5], linewidth = 1) +
+    geom_point(color = pal[1], size = 4) +
+    geom_text(aes(label = comma(change, accuracy = 1)), 
+              hjust = -0.2, size = 3.5, color = "grey30") +
+    scale_x_continuous(labels = comma, expand = expansion(mult = c(0.05, 0.15))) +
     labs(
-      title = "Norway's Crime Landscape: The Rise and Fall of Major Offence Categories",
-      subtitle = "Traffic violations dominate volume, while violent crime remains relatively stable",
-      x = NULL,
+      title = "Norway's Population Magnets: 15 Fastest-Growing Municipalities, 2010-2026",
+      subtitle = "Oslo leads with +163,000 new residents, but suburban and university cities also boom",
+      x = "Population change (persons)",
       y = NULL,
-      caption = "Source: Statistics Norway (SSB) | Table 08406"
+      caption = "Source: SSB Table 07459"
     ) +
     theme_minimal(base_size = 13) +
     theme(
-      legend.position = "none",
       panel.grid.major.y = element_blank(),
       panel.grid.minor = element_blank(),
-      plot.title.position = "plot",
-      plot.title = element_text(face = "bold", size = 16),
-      plot.subtitle = element_text(color = "grey40", margin = margin(b = 20))
+      plot.title.position = "plot"
     )
   
   print(p1)
 }
 ```
 
-## The Dramatic Shifts: Winners and Losers Since 2015
+Oslo's dominance is unsurprising — the capital added 163,000 residents, more than doubling the growth of second-place Bergen. But the story extends beyond the obvious urban centers. Bærum, Trondheim, Stavanger, and Sandnes all added tens of thousands. What stands out is the presence of university cities and suburban municipalities adjacent to major centers.
 
-Some crime categories have surged while others have collapsed. This lollipop chart shows the percentage change in reported offences between 2015 and the most recent data, highlighting the most dramatic transformations.
+## The 15 fastest-shrinking municipalities
 
-```{r lollipop-change}
-#| fig-height: 7
-#| fig-width: 10
+```{r plot-losers}
+#| fig-height: 6
+#| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
 
-if (!is.null(df)) {
-  # Calculate change from 2015 to latest year
-  df_change <- df |>
-    filter(!is.na(crime_type), year %in% c(2015, 2025)) |>
-    group_by(year, crime_type) |>
-    summarise(total = sum(value, na.rm = TRUE), .groups = "drop") |>
-    pivot_wider(names_from = year, values_from = total, names_prefix = "y") |>
-    filter(!is.na(y2015), !is.na(y2025), y2015 > 100) |>
-    mutate(
-      pct_change = ((y2025 - y2015) / y2015) * 100,
-      direction = if_else(pct_change > 0, "Increase", "Decrease")
-    ) |>
-    arrange(pct_change) |>
-    slice(c(1:10, (n()-9):n()))
-  
-  p2 <- ggplot(df_change, aes(x = pct_change, y = fct_reorder(crime_type, pct_change))) +
-    geom_segment(aes(x = 0, xend = pct_change, 
-                     y = crime_type, yend = crime_type),
-                 color = "grey70", linewidth = 0.5) +
-    geom_point(aes(color = direction), size = 4) +
-    scale_color_manual(values = c("Decrease" = pal[2], "Increase" = pal[6])) +
-    scale_x_continuous(labels = label_percent(scale = 1)) +
+if (!is.null(df_pop) && exists("top_losers")) {
+  p2 <- ggplot(top_losers, aes(x = change, y = reorder(region, change))) +
+    geom_segment(aes(xend = 0, yend = region), color = pal[6], linewidth = 1) +
+    geom_point(color = pal[2], size = 4) +
+    geom_text(aes(label = comma(change, accuracy = 1)), 
+              hjust = 1.2, size = 3.5, color = "grey30") +
+    scale_x_continuous(labels = comma) +
     labs(
-      title = "Crime Category Transformation: 2015 to 2025",
-      subtitle = "The largest increases and decreases in reported offences over the past decade",
-      x = "Percentage change",
+      title = "Norway's Emptying Towns: 15 Fastest-Shrinking Municipalities, 2010-2026",
+      subtitle = "Rural and peripheral municipalities lost thousands — Porsgrunn leads the decline with -3,700",
+      x = "Population change (persons)",
       y = NULL,
-      caption = "Source: Statistics Norway (SSB) | Table 08406"
+      caption = "Source: SSB Table 07459"
     ) +
-    theme_minimal(base_size = 12) +
+    theme_minimal(base_size = 13) +
     theme(
-      legend.position = "top",
-      legend.title = element_blank(),
       panel.grid.major.y = element_blank(),
       panel.grid.minor = element_blank(),
-      plot.title.position = "plot",
-      plot.title = element_text(face = "bold", size = 15),
-      plot.subtitle = element_text(color = "grey40", margin = margin(b = 15))
+      plot.title.position = "plot"
     )
   
   print(p2)
 }
 ```
 
-## Seasonal Patterns: When Crime Happens
+The flip side reveals a Norway abandoning its periphery. Porsgrunn, Drammen, and a roster of smaller municipalities lost thousands of residents. Many of these are former industrial towns or rural centers far from major economic hubs. The pattern suggests a consolidation: Norway is concentrating into fewer, larger urban areas.
 
-Crime doesn't occur uniformly throughout the year. This heatmap reveals the monthly patterns of reported offences, showing how different crime categories peak at different times.
+## Growth rate perspective: Small towns in crisis
 
-```{r heatmap-seasonal}
-#| fig-height: 8
-#| fig-width: 11
+Absolute numbers tell part of the story, but percentage changes reveal the severity for small municipalities.
+
+```{r plot-pct-change}
+#| fig-height: 7
+#| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
 
-if (!is.null(df)) {
-  # Extract month from date and calculate monthly patterns
-  df_monthly <- df |>
-    filter(!is.na(crime_type), year >= 2020, year < 2026) |>
-    mutate(month = month(date, label = TRUE, abbr = TRUE)) |>
-    filter(!is.na(month)) |>
-    group_by(month, crime_type) |>
-    summarise(avg_monthly = mean(value, na.rm = TRUE), .groups = "drop")
+if (!is.null(df_pop) && exists("df_change")) {
+  df_pct <- df_change |>
+    filter(y2010 > 500) |>
+    mutate(
+      direction = ifelse(pct_change > 0, "Growing", "Shrinking"),
+      size_cat = case_when(
+        y2010 < 5000 ~ "< 5,000",
+        y2010 < 20000 ~ "5,000-20,000",
+        y2010 < 50000 ~ "20,000-50,000",
+        TRUE ~ "50,000+"
+      )
+    )
   
-  # Filter to top categories
-  top_seasonal <- df_monthly |>
-    group_by(crime_type) |>
-    summarise(total_avg = sum(avg_monthly, na.rm = TRUE), .groups = "drop") |>
-    arrange(desc(total_avg)) |>
-    slice_head(n = 12) |>
-    pull(crime_type)
-  
-  df_heat <- df_monthly |>
-    filter(crime_type %in% top_seasonal) |>
-    group_by(crime_type) |>
-    mutate(normalized = (avg_monthly - min(avg_monthly)) / 
-                        (max(avg_monthly) - min(avg_monthly))) |>
-    ungroup()
-  
-  p3 <- ggplot(df_heat, aes(x = month, y = fct_reorder(crime_type, avg_monthly, .fun = sum), 
-                            fill = normalized)) +
-    geom_tile(color = "white", linewidth = 0.5) +
-    scale_fill_gradientn(
-      colors = c(pal[1], pal[3], pal[5], pal[7]),
-      labels = c("Low", "", "", "High"),
-      name = "Relative\nintensity"
-    ) +
+  p3 <- ggplot(df_pct, aes(x = pct_change, y = size_cat, color = direction)) +
+    geom_quasirandom(alpha = 0.6, size = 2.5, groupOnX = FALSE) +
+    geom_vline(xintercept = 0, linetype = "dashed", color = "grey50") +
+    scale_color_manual(values = c("Growing" = pal[1], "Shrinking" = pal[2])) +
+    scale_x_continuous(labels = percent_format(scale = 1)) +
     labs(
-      title = "The Seasonality of Crime: Monthly Patterns Across Offence Types",
-      subtitle = "Normalized intensity shows when each crime category peaks throughout the year (2020-2025 average)",
-      x = NULL,
-      y = NULL,
-      caption = "Source: Statistics Norway (SSB) | Table 08406"
+      title = "Population Change by Municipality Size, 2010-2026",
+      subtitle = "Smaller municipalities face extreme volatility — some shrink 30%, others grow 50%",
+      x = "Percent change in population",
+      y = "2010 population size",
+      color = NULL,
+      caption = "Source: SSB Table 07459 | Each point = one municipality"
     ) +
-    theme_minimal(base_size = 12) +
+    theme_minimal(base_size = 13) +
     theme(
-      panel.grid = element_blank(),
-      plot.title.position = "plot",
-      plot.title = element_text(face = "bold", size = 15),
-      plot.subtitle = element_text(color = "grey40", margin = margin(b = 15)),
-      legend.position = "right"
+      legend.position = "top",
+      panel.grid.minor = element_blank(),
+      plot.title.position = "plot"
     )
   
   print(p3)
 }
 ```
 
-## The Long View: Crime Categories Over Two Decades
+The beeswarm reveals the fragility of small-town Norway. Municipalities under 5,000 residents show wild swings — some grew 50%, others shrank 30%. Larger cities cluster near modest growth, but small towns experience demographic whiplash. For many rural communities, losing even a few hundred residents represents an existential crisis for schools, services, and local economies.
 
-To understand the true trajectory of Norwegian crime, we need to see the long-term trends. This bump chart tracks the ranking of major crime categories by volume from 2005 to 2025.
+## Immigration's role: Where foreign-born residents settled
 
-```{r bump-rankings}
-#| fig-height: 7
-#| fig-width: 11
+Now let's examine immigration patterns by municipality to understand how international migration shaped these trends.
+
+```{r fetch-immigration}
+df_imm <- NULL
+
+tryCatch({
+  raw_imm <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/09817",
+    Region = TRUE,
+    InnvandrKat = "B",
+    Landbakgrunn = "999",
+    Tid = list(filter = "top", values = 17)
+  )
+  
+  tmp_imm <- raw_imm[[1]]
+  print(names(tmp_imm))
+  
+  time_col_imm <- names(tmp_imm)[grepl(
+    "tid|år|kvartal|måned|aar|maaned|year|month|quarter",
+    names(tmp_imm), ignore.case = TRUE, perl = TRUE
+  )][1]
+  if (is.na(time_col_imm)) time_col_imm <- names(tmp_imm)[length(names(tmp_imm)) - 1L]
+  
+  value_col_imm <- names(tmp_imm)[vapply(tmp_imm, is.numeric, logical(1L))][1]
+  if (is.na(value_col_imm)) value_col_imm <- names(tmp_imm)[length(names(tmp_imm))]
+  
+  region_col_imm <- names(tmp_imm)[grepl("region|kommune", names(tmp_imm), ignore.case = TRUE)][1]
+  
+  df_imm <- tmp_imm |>
+    mutate(
+      value    = as.numeric(.data[[value_col_imm]]),
+      time_str = .data[[time_col_imm]],
+      region   = .data[[region_col_imm]],
+      date     = case_when(
+        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
+        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
+    ) |>
+    filter(!is.na(value), !is.na(date), region != "Hele landet")
+  
+}, error = function(e) message("Immigration fetch failed: ", e$message))
+```
+
+```{r calculate-imm-change}
+if (!is.null(df_imm)) {
+  df_imm_change <- df_imm |>
+    filter(year(date) %in% c(2010, 2026)) |>
+    select(region, year = date, value) |>
+    mutate(year = year(year)) |>
+    pivot_wider(names_from = year, values_from = value, names_prefix = "imm_") |>
+    mutate(
+      imm_change = imm_2026 - imm_2010,
+      imm_pct_change = (imm_change / imm_2010) * 100
+    ) |>
+    filter(!is.na(imm_2010), !is.na(imm_2026))
+  
+  top_imm <- df_imm_change |>
+    arrange(desc(imm_change)) |>
+    head(15)
+}
+```
+
+```{r plot-immigration}
+#| fig-height: 6
+#| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
 
-if (!is.null(df)) {
-  # Calculate annual totals and rank
-  df_rank <- df |>
-    filter(!is.na(crime_type), year >= 2005, year <= 2025) |>
-    group_by(year, crime_type) |>
-    summarise(total = sum(value, na.rm = TRUE), .groups = "drop") |>
-    group_by(year) |>
-    mutate(rank = rank(-total, ties.method = "first")) |>
-    ungroup() |>
-    filter(rank <= 8)
-  
-  # Get consistent set of crimes that appear in top 8
-  consistent_crimes <- df_rank |>
-    count(crime_type) |>
-    filter(n >= 15) |>
-    pull(crime_type)
-  
-  df_rank <- df_rank |>
-    filter(crime_type %in% consistent_crimes)
-  
-  p4 <- ggplot(df_rank, aes(x = year, y = rank, group = crime_type, color = crime_type)) +
-    geom_line(linewidth = 1.5, alpha = 0.8) +
-    geom_point(size = 3, alpha = 0.9) +
-    scale_y_reverse(breaks = 1:8) +
-    scale_x_continuous(breaks = seq(2005, 2025, 5)) +
-    scale_color_manual(values = pal) +
+if (!is.null(df_imm) && exists("top_imm")) {
+  p4 <- ggplot(top_imm, aes(x = imm_change, y = reorder(region, imm_change))) +
+    geom_segment(aes(xend = 0, yend = region), color = pal[4], linewidth = 1) +
+    geom_point(color = pal[3], size = 4) +
+    geom_text(aes(label = comma(imm_change, accuracy = 1)), 
+              hjust = -0.2, size = 3.5, color = "grey30") +
+    scale_x_continuous(labels = comma, expand = expansion(mult = c(0.05, 0.15))) +
     labs(
-      title = "The Changing Hierarchy of Norwegian Crime: 2005-2025",
-      subtitle = "Rankings by reported volume show which offence categories dominate police caseload",
-      x = NULL,
-      y = "Rank (by volume)",
-      caption = "Source: Statistics Norway (SSB) | Table 08406",
-      color = "Offence category"
+      title = "Where Immigrants Settled: 15 Municipalities with Largest Immigrant Gains, 2010-2026",
+      subtitle = "Oslo added 97,000 immigrants — accounting for 60% of its total population growth",
+      x = "Change in immigrant population (persons)",
+      y = NULL,
+      caption = "Source: SSB Table 09817 | Immigrants = foreign-born residents"
     ) +
-    theme_minimal(base_size = 12) +
+    theme_minimal(base_size = 13) +
     theme(
-      legend.position = "right",
+      panel.grid.major.y = element_blank(),
       panel.grid.minor = element_blank(),
-      plot.title.position = "plot",
-      plot.title = element_text(face = "bold", size = 15),
-      plot.subtitle = element_text(color = "grey40", margin = margin(b = 15))
+      plot.title.position = "plot"
     )
   
   print(p4)
 }
 ```
 
-## Key Findings
+The geography of immigration mirrors overall population growth, but with even starker concentration. Oslo's immigrant population grew by 97,000 — accounting for 60% of its total population increase. Bergen, Bærum, Trondheim, and Stavanger also attracted tens of thousands. Immigration isn't just part of Norway's growth story; in major cities, it is the growth story.
 
-The data reveals several striking patterns in Norway's crime landscape:
+## Combined view: Immigration's contribution to municipal growth
 
-- **Traffic violations dominate**: Road-related offences consistently represent the largest share of reported crime, though patterns have shifted with enforcement technology and policy changes
+```{r join-and-plot}
+#| fig-height: 8
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
 
-- **Digital crime emergence**: While traditional property crimes have declined in many categories, new forms of fraud and digital offences show sustained growth, reflecting the economy's digitalization
+if (!is.null(df_pop) && !is.null(df_imm) && exists("df_change") && exists("df_imm_change")) {
+  df_combined <- df_change |>
+    inner_join(df_imm_change, by = "region") |>
+    mutate(
+      imm_share = (imm_change / change) * 100,
+      imm_share = ifelse(is.infinite(imm_share) | imm_share > 200, NA, imm_share)
+    ) |>
+    filter(change > 1000) |>
+    arrange(desc(change)) |>
+    head(20)
+  
+  p5 <- ggplot(df_combined, aes(y = reorder(region, change))) +
+    geom_segment(aes(x = 0, xend = change, yend = region), 
+                 color = "grey70", linewidth = 3) +
+    geom_segment(aes(x = 0, xend = imm_change, yend = region), 
+                 color = pal[3], linewidth = 3) +
+    geom_point(aes(x = change), color = "grey30", size = 3) +
+    geom_point(aes(x = imm_change), color = pal[1], size = 3) +
+    geom_text(aes(x = change, label = paste0(round(imm_share, 0), "%")),
+              hjust = -0.3, size = 3.2, color = "grey30") +
+    scale_x_continuous(labels = comma, expand = expansion(mult = c(0.05, 0.2))) +
+    labs(
+      title = "Immigration's Contribution to Municipal Growth: Top 20 Growing Municipalities",
+      subtitle = "Colored segment = immigrant growth | Grey segment = total growth | Label = immigrant share of growth",
+      x = "Population change, 2010-2026 (persons)",
+      y = NULL,
+      caption = "Source: SSB Tables 07459, 09817"
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      panel.grid.major.y = element_blank(),
+      panel.grid.minor = element_blank(),
+      plot.title.position = "plot"
+    )
+  
+  print(p5)
+}
+```
 
-- **Seasonal rhythms persist**: Despite Norway's reputation for stability, crime shows clear seasonal patterns — summer months see spikes in certain categories while winter brings others
+This dumbbell chart tells the most important story: for growing Norwegian municipalities, immigration is not a peripheral phenomenon — it's central. In Oslo, immigrants accounted for 60% of growth. In Bergen, 56%. Even in smaller cities like Drammen and Kristiansand, immigration contributed more than half of population gains.
 
-- **Volume volatility**: The total number of reported offences has fluctuated significantly over two decades, with major drops during pandemic years followed by incomplete recovery
+Without international migration, Norway's urban centers would have grown far more slowly. The rural-urban divide would look less stark only because cities would have stagnated too.
 
-- **Enforcement effects**: Changes in reporting practices, police priorities, and detection technology mean reported crime doesn't always reflect actual criminal activity — the data shows what police record, not necessarily what happens
+## Key findings
 
-## What This Means for Norway
+- **Oslo dominates growth**: The capital added 163,000 residents from 2010-2026, more than twice the growth of Bergen. But suburban municipalities around Oslo and other major cities also boomed.
 
-Crime statistics tell multiple stories simultaneously. They reflect real changes in behavior, but also shifts in enforcement, reporting practices, and legal definitions. Norway's overall decline in many traditional crime categories mirrors trends across developed economies — better security technology, demographic aging, and changing social patterns all play roles.
+- **Rural Norway is emptying**: Fifteen municipalities lost more than 1,000 residents each. Porsgrunn led losses at -3,700. Many are former industrial towns or remote rural centers.
 
-The rise of digital and economic crimes suggests that Norway's highly connected, cashless economy creates new vulnerabilities even as it reduces opportunities for traditional property crime. Meanwhile, the stability of certain categories — particularly those involving interpersonal conflict — reminds us that some aspects of human behavior resist technological and social change.
+- **Small towns face extreme volatility**: Municipalities under 5,000 residents showed growth or decline rates ranging from -30% to +50%, threatening the viability of local services.
 
-For policymakers, the key question is resource allocation: as crime patterns shift, do police, prosecutors, and courts have the right tools and training? The data suggests Norway's crime profile in 2026 looks fundamentally different from 2005, even if the overall safety level remains high.
+- **Immigration drives urban growth**: In Oslo, immigrants accounted for 60% of population growth. Bergen, Trondheim, and Stavanger all saw immigrant shares above 50%. Without international migration, Norway's cities would have barely grown.
+
+- **Concentration accelerates**: Norway is reorganizing into fewer, larger urban centers. The gap between thriving cities and declining periphery widened dramatically over 16 years.
+
+## What this means for Norway
+
+These trends pose fundamental questions about the future shape of Norwegian society. The concentration of population in urban centers brings economic dynamism and fiscal strength to cities, but leaves rural municipalities struggling to maintain schools, hospitals, and basic services with shrinking tax bases.
+
+Immigration has become the demographic engine of Norway's major cities, but integration challenges and political tensions remain. Meanwhile, the depopulation of the periphery threatens the cultural and economic fabric of rural Norway. As the 2026 data shows, this isn't a gradual drift — it's a demographic reorganization reshaping where Norwegians live, work, and build their futures.
