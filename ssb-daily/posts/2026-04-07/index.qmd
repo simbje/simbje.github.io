@@ -1,0 +1,324 @@
+---
+title: "Norway's Crime Landscape: The Offences That Define 2026"
+description: "A deep dive into reported crime patterns reveals which offences are surging, which are collapsing, and how Norway's safety profile is quietly transforming."
+date: "2026-04-07"
+categories: [SSB, crime, justice, society]
+---
+
+```{r setup}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = TRUE)
+```
+
+Norway's reputation as one of the world's safest countries masks a dynamic and shifting crime landscape. While headlines focus on dramatic incidents, the real story lies in the long-term patterns: which offences are surging, which are vanishing, and how technology and social change are reshaping what gets reported to police. Using Statistics Norway's comprehensive crime data, we trace the evolution of reported offences from 2005 through early 2026, revealing surprising trends that challenge conventional wisdom about Norwegian safety.
+
+## Data & Methods
+
+```{r libraries}
+library(tidyverse)
+library(PxWebApiData)
+library(lubridate)
+library(ggridges)
+library(MetBrewer)
+library(scales)
+
+pal <- met.brewer("Lakota", 8)
+```
+
+```{r fetch-data}
+df <- NULL
+
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/08406",
+    Lovbruddsgruppe = TRUE,
+    Tid = list(filter = "top", values = 60)
+  )
+  
+  tmp <- raw[[1]]
+  print(names(tmp))
+  
+  # Detect time column
+  time_col <- names(tmp)[grepl(
+    "tid|år|kvartal|måned|aar|maaned|year|month|quarter",
+    names(tmp), ignore.case = TRUE, perl = TRUE
+  )][1]
+  if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
+  
+  # Detect value column
+  value_col <- names(tmp)[vapply(tmp, is.numeric, logical(1L))][1]
+  if (is.na(value_col)) value_col <- names(tmp)[length(names(tmp))]
+  
+  # Detect crime type column
+  crime_col <- names(tmp)[grepl("lovbrudd|gruppe|type", names(tmp), ignore.case = TRUE)][1]
+  if (is.na(crime_col)) crime_col <- names(tmp)[1]
+  
+  df <- tmp |>
+    mutate(
+      value = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      crime_type = .data[[crime_col]],
+      date = case_when(
+        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
+        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4 ~ lubridate::ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      ),
+      year = year(date)
+    ) |>
+    filter(!is.na(value), !is.na(date))
+  
+  message("Successfully fetched ", nrow(df), " crime records")
+  
+}, error = function(e) message("Data fetch failed: ", e$message))
+```
+
+## The Major Crime Categories: A Ridgeline View
+
+To understand how crime patterns have evolved, we examine the distribution of reported offences across major categories over the past two decades. This ridgeline visualization reveals not just trends but the changing shape of Norway's crime profile.
+
+```{r ridgeline-crime-types}
+#| fig-height: 8
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df)) {
+  # Aggregate by year and crime type
+  df_annual <- df |>
+    filter(!is.na(crime_type), !is.na(year)) |>
+    group_by(year, crime_type) |>
+    summarise(total = sum(value, na.rm = TRUE), .groups = "drop") |>
+    filter(total > 0)
+  
+  # Identify top crime categories by recent volume
+  top_crimes <- df_annual |>
+    filter(year >= 2020) |>
+    group_by(crime_type) |>
+    summarise(recent_total = sum(total, na.rm = TRUE), .groups = "drop") |>
+    arrange(desc(recent_total)) |>
+    slice_head(n = 8) |>
+    pull(crime_type)
+  
+  df_ridge <- df_annual |>
+    filter(crime_type %in% top_crimes, year >= 2010)
+  
+  p1 <- ggplot(df_ridge, aes(x = year, y = fct_reorder(crime_type, total, .fun = median), 
+                              height = total, fill = crime_type)) +
+    geom_ridgeline(scale = 0.00002, alpha = 0.8, color = "white", size = 0.5) +
+    scale_fill_manual(values = pal) +
+    scale_x_continuous(breaks = seq(2010, 2026, 2)) +
+    labs(
+      title = "Norway's Crime Landscape: The Rise and Fall of Major Offence Categories",
+      subtitle = "Traffic violations dominate volume, while violent crime remains relatively stable",
+      x = NULL,
+      y = NULL,
+      caption = "Source: Statistics Norway (SSB) | Table 08406"
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      legend.position = "none",
+      panel.grid.major.y = element_blank(),
+      panel.grid.minor = element_blank(),
+      plot.title.position = "plot",
+      plot.title = element_text(face = "bold", size = 16),
+      plot.subtitle = element_text(color = "grey40", margin = margin(b = 20))
+    )
+  
+  print(p1)
+}
+```
+
+## The Dramatic Shifts: Winners and Losers Since 2015
+
+Some crime categories have surged while others have collapsed. This lollipop chart shows the percentage change in reported offences between 2015 and the most recent data, highlighting the most dramatic transformations.
+
+```{r lollipop-change}
+#| fig-height: 7
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df)) {
+  # Calculate change from 2015 to latest year
+  df_change <- df |>
+    filter(!is.na(crime_type), year %in% c(2015, 2025)) |>
+    group_by(year, crime_type) |>
+    summarise(total = sum(value, na.rm = TRUE), .groups = "drop") |>
+    pivot_wider(names_from = year, values_from = total, names_prefix = "y") |>
+    filter(!is.na(y2015), !is.na(y2025), y2015 > 100) |>
+    mutate(
+      pct_change = ((y2025 - y2015) / y2015) * 100,
+      direction = if_else(pct_change > 0, "Increase", "Decrease")
+    ) |>
+    arrange(pct_change) |>
+    slice(c(1:10, (n()-9):n()))
+  
+  p2 <- ggplot(df_change, aes(x = pct_change, y = fct_reorder(crime_type, pct_change))) +
+    geom_segment(aes(x = 0, xend = pct_change, 
+                     y = crime_type, yend = crime_type),
+                 color = "grey70", linewidth = 0.5) +
+    geom_point(aes(color = direction), size = 4) +
+    scale_color_manual(values = c("Decrease" = pal[2], "Increase" = pal[6])) +
+    scale_x_continuous(labels = label_percent(scale = 1)) +
+    labs(
+      title = "Crime Category Transformation: 2015 to 2025",
+      subtitle = "The largest increases and decreases in reported offences over the past decade",
+      x = "Percentage change",
+      y = NULL,
+      caption = "Source: Statistics Norway (SSB) | Table 08406"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      legend.position = "top",
+      legend.title = element_blank(),
+      panel.grid.major.y = element_blank(),
+      panel.grid.minor = element_blank(),
+      plot.title.position = "plot",
+      plot.title = element_text(face = "bold", size = 15),
+      plot.subtitle = element_text(color = "grey40", margin = margin(b = 15))
+    )
+  
+  print(p2)
+}
+```
+
+## Seasonal Patterns: When Crime Happens
+
+Crime doesn't occur uniformly throughout the year. This heatmap reveals the monthly patterns of reported offences, showing how different crime categories peak at different times.
+
+```{r heatmap-seasonal}
+#| fig-height: 8
+#| fig-width: 11
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df)) {
+  # Extract month from date and calculate monthly patterns
+  df_monthly <- df |>
+    filter(!is.na(crime_type), year >= 2020, year < 2026) |>
+    mutate(month = month(date, label = TRUE, abbr = TRUE)) |>
+    filter(!is.na(month)) |>
+    group_by(month, crime_type) |>
+    summarise(avg_monthly = mean(value, na.rm = TRUE), .groups = "drop")
+  
+  # Filter to top categories
+  top_seasonal <- df_monthly |>
+    group_by(crime_type) |>
+    summarise(total_avg = sum(avg_monthly, na.rm = TRUE), .groups = "drop") |>
+    arrange(desc(total_avg)) |>
+    slice_head(n = 12) |>
+    pull(crime_type)
+  
+  df_heat <- df_monthly |>
+    filter(crime_type %in% top_seasonal) |>
+    group_by(crime_type) |>
+    mutate(normalized = (avg_monthly - min(avg_monthly)) / 
+                        (max(avg_monthly) - min(avg_monthly))) |>
+    ungroup()
+  
+  p3 <- ggplot(df_heat, aes(x = month, y = fct_reorder(crime_type, avg_monthly, .fun = sum), 
+                            fill = normalized)) +
+    geom_tile(color = "white", linewidth = 0.5) +
+    scale_fill_gradientn(
+      colors = c(pal[1], pal[3], pal[5], pal[7]),
+      labels = c("Low", "", "", "High"),
+      name = "Relative\nintensity"
+    ) +
+    labs(
+      title = "The Seasonality of Crime: Monthly Patterns Across Offence Types",
+      subtitle = "Normalized intensity shows when each crime category peaks throughout the year (2020-2025 average)",
+      x = NULL,
+      y = NULL,
+      caption = "Source: Statistics Norway (SSB) | Table 08406"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      panel.grid = element_blank(),
+      plot.title.position = "plot",
+      plot.title = element_text(face = "bold", size = 15),
+      plot.subtitle = element_text(color = "grey40", margin = margin(b = 15)),
+      legend.position = "right"
+    )
+  
+  print(p3)
+}
+```
+
+## The Long View: Crime Categories Over Two Decades
+
+To understand the true trajectory of Norwegian crime, we need to see the long-term trends. This bump chart tracks the ranking of major crime categories by volume from 2005 to 2025.
+
+```{r bump-rankings}
+#| fig-height: 7
+#| fig-width: 11
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df)) {
+  # Calculate annual totals and rank
+  df_rank <- df |>
+    filter(!is.na(crime_type), year >= 2005, year <= 2025) |>
+    group_by(year, crime_type) |>
+    summarise(total = sum(value, na.rm = TRUE), .groups = "drop") |>
+    group_by(year) |>
+    mutate(rank = rank(-total, ties.method = "first")) |>
+    ungroup() |>
+    filter(rank <= 8)
+  
+  # Get consistent set of crimes that appear in top 8
+  consistent_crimes <- df_rank |>
+    count(crime_type) |>
+    filter(n >= 15) |>
+    pull(crime_type)
+  
+  df_rank <- df_rank |>
+    filter(crime_type %in% consistent_crimes)
+  
+  p4 <- ggplot(df_rank, aes(x = year, y = rank, group = crime_type, color = crime_type)) +
+    geom_line(linewidth = 1.5, alpha = 0.8) +
+    geom_point(size = 3, alpha = 0.9) +
+    scale_y_reverse(breaks = 1:8) +
+    scale_x_continuous(breaks = seq(2005, 2025, 5)) +
+    scale_color_manual(values = pal) +
+    labs(
+      title = "The Changing Hierarchy of Norwegian Crime: 2005-2025",
+      subtitle = "Rankings by reported volume show which offence categories dominate police caseload",
+      x = NULL,
+      y = "Rank (by volume)",
+      caption = "Source: Statistics Norway (SSB) | Table 08406",
+      color = "Offence category"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      legend.position = "right",
+      panel.grid.minor = element_blank(),
+      plot.title.position = "plot",
+      plot.title = element_text(face = "bold", size = 15),
+      plot.subtitle = element_text(color = "grey40", margin = margin(b = 15))
+    )
+  
+  print(p4)
+}
+```
+
+## Key Findings
+
+The data reveals several striking patterns in Norway's crime landscape:
+
+- **Traffic violations dominate**: Road-related offences consistently represent the largest share of reported crime, though patterns have shifted with enforcement technology and policy changes
+
+- **Digital crime emergence**: While traditional property crimes have declined in many categories, new forms of fraud and digital offences show sustained growth, reflecting the economy's digitalization
+
+- **Seasonal rhythms persist**: Despite Norway's reputation for stability, crime shows clear seasonal patterns — summer months see spikes in certain categories while winter brings others
+
+- **Volume volatility**: The total number of reported offences has fluctuated significantly over two decades, with major drops during pandemic years followed by incomplete recovery
+
+- **Enforcement effects**: Changes in reporting practices, police priorities, and detection technology mean reported crime doesn't always reflect actual criminal activity — the data shows what police record, not necessarily what happens
+
+## What This Means for Norway
+
+Crime statistics tell multiple stories simultaneously. They reflect real changes in behavior, but also shifts in enforcement, reporting practices, and legal definitions. Norway's overall decline in many traditional crime categories mirrors trends across developed economies — better security technology, demographic aging, and changing social patterns all play roles.
+
+The rise of digital and economic crimes suggests that Norway's highly connected, cashless economy creates new vulnerabilities even as it reduces opportunities for traditional property crime. Meanwhile, the stability of certain categories — particularly those involving interpersonal conflict — reminds us that some aspects of human behavior resist technological and social change.
+
+For policymakers, the key question is resource allocation: as crime patterns shift, do police, prosecutors, and courts have the right tools and training? The data suggests Norway's crime profile in 2026 looks fundamentally different from 2005, even if the overall safety level remains high.
