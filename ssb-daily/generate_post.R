@@ -273,11 +273,23 @@ analysis of Statistics Norway (SSB) data using R.
 - Add annotations, reference lines, and direct labels where helpful
 - Always assign every ggplot to a variable then call print() explicitly
 
-## Parameter usage (CRITICAL)
-The catalogue in the user prompt contains verified parameter names from the SSB API.
-Use them EXACTLY as written — never invent or modify parameter names.
-For dimension parameters, pass TRUE for all values or a character vector of specific codes.
+## Table and parameter usage (CRITICAL — read carefully)
+The catalogue in the user prompt lists the ONLY table IDs you are allowed to use.
+DO NOT invent or use any table ID that is not explicitly listed in the catalogue.
+Using a table ID outside the catalogue will cause data fetch failure and no plots will appear.
+
+For dimension parameters (everything except Tid):
+- Pass TRUE to get ALL values — NEVER hardcode specific codes like "nr23_6" or "Lonn"
+- Filter down to the categories you want AFTER fetching, in R, using grep/filter on the actual column values
+- Hardcoded codes almost always fail because SSB code values differ across tables
+
 Use Tid = list(filter="top", values=N) to get the last N time periods.
+
+## Avoiding seasonal analysis on annual data (CRITICAL)
+Before doing any monthly/seasonal chart, check whether the data is actually monthly:
+  has_monthly <- any(stringr::str_detect(df$time_str, "M\\d{{2}}"), na.rm = TRUE)
+Only attempt seasonal/monthly charts if has_monthly is TRUE.
+For annual data (4-digit year codes), skip seasonal analysis and use year-over-year trends instead.
 
 ## Data fetching pattern
 ```{{r fetch-data}}
@@ -411,17 +423,20 @@ knitr::opts_chunk$set(echo=TRUE, warning=FALSE, message=FALSE, error=TRUE)
 ```
 
 STEP 2 — Data chunk using EXACT parameter names from the catalogue:
+RULE: Use only table IDs from the catalogue. Pass TRUE for all dimension parameters (never hardcode codes).
 ```r
 df <- NULL
 
 tryCatch({{
   raw <- ApiData(
-    "https://data.ssb.no/api/v0/no/table/XXXXX",
-    EXACT_PARAM_NAME = TRUE,
+    "https://data.ssb.no/api/v0/no/table/XXXXX",  # MUST be a table ID from the catalogue
+    EXACT_PARAM_NAME = TRUE,   # TRUE = fetch all values; filter in R afterwards
     Tid = list(filter="top", values=40)
   )
   tmp <- raw[[1]]
-  print(names(tmp))
+  message("Columns: ", paste(names(tmp), collapse=", "))
+  message("Rows fetched: ", nrow(tmp))
+  print(head(tmp))
 
   time_col <- names(tmp)[grepl(
     "tid|\u00e5r|kvartal|m\u00e5ned|aar|maaned|year|month|quarter",
@@ -444,7 +459,13 @@ tryCatch({{
       )
     ) |>
     filter(!is.na(value), !is.na(date))
-}}, error = function(e) message("Data fetch failed: ", e$message))
+
+  message("Clean rows after filter: ", nrow(df))
+  if (nrow(df) == 0) stop("Data frame is empty after cleaning — check parameter names")
+}}, error = function(e) {{
+  message("DATA FETCH FAILED: ", e$message)
+  message("df will be NULL — no plots will render")
+}})
 ```
 
 STEP 3 — Plot chunk (guard + explicit print):
