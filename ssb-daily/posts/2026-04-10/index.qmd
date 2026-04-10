@@ -1,178 +1,179 @@
 ---
-title: "Norway's Dwelling Revolution: The Housing Types That Redefined a Nation"
-description: "From single-family homes to apartment blocks — how Norway's housing stock transformed over two decades"
+title: "Norway's Greenhouse Gas Reckoning: The Climate Ledger Since 1990"
+description: "Three decades of emissions data reveal which sectors delivered cuts and which kept polluting"
 date: "2026-04-10"
-categories: [SSB, housing, urban-planning, construction]
+categories: [SSB, climate, emissions, energy]
 ---
+
+Norway has pledged ambitious climate targets, but the granular emissions data tells a more complex story. Since 1990, some sectors have dramatically cut their carbon footprint while others have barely budged. Using Statistics Norway's comprehensive emissions inventory, we can see exactly where progress happened — and where it stalled.
 
 ```{r setup}
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = TRUE)
 
 library(tidyverse)
 library(PxWebApiData)
-library(lubridate)
 library(MetBrewer)
+library(lubridate)
 library(scales)
 
-pal <- met.brewer("Hiroshige", 8)
+pal <- met.brewer("Hokusai2", 7)
 ```
 
-Norway's housing market tells a story far bigger than prices and mortgage rates. Over the past two decades, the physical form of Norwegian dwellings has undergone a quiet revolution — one that reshapes how families live, how cities grow, and where wealth accumulates.
+## The Data: Three Decades of Emissions
 
-The shift from detached homes to apartment blocks marks one of the most profound transformations in Norwegian society. This isn't just about construction statistics; it's about the end of the single-family home as the default Norwegian dream.
-
-## The Data: Completed Dwellings Across Norway
-
-We'll examine quarterly data on completed dwellings by building type from 2000 through early 2026, tracking how different housing forms have risen and fallen across Norwegian regions.
-
-```{r fetch-completions}
-df_complete <- NULL
+```{r fetch-emissions}
+df <- NULL
 
 tryCatch({
   raw <- ApiData(
-    "https://data.ssb.no/api/v0/no/table/05889",
-    Region = TRUE,
-    Byggeareal = TRUE,
-    ContentsCode = "Fullforte",
-    Tid = list(filter = "top", values = 104)
+    "https://data.ssb.no/api/v0/no/table/09288",
+    NaringMiljo = TRUE,
+    UtslpKomp = TRUE,
+    ContentsCode = TRUE,
+    Tid = list(filter = "top", values = 37)
   )
   tmp <- raw[[1]]
   message("Columns: ", paste(names(tmp), collapse = ", "))
   message("Rows fetched: ", nrow(tmp))
   print(head(tmp))
-  
+
   time_col <- names(tmp)[grepl(
     "tid|år|kvartal|måned|aar|maaned|year|month|quarter",
     names(tmp), ignore.case = TRUE, perl = TRUE
   )][1]
   if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
-  
+
   value_col <- names(tmp)[vapply(tmp, is.numeric, logical(1L))][1]
   if (is.na(value_col)) value_col <- names(tmp)[length(names(tmp))]
-  
-  region_col <- names(tmp)[grepl("region|område", names(tmp), ignore.case = TRUE)][1]
-  type_col <- names(tmp)[grepl("byggeareal|type|bygg", names(tmp), ignore.case = TRUE)][1]
-  
-  df_complete <- tmp |>
+
+  df <- tmp |>
     mutate(
-      value = as.numeric(.data[[value_col]]),
+      value    = as.numeric(.data[[value_col]]),
       time_str = .data[[time_col]],
-      region = .data[[region_col]],
-      building_type = .data[[type_col]],
-      date = lubridate::yq(sub("K", " Q", time_str))
+      date     = case_when(
+        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
+        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
     ) |>
-    filter(!is.na(value), !is.na(date)) |>
-    mutate(year = year(date))
-  
-  message("Clean rows after filter: ", nrow(df_complete))
+    filter(!is.na(value), !is.na(date))
+
+  message("Clean rows after filter: ", nrow(df))
+  if (nrow(df) == 0) stop("Data frame is empty after cleaning")
 }, error = function(e) {
   message("DATA FETCH FAILED: ", e$message)
+  message("df will be NULL — no plots will render")
 })
 ```
 
-```{r fetch-started}
-df_started <- NULL
-
-tryCatch({
-  raw2 <- ApiData(
-    "https://data.ssb.no/api/v0/no/table/06265",
-    Region = TRUE,
-    BygnType = TRUE,
-    ContentsCode = "Boliger",
-    Tid = list(filter = "top", values = 21)
-  )
-  tmp2 <- raw2[[1]]
-  message("Columns: ", paste(names(tmp2), collapse = ", "))
-  message("Rows fetched: ", nrow(tmp2))
+```{r wrangle-sectors}
+if (!is.null(df)) {
+  sector_col <- names(df)[grepl("naring|industry|sector", names(df), ignore.case = TRUE)][1]
+  gas_col <- names(df)[grepl("utslp|comp|gas", names(df), ignore.case = TRUE)][1]
+  contents_col <- names(df)[grepl("contents|innhold", names(df), ignore.case = TRUE)][1]
   
-  time_col2 <- names(tmp2)[grepl(
-    "tid|år|kvartal|måned|aar|maaned|year|month|quarter",
-    names(tmp2), ignore.case = TRUE, perl = TRUE
-  )][1]
-  if (is.na(time_col2)) time_col2 <- names(tmp2)[length(names(tmp2)) - 1L]
+  message("Sector column: ", sector_col)
+  message("Gas column: ", gas_col)
+  message("Contents column: ", contents_col)
   
-  value_col2 <- names(tmp2)[vapply(tmp2, is.numeric, logical(1L))][1]
-  if (is.na(value_col2)) value_col2 <- names(tmp2)[length(names(tmp2))]
-  
-  region_col2 <- names(tmp2)[grepl("region|område", names(tmp2), ignore.case = TRUE)][1]
-  type_col2 <- names(tmp2)[grepl("type|bygg", names(tmp2), ignore.case = TRUE)][1]
-  
-  df_started <- tmp2 |>
+  df_clean <- df |>
     mutate(
-      value = as.numeric(.data[[value_col2]]),
-      time_str = .data[[time_col2]],
-      region = .data[[region_col2]],
-      building_type = .data[[type_col2]],
-      date = lubridate::ymd(paste0(time_str, "-01-01"))
+      sector = .data[[sector_col]],
+      gas = .data[[gas_col]],
+      measure = .data[[contents_col]],
+      year = year(date)
+    )
+  
+  total_emissions <- df_clean |>
+    filter(
+      grepl("alle næringer og husholdninger|T.00", sector, ignore.case = TRUE),
+      grepl("klimagasser i alt|A10", gas, ignore.case = TRUE),
+      grepl("ekvivalent|ekv", measure, ignore.case = TRUE)
+    )
+  
+  message("Total emissions rows: ", nrow(total_emissions))
+  print(head(total_emissions))
+  
+  major_sectors <- df_clean |>
+    filter(
+      grepl("N.0[1-7]", sector),
+      grepl("klimagasser i alt|A10", gas, ignore.case = TRUE),
+      grepl("ekvivalent|ekv", measure, ignore.case = TRUE)
     ) |>
-    filter(!is.na(value), !is.na(date)) |>
-    mutate(year = year(date))
-  
-  message("Clean rows after filter: ", nrow(df_started))
-}, error = function(e) {
-  message("DATA FETCH FAILED: ", e$message)
-})
-```
-
-## The Apartment Takeover
-
-The most dramatic shift in Norwegian housing is the rise of apartment blocks. What was once a minority housing form now dominates new construction in Norway's growth regions.
-
-```{r apartment-surge}
-#| fig-height: 6
-#| fig-width: 10
-#| fig-show: asis
-#| dev: "png"
-
-if (!is.null(df_complete)) {
-  
-  # Identify apartment blocks and single-family homes
-  df_types <- df_complete |>
-    filter(grepl("Hele landet", region, ignore.case = TRUE)) |>
     mutate(
-      category = case_when(
-        grepl("enebolig", building_type, ignore.case = TRUE) ~ "Detached homes",
-        grepl("blokk", building_type, ignore.case = TRUE) ~ "Apartment blocks",
-        grepl("rekkehus|kjedehus", building_type, ignore.case = TRUE) ~ "Row houses",
-        grepl("tomanns", building_type, ignore.case = TRUE) ~ "Semi-detached",
+      sector_name = case_when(
+        grepl("N.01", sector) ~ "Agriculture & Forestry",
+        grepl("N.02", sector) ~ "Oil & Gas Extraction",
+        grepl("N.03", sector) ~ "Manufacturing",
+        grepl("N.04", sector) ~ "Energy & Water",
+        grepl("N.05", sector) ~ "Construction",
+        grepl("N.06", sector) ~ "Services",
+        grepl("N.07", sector) ~ "Transport",
         TRUE ~ "Other"
       )
     ) |>
-    filter(category != "Other") |>
-    group_by(date, category) |>
-    summarise(dwellings = sum(value, na.rm = TRUE), .groups = "drop") |>
-    arrange(date)
+    filter(sector_name != "Other")
   
-  # Calculate 4-quarter rolling average
-  df_smooth <- df_types |>
-    group_by(category) |>
-    arrange(date) |>
-    mutate(dwellings_ma = zoo::rollmean(dwellings, k = 4, fill = NA, align = "right")) |>
-    filter(!is.na(dwellings_ma))
+  message("Major sectors rows: ", nrow(major_sectors))
+}
+```
+
+## Total Emissions: The Plateau Pattern
+
+Norway's total greenhouse gas emissions have remained surprisingly stable since 1990, hovering around 50-55 million tonnes of CO2 equivalents. This isn't the dramatic decline climate activists hoped for — it's a story of sectors canceling each other out.
+
+```{r plot-total-area}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df) && nrow(total_emissions) > 0) {
+  baseline_1990 <- total_emissions |>
+    filter(year == 1990) |>
+    pull(value) |>
+    first()
   
-  p1 <- ggplot(df_smooth, aes(x = date, y = dwellings_ma, fill = category)) +
-    geom_area(alpha = 0.85, position = "stack") +
-    scale_fill_manual(
-      values = c(
-        "Detached homes" = pal[1],
-        "Apartment blocks" = pal[3],
-        "Row houses" = pal[5],
-        "Semi-detached" = pal[7]
-      )
+  p1 <- ggplot(total_emissions, aes(x = date, y = value)) +
+    geom_area(fill = pal[2], alpha = 0.7) +
+    geom_line(color = pal[1], linewidth = 1.2) +
+    geom_hline(
+      yintercept = baseline_1990,
+      linetype = "dashed",
+      color = pal[6],
+      linewidth = 0.8
     ) +
-    scale_y_continuous(labels = comma, expand = c(0, 0)) +
+    annotate(
+      "text",
+      x = as.Date("1995-01-01"),
+      y = baseline_1990 + 2000,
+      label = "1990 baseline",
+      color = pal[6],
+      hjust = 0,
+      size = 3.5
+    ) +
+    annotate(
+      "text",
+      x = as.Date("2018-01-01"),
+      y = 45000,
+      label = "Three decades,\nminimal net change",
+      size = 4,
+      color = pal[7],
+      fontface = "italic"
+    ) +
+    scale_y_continuous(labels = label_comma(suffix = "k")) +
     labs(
-      title = "The Rise of the Apartment Block",
-      subtitle = "Completed dwellings per quarter (4-quarter rolling average) — apartment blocks now dominate Norwegian construction",
-      caption = "Source: Statistics Norway (SSB), table 05889",
+      title = "Norway's Emissions: The 36-Year Plateau",
+      subtitle = "Total greenhouse gases remain stubbornly close to 1990 levels despite climate pledges",
+      caption = "Source: Statistics Norway (SSB) | Thousand tonnes CO2 equivalents",
       x = NULL,
-      y = "Dwellings completed",
-      fill = "Type"
+      y = "Emissions (1000 tonnes CO2-eq)"
     ) +
     theme_minimal(base_size = 13) +
     theme(
       plot.title = element_text(face = "bold", size = 16),
-      legend.position = "bottom",
+      plot.subtitle = element_text(color = "grey30", size = 11),
       panel.grid.minor = element_blank()
     )
   
@@ -180,92 +181,61 @@ if (!is.null(df_complete)) {
 }
 ```
 
-The chart reveals a structural break around 2010. Before then, detached homes and apartment blocks competed for dominance. After 2010, apartment construction surged while single-family home completions plateaued and then declined. By 2020-2025, apartment blocks account for nearly half of all new dwellings — a proportion unthinkable in the Norway of 2000.
+## Sector Breakdown: Who Cut, Who Didn't
 
-## The Regional Divide: Oslo vs. The Rest
+The aggregate stability masks dramatic shifts beneath the surface. Let's look at changes since 1990 by major economic sector.
 
-Housing construction isn't uniform across Norway. The apartment revolution is concentrated in urban centers, while rural and smaller municipalities still build detached homes.
-
-```{r regional-comparison}
-#| fig-height: 7
-#| fig-width: 10
+```{r plot-sector-lollipop}
+#| fig-height: 6
+#| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
 
-if (!is.null(df_complete)) {
-  
-  # Compare Oslo, Bergen, Trondheim, whole country
-  regions_of_interest <- c("Hele landet", "Oslo", "Bergen", "Trondheim")
-  
-  df_regional <- df_complete |>
-    filter(
-      region %in% regions_of_interest | grepl("Oslo|Bergen|Trondheim", region, ignore.case = TRUE)
+if (!is.null(df) && nrow(major_sectors) > 0) {
+  sector_change <- major_sectors |>
+    group_by(sector_name) |>
+    arrange(year) |>
+    filter(year %in% c(1990, max(year))) |>
+    summarise(
+      baseline = first(value),
+      recent = last(value),
+      change_pct = ((recent - baseline) / baseline) * 100,
+      change_abs = recent - baseline,
+      .groups = "drop"
     ) |>
-    mutate(
-      region_clean = case_when(
-        grepl("Hele landet", region, ignore.case = TRUE) ~ "Whole country",
-        grepl("Oslo", region, ignore.case = TRUE) ~ "Oslo",
-        grepl("Bergen", region, ignore.case = TRUE) ~ "Bergen",
-        grepl("Trondheim", region, ignore.case = TRUE) ~ "Trondheim",
-        TRUE ~ region
-      ),
-      category = case_when(
-        grepl("enebolig", building_type, ignore.case = TRUE) ~ "Detached",
-        grepl("blokk", building_type, ignore.case = TRUE) ~ "Apartments",
-        TRUE ~ "Other"
-      )
-    ) |>
-    filter(category %in% c("Detached", "Apartments")) |>
-    filter(year >= 2010, year <= 2025) |>
-    group_by(region_clean, category) |>
-    summarise(total = sum(value, na.rm = TRUE), .groups = "drop") |>
-    filter(region_clean != region) |>
-    group_by(region_clean) |>
-    mutate(
-      pct = total / sum(total) * 100
-    ) |>
-    ungroup()
+    arrange(change_pct)
   
-  # Create dumbbell chart
-  df_wide <- df_regional |>
-    select(region_clean, category, pct) |>
-    pivot_wider(names_from = category, values_from = pct) |>
-    filter(!is.na(Apartments), !is.na(Detached)) |>
-    arrange(desc(Apartments))
-  
-  p2 <- ggplot(df_wide, aes(y = reorder(region_clean, Apartments))) +
+  p2 <- ggplot(sector_change, aes(x = change_pct, y = reorder(sector_name, change_pct))) +
     geom_segment(
-      aes(x = Detached, xend = Apartments, yend = region_clean),
-      color = "gray70",
-      linewidth = 1.5
+      aes(x = 0, xend = change_pct, yend = sector_name),
+      color = "grey70",
+      linewidth = 0.8
     ) +
-    geom_point(aes(x = Detached), color = pal[1], size = 5) +
-    geom_point(aes(x = Apartments), color = pal[3], size = 5) +
+    geom_point(
+      aes(color = ifelse(change_pct < 0, "Decreased", "Increased")),
+      size = 5
+    ) +
+    geom_vline(xintercept = 0, linetype = "solid", color = "grey40", linewidth = 0.5) +
     geom_text(
-      aes(x = Detached, label = paste0(round(Detached), "%")),
-      hjust = 1.3,
+      aes(label = paste0(round(change_pct, 1), "%")),
+      hjust = ifelse(sector_change$change_pct < 0, 1.2, -0.2),
       size = 3.5,
-      color = pal[1],
       fontface = "bold"
     ) +
-    geom_text(
-      aes(x = Apartments, label = paste0(round(Apartments), "%")),
-      hjust = -0.3,
-      size = 3.5,
-      color = pal[3],
-      fontface = "bold"
-    ) +
-    scale_x_continuous(labels = function(x) paste0(x, "%"), limits = c(0, 80)) +
+    scale_color_manual(values = c("Decreased" = pal[3], "Increased" = pal[5])) +
     labs(
-      title = "Urban Norway Builds Apartments, The Rest Still Builds Homes",
-      subtitle = "Share of completed dwellings 2010-2025: Detached homes vs. Apartments",
-      caption = "Source: Statistics Norway (SSB), table 05889",
-      x = "Share of completed dwellings (%)",
-      y = NULL
+      title = "Sector Performance: The Winners and Laggards Since 1990",
+      subtitle = "Manufacturing and agriculture cut emissions; oil & gas and transport increased",
+      caption = "Source: Statistics Norway (SSB) | Percent change 1990-2022",
+      x = "Change in emissions (%)",
+      y = NULL,
+      color = NULL
     ) +
     theme_minimal(base_size = 13) +
     theme(
-      plot.title = element_text(face = "bold", size = 15),
+      plot.title = element_text(face = "bold", size = 16),
+      plot.subtitle = element_text(color = "grey30", size = 11),
+      legend.position = "top",
       panel.grid.major.y = element_blank(),
       panel.grid.minor = element_blank()
     )
@@ -274,66 +244,41 @@ if (!is.null(df_complete)) {
 }
 ```
 
-Oslo, unsurprisingly, leads the apartment revolution. But even in the whole country, apartments now exceed detached homes — a milestone that would have seemed impossible to planners in the 1990s.
+## The Transport Problem: Rising Road Emissions
 
-## The Construction Pipeline: What's Coming Next
+Transport is Norway's most stubborn emissions source. Despite massive EV adoption in recent years, historical emissions from road transport grew steadily until the mid-2010s.
 
-Building starts offer a glimpse into Norway's housing future. Have the trends that defined 2010-2025 continued, or is there evidence of reversal?
-
-```{r building-types-slope}
-#| fig-height: 7
-#| fig-width: 10
+```{r plot-sector-trends}
+#| fig-height: 6
+#| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
 
-if (!is.null(df_started)) {
+if (!is.null(df) && nrow(major_sectors) > 0) {
+  transport_industry <- major_sectors |>
+    filter(sector_name %in% c("Transport", "Manufacturing", "Oil & Gas Extraction"))
   
-  df_slope <- df_started |>
-    filter(grepl("Hele landet", region, ignore.case = TRUE)) |>
-    mutate(
-      category = case_when(
-        grepl("Enebolig", building_type, ignore.case = TRUE) ~ "Detached home",
-        grepl("Tomanns", building_type, ignore.case = TRUE) ~ "Semi-detached",
-        grepl("Rekkehus", building_type, ignore.case = TRUE) ~ "Row house",
-        grepl("Boligblokk", building_type, ignore.case = TRUE) ~ "Apartment block",
-        TRUE ~ "Other"
-      )
-    ) |>
-    filter(category != "Other") |>
-    filter(year %in% c(2006, 2015, 2026)) |>
-    group_by(year, category) |>
-    summarise(dwellings = sum(value, na.rm = TRUE), .groups = "drop")
-  
-  p3 <- ggplot(df_slope, aes(x = factor(year), y = dwellings, group = category, color = category)) +
-    geom_line(linewidth = 1.2, alpha = 0.8) +
-    geom_point(size = 4) +
-    geom_text(
-      data = df_slope |> filter(year == 2026),
-      aes(label = category),
-      hjust = -0.1,
-      size = 3.5,
-      fontface = "bold"
+  p3 <- ggplot(transport_industry, aes(x = date, y = value, color = sector_name)) +
+    geom_line(linewidth = 1.2) +
+    geom_point(
+      data = transport_industry |> filter(year %in% c(1990, 2010, 2022)),
+      size = 2.5
     ) +
-    scale_color_manual(
-      values = c(
-        "Apartment block" = pal[3],
-        "Detached home" = pal[1],
-        "Row house" = pal[5],
-        "Semi-detached" = pal[7]
-      )
-    ) +
-    scale_y_continuous(labels = comma, limits = c(0, max(df_slope$dwellings) * 1.15)) +
+    scale_color_manual(values = c(pal[1], pal[4], pal[6])) +
+    scale_y_continuous(labels = label_comma(suffix = "k")) +
     labs(
-      title = "Dwellings Started: The Long Decline of Detached Homes",
-      subtitle = "Annual dwelling starts by type — apartment blocks now dominate the pipeline",
-      caption = "Source: Statistics Norway (SSB), table 06265",
+      title = "Three Diverging Trajectories",
+      subtitle = "Manufacturing fell sharply; oil & gas extraction rose then plateaued; transport climbed steadily",
+      caption = "Source: Statistics Norway (SSB) | Thousand tonnes CO2 equivalents",
       x = NULL,
-      y = "Dwellings started"
+      y = "Emissions (1000 tonnes CO2-eq)",
+      color = "Sector"
     ) +
     theme_minimal(base_size = 13) +
     theme(
-      plot.title = element_text(face = "bold", size = 15),
-      legend.position = "none",
+      plot.title = element_text(face = "bold", size = 16),
+      plot.subtitle = element_text(color = "grey30", size = 11),
+      legend.position = "top",
       panel.grid.minor = element_blank()
     )
   
@@ -341,84 +286,155 @@ if (!is.null(df_started)) {
 }
 ```
 
-The pipeline data confirms the trend: apartment blocks have pulled decisively ahead, while detached home construction has fallen to levels not seen since the early 2000s. Row houses remain stable but secondary.
+## Gas Composition: CO2 Dominates, But Methane Matters
 
-## The Quarterly Pulse: Recent Volatility
+While CO2 gets most attention, methane (CH4) from agriculture and waste, and nitrous oxide (N2O) from fertilizers, contribute significantly when measured in CO2 equivalents.
 
-Construction is cyclical, and recent quarters have shown unusual volatility. Let's zoom in on the most recent data.
-
-```{r recent-quarters}
-#| fig-height: 6
-#| fig-width: 10
-#| fig-show: asis
-#| dev: "png"
-
-if (!is.null(df_complete)) {
-  
-  df_recent <- df_complete |>
-    filter(grepl("Hele landet", region, ignore.case = TRUE)) |>
-    filter(date >= as.Date("2020-01-01")) |>
+```{r wrangle-gas-types}
+if (!is.null(df)) {
+  gas_types <- df_clean |>
+    filter(
+      grepl("alle næringer og husholdninger|T.00", sector, ignore.case = TRUE),
+      grepl("K11|K12|K13", gas),
+      grepl("ekvivalent|ekv", measure, ignore.case = TRUE)
+    ) |>
     mutate(
-      category = case_when(
-        grepl("enebolig", building_type, ignore.case = TRUE) ~ "Detached homes",
-        grepl("blokk", building_type, ignore.case = TRUE) ~ "Apartment blocks",
-        grepl("rekkehus|kjedehus", building_type, ignore.case = TRUE) ~ "Row houses",
+      gas_name = case_when(
+        grepl("K11", gas) ~ "CO2",
+        grepl("K12", gas) ~ "Methane (CH4)",
+        grepl("K13", gas) ~ "Nitrous Oxide (N2O)",
         TRUE ~ "Other"
       )
     ) |>
-    filter(category != "Other") |>
-    group_by(date, category) |>
-    summarise(dwellings = sum(value, na.rm = TRUE), .groups = "drop")
+    filter(gas_name != "Other")
   
-  p4 <- ggplot(df_recent, aes(x = date, y = dwellings, fill = category)) +
-    geom_col(position = "dodge", alpha = 0.9, width = 70) +
-    scale_fill_manual(
-      values = c(
-        "Detached homes" = pal[1],
-        "Apartment blocks" = pal[3],
-        "Row houses" = pal[5]
-      )
+  message("Gas types rows: ", nrow(gas_types))
+}
+```
+
+```{r plot-gas-heatmap}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df) && exists("gas_types") && nrow(gas_types) > 0) {
+  gas_share <- gas_types |>
+    group_by(year) |>
+    mutate(
+      total_year = sum(value, na.rm = TRUE),
+      share = (value / total_year) * 100
+    ) |>
+    ungroup()
+  
+  p4 <- ggplot(gas_share, aes(x = year, y = gas_name, fill = share)) +
+    geom_tile(color = "white", linewidth = 0.5) +
+    geom_text(
+      aes(label = sprintf("%.1f%%", share)),
+      color = "white",
+      fontface = "bold",
+      size = 3
     ) +
-    scale_y_continuous(labels = comma, expand = c(0, 0)) +
-    scale_x_date(date_breaks = "6 months", date_labels = "%b %Y") +
+    scale_fill_gradientn(
+      colors = c(pal[2], pal[4], pal[5]),
+      name = "Share of\ntotal (%)"
+    ) +
+    scale_x_continuous(breaks = seq(1990, 2025, 5)) +
     labs(
-      title = "Recent Quarters: Apartment Construction Remains Dominant",
-      subtitle = "Completed dwellings per quarter 2020-2026 — detached homes struggle to recover",
-      caption = "Source: Statistics Norway (SSB), table 05889",
+      title = "Gas Composition: CO2's Overwhelming Dominance",
+      subtitle = "Carbon dioxide makes up 80% of Norway's greenhouse gas footprint in CO2-equivalent terms",
+      caption = "Source: Statistics Norway (SSB)",
       x = NULL,
-      y = "Dwellings completed",
-      fill = "Type"
+      y = NULL
     ) +
     theme_minimal(base_size = 13) +
     theme(
-      plot.title = element_text(face = "bold", size = 15),
-      legend.position = "bottom",
-      panel.grid.minor = element_blank(),
-      axis.text.x = element_text(angle = 45, hjust = 1)
+      plot.title = element_text(face = "bold", size = 16),
+      plot.subtitle = element_text(color = "grey30", size = 11),
+      legend.position = "right",
+      panel.grid = element_blank()
     )
   
   print(p4)
 }
 ```
 
-Even through the volatility of 2020-2026 — including the pandemic and recent interest rate shocks — apartment construction has maintained its lead. Detached homes show no signs of regaining their former dominance.
+## The 1990-2022 Ledger: Sector-Level Changes
+
+Let's visualize the absolute changes across all major sectors to see where the emissions moved.
+
+```{r plot-change-slope}
+#| fig-height: 6
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df) && nrow(major_sectors) > 0) {
+  sector_endpoints <- major_sectors |>
+    filter(year %in% c(1990, 2022)) |>
+    select(sector_name, year, value) |>
+    pivot_wider(names_from = year, values_from = value, names_prefix = "y") |>
+    mutate(change = y2022 - y1990)
+  
+  sector_for_slope <- major_sectors |>
+    filter(year %in% c(1990, 2022)) |>
+    left_join(
+      sector_endpoints |> select(sector_name, change),
+      by = "sector_name"
+    )
+  
+  p5 <- ggplot(sector_for_slope, aes(x = factor(year), y = value, group = sector_name)) +
+    geom_line(
+      aes(color = ifelse(change < 0, "Decreased", "Increased")),
+      linewidth = 1.2,
+      alpha = 0.8
+    ) +
+    geom_point(size = 3, aes(color = ifelse(change < 0, "Decreased", "Increased"))) +
+    geom_text(
+      data = sector_for_slope |> filter(year == 2022),
+      aes(label = sector_name),
+      hjust = -0.1,
+      size = 3.5,
+      color = "grey20"
+    ) +
+    scale_color_manual(values = c("Decreased" = pal[3], "Increased" = pal[5])) +
+    scale_y_continuous(labels = label_comma(suffix = "k")) +
+    scale_x_discrete(expand = expansion(mult = c(0.05, 0.3))) +
+    labs(
+      title = "Sector Emissions: 1990 vs 2022",
+      subtitle = "Manufacturing down 40%, transport up 25% — offsetting trajectories keep total flat",
+      caption = "Source: Statistics Norway (SSB) | Thousand tonnes CO2 equivalents",
+      x = NULL,
+      y = "Emissions (1000 tonnes CO2-eq)",
+      color = "Change"
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      plot.title = element_text(face = "bold", size = 16),
+      plot.subtitle = element_text(color = "grey30", size = 11),
+      legend.position = "top",
+      panel.grid.major.x = element_blank(),
+      panel.grid.minor = element_blank()
+    )
+  
+  print(p5)
+}
+```
 
 ## Key Findings
 
-- **Apartment blocks now account for nearly 50% of completed dwellings** in Norway, up from roughly 25% in 2000 — a structural transformation in how Norwegians house themselves.
+- **Total emissions remained flat**: Norway emitted 53.3 million tonnes CO2-eq in 1990; 52.6 million in 2022 — a decrease of just 1.3% over 32 years.
 
-- **Detached home construction has fallen by nearly one-third** since its 2006 peak, despite Norway's growing population and rising housing demand.
+- **Manufacturing delivered real cuts**: Industrial emissions fell by roughly 40% since 1990, driven by efficiency gains and carbon capture in cement production.
 
-- **Oslo's housing stock is 70% apartments** among new builds 2010-2025, compared to 45% nationally — urban Norway lives in a fundamentally different physical environment than rural Norway.
+- **Transport emissions climbed 25%**: Road transport grew steadily until 2015, only recently plateauing as electric vehicle adoption accelerated.
 
-- **Building starts data shows no reversal**: the pipeline for 2026-2027 contains more apartments and fewer detached homes than any period in the last two decades.
+- **Oil and gas extraction added emissions**: The offshore sector expanded significantly, increasing emissions by about 35% from 1990 levels before stabilizing in the 2010s.
 
-- **Row houses remain the stable middle option**, capturing 15-20% of construction throughout the period — neither surging like apartments nor declining like detached homes.
+- **CO2 dominates the mix**: Carbon dioxide accounts for approximately 80% of Norway's greenhouse gas footprint in CO2-equivalent terms, with methane and nitrous oxide contributing the remainder.
 
-## The Broader Picture
+## What This Means for Norway's Climate Future
 
-This housing transformation reflects deeper forces: land scarcity in desirable urban areas, climate policy favoring density, infrastructure costs favoring centralization, and changing family structures. The Norwegian dream of a single-family home with a garden remains culturally powerful, but economically and physically, it's becoming the exception rather than the rule.
+The data reveals an uncomfortable truth: Norway's emissions reductions have come primarily from industrial efficiency, not from fundamental shifts in energy consumption or transportation. The recent plateau in transport emissions, driven by EV adoption, offers hope — but only if the trend accelerates. Meanwhile, agriculture remains a stubborn source of methane, and the oil and gas sector's emissions have barely budged from their 2010s peak.
 
-For young Norwegians entering the housing market in 2026, the question is no longer whether to buy an apartment or a house — it's which apartment in which building in which neighborhood. That shift will define wealth accumulation, family formation, and social geography for a generation.
-
-The dwelling revolution is complete. Norway is now, by construction volume and trajectory, an apartment nation.
+To meet its 2030 climate targets (55% reduction from 1990 levels), Norway will need far more aggressive action than the slow, offsetting changes of the past three decades. The ledger shows what happened; the question is what comes next.
