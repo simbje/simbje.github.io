@@ -625,6 +625,112 @@ local({
   qmd_raw <<- paste(lines, collapse = "\n")
 })
 
+# ── Reviewer: second-pass fix for common generation failures ──────────────────
+REVIEWER_SYSTEM_PROMPT <- '
+You are a code reviewer for Quarto blog posts that fetch and visualize Statistics Norway (SSB) data.
+Fix ONLY the specific bugs listed below. Do not refactor, rename, or rewrite anything else.
+
+BUG 1 — HARDCODED SSB PARAMETER CODES
+  Wrong: ContentsCode = "Lonn"  or  NACE = c("nr23_6", "pub2X06")  or  Kjonn = "1"
+  Fix:   Replace with TRUE for every dimension parameter except Tid.
+  Rule:  Tid = list(filter="top", values=N) is always correct — never change it.
+  Rule:  Only fix parameters inside ApiData() calls — do not touch filter() or mutate().
+
+BUG 2 — MISSING NULL GUARD ON PLOT CHUNK
+  Wrong: p <- ggplot(df, ...) at top level without an enclosing if (!is.null(df)) { }
+  Fix:   Wrap the entire plot expression in if (!is.null(df)) { ... }
+
+BUG 3 — MISSING print() ON GGPLOT OBJECT
+  Wrong: ggplot(df, aes(x, y)) + geom_line()  (no variable, no print)
+  Fix:   p <- ggplot(df, aes(x, y)) + geom_line(); print(p)
+
+BUG 4 — MONTHLY/SEASONAL CHART WITHOUT has_monthly GUARD
+  Wrong: A month-faceted or month-grouped chart without first checking the time format.
+  Fix:   Add before the chart:
+           has_monthly <- any(stringr::str_detect(df$time_str, "M\\d{2}"), na.rm = TRUE)
+         Wrap the chart in: if (has_monthly) { ... }
+
+BUG 5 — CROSS-CHUNK VARIABLE WITHOUT exists() CHECK
+  Wrong: if (!is.null(df_a)) { use df_combined }
+         when df_combined was created inside a separate earlier if-block.
+  Fix:   Add exists("df_combined") to the guard condition.
+
+OUTPUT FORMAT (required — no preamble, nothing else):
+Line 1:  ISSUES: <comma-separated bug types fixed, e.g. "BUG1,BUG3", or "none">
+Line 2+: The corrected .qmd file starting immediately with --- (YAML front matter).
+'
+
+review_and_fix_qmd <- function(qmd_content, valid_table_ids) {
+  message("Running reviewer pass on generated QMD...")
+
+  reviewer_user <- paste0(
+    "Valid SSB table IDs (only these are allowed): ",
+    paste(valid_table_ids, collapse = ", "), "\n\n",
+    "Review and fix the following .qmd:\n\n",
+    qmd_content
+  )
+
+  resp <- tryCatch(
+    with_retry(function() {
+      request("https://api.anthropic.com/v1/messages") |>
+        req_headers(
+          "x-api-key"         = ANTHROPIC_API_KEY,
+          "anthropic-version" = "2023-06-01",
+          "content-type"      = "application/json"
+        ) |>
+        req_body_json(list(
+          model      = "claude-haiku-4-5-20251001",
+          max_tokens = 16000,
+          system     = REVIEWER_SYSTEM_PROMPT,
+          messages   = list(list(role = "user", content = reviewer_user))
+        )) |>
+        req_timeout(300) |>
+        req_perform()
+    }, max_attempts = 2L, base_wait = 5),
+    error = function(e) {
+      message("  Reviewer API call failed: ", e$message)
+      NULL
+    }
+  )
+
+  if (is.null(resp)) return(list(qmd = qmd_content, issues = "reviewer_api_failed"))
+
+  raw <- tryCatch({
+    r   <- resp_body_json(resp)
+    blk <- Filter(function(b) identical(b$type, "text"), r$content)
+    if (length(blk) == 0L) stop("no text blocks")
+    paste(vapply(blk, function(b) b$text, character(1L)), collapse = "")
+  }, error = function(e) {
+    message("  Reviewer response parse failed: ", e$message)
+    NULL
+  })
+
+  if (is.null(raw)) return(list(qmd = qmd_content, issues = "reviewer_parse_failed"))
+
+  # Extract ISSUES line
+  issues_m <- regmatches(raw, regexpr("(?i)^ISSUES:[ \t]*[^\n]*", raw, perl = TRUE))
+  issues   <- if (length(issues_m) > 0L) {
+    trimws(sub("(?i)^ISSUES:[ \t]*", "", issues_m, perl = TRUE))
+  } else {
+    "unknown"
+  }
+  message("  Reviewer issues found: ", issues)
+
+  # Extract corrected QMD (find first YAML front matter)
+  m <- regexpr("(?m)^---[ \t]*$", raw, perl = TRUE)
+  if (m[[1]] < 0L) {
+    message("  Reviewer did not return valid QMD — using original")
+    return(list(qmd = qmd_content, issues = issues))
+  }
+
+  list(qmd = substring(raw, m[[1]]), issues = issues)
+}
+
+# Apply reviewer pass — failures are non-fatal, fall back to original
+valid_ids       <- vapply(valid_tables, function(r) r$id, character(1L))
+reviewer_result <- review_and_fix_qmd(qmd_raw, valid_ids)
+qmd_raw         <- reviewer_result$qmd
+
 # ── Validate generated QMD before writing ─────────────────────────────────────
 validate_qmd <- function(content) {
   issues <- character(0)
