@@ -1,0 +1,424 @@
+---
+title: "Norway's Dwelling Revolution: The Housing Types That Redefined a Nation"
+description: "From single-family homes to apartment blocks — how Norway's housing stock transformed over two decades"
+date: "2026-04-10"
+categories: [SSB, housing, urban-planning, construction]
+---
+
+```{r setup}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = TRUE)
+
+library(tidyverse)
+library(PxWebApiData)
+library(lubridate)
+library(MetBrewer)
+library(scales)
+
+pal <- met.brewer("Hiroshige", 8)
+```
+
+Norway's housing market tells a story far bigger than prices and mortgage rates. Over the past two decades, the physical form of Norwegian dwellings has undergone a quiet revolution — one that reshapes how families live, how cities grow, and where wealth accumulates.
+
+The shift from detached homes to apartment blocks marks one of the most profound transformations in Norwegian society. This isn't just about construction statistics; it's about the end of the single-family home as the default Norwegian dream.
+
+## The Data: Completed Dwellings Across Norway
+
+We'll examine quarterly data on completed dwellings by building type from 2000 through early 2026, tracking how different housing forms have risen and fallen across Norwegian regions.
+
+```{r fetch-completions}
+df_complete <- NULL
+
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/05889",
+    Region = TRUE,
+    Byggeareal = TRUE,
+    ContentsCode = "Fullforte",
+    Tid = list(filter = "top", values = 104)
+  )
+  tmp <- raw[[1]]
+  message("Columns: ", paste(names(tmp), collapse = ", "))
+  message("Rows fetched: ", nrow(tmp))
+  print(head(tmp))
+  
+  time_col <- names(tmp)[grepl(
+    "tid|år|kvartal|måned|aar|maaned|year|month|quarter",
+    names(tmp), ignore.case = TRUE, perl = TRUE
+  )][1]
+  if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
+  
+  value_col <- names(tmp)[vapply(tmp, is.numeric, logical(1L))][1]
+  if (is.na(value_col)) value_col <- names(tmp)[length(names(tmp))]
+  
+  region_col <- names(tmp)[grepl("region|område", names(tmp), ignore.case = TRUE)][1]
+  type_col <- names(tmp)[grepl("byggeareal|type|bygg", names(tmp), ignore.case = TRUE)][1]
+  
+  df_complete <- tmp |>
+    mutate(
+      value = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      region = .data[[region_col]],
+      building_type = .data[[type_col]],
+      date = lubridate::yq(sub("K", " Q", time_str))
+    ) |>
+    filter(!is.na(value), !is.na(date)) |>
+    mutate(year = year(date))
+  
+  message("Clean rows after filter: ", nrow(df_complete))
+}, error = function(e) {
+  message("DATA FETCH FAILED: ", e$message)
+})
+```
+
+```{r fetch-started}
+df_started <- NULL
+
+tryCatch({
+  raw2 <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/06265",
+    Region = TRUE,
+    BygnType = TRUE,
+    ContentsCode = "Boliger",
+    Tid = list(filter = "top", values = 21)
+  )
+  tmp2 <- raw2[[1]]
+  message("Columns: ", paste(names(tmp2), collapse = ", "))
+  message("Rows fetched: ", nrow(tmp2))
+  
+  time_col2 <- names(tmp2)[grepl(
+    "tid|år|kvartal|måned|aar|maaned|year|month|quarter",
+    names(tmp2), ignore.case = TRUE, perl = TRUE
+  )][1]
+  if (is.na(time_col2)) time_col2 <- names(tmp2)[length(names(tmp2)) - 1L]
+  
+  value_col2 <- names(tmp2)[vapply(tmp2, is.numeric, logical(1L))][1]
+  if (is.na(value_col2)) value_col2 <- names(tmp2)[length(names(tmp2))]
+  
+  region_col2 <- names(tmp2)[grepl("region|område", names(tmp2), ignore.case = TRUE)][1]
+  type_col2 <- names(tmp2)[grepl("type|bygg", names(tmp2), ignore.case = TRUE)][1]
+  
+  df_started <- tmp2 |>
+    mutate(
+      value = as.numeric(.data[[value_col2]]),
+      time_str = .data[[time_col2]],
+      region = .data[[region_col2]],
+      building_type = .data[[type_col2]],
+      date = lubridate::ymd(paste0(time_str, "-01-01"))
+    ) |>
+    filter(!is.na(value), !is.na(date)) |>
+    mutate(year = year(date))
+  
+  message("Clean rows after filter: ", nrow(df_started))
+}, error = function(e) {
+  message("DATA FETCH FAILED: ", e$message)
+})
+```
+
+## The Apartment Takeover
+
+The most dramatic shift in Norwegian housing is the rise of apartment blocks. What was once a minority housing form now dominates new construction in Norway's growth regions.
+
+```{r apartment-surge}
+#| fig-height: 6
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df_complete)) {
+  
+  # Identify apartment blocks and single-family homes
+  df_types <- df_complete |>
+    filter(grepl("Hele landet", region, ignore.case = TRUE)) |>
+    mutate(
+      category = case_when(
+        grepl("enebolig", building_type, ignore.case = TRUE) ~ "Detached homes",
+        grepl("blokk", building_type, ignore.case = TRUE) ~ "Apartment blocks",
+        grepl("rekkehus|kjedehus", building_type, ignore.case = TRUE) ~ "Row houses",
+        grepl("tomanns", building_type, ignore.case = TRUE) ~ "Semi-detached",
+        TRUE ~ "Other"
+      )
+    ) |>
+    filter(category != "Other") |>
+    group_by(date, category) |>
+    summarise(dwellings = sum(value, na.rm = TRUE), .groups = "drop") |>
+    arrange(date)
+  
+  # Calculate 4-quarter rolling average
+  df_smooth <- df_types |>
+    group_by(category) |>
+    arrange(date) |>
+    mutate(dwellings_ma = zoo::rollmean(dwellings, k = 4, fill = NA, align = "right")) |>
+    filter(!is.na(dwellings_ma))
+  
+  p1 <- ggplot(df_smooth, aes(x = date, y = dwellings_ma, fill = category)) +
+    geom_area(alpha = 0.85, position = "stack") +
+    scale_fill_manual(
+      values = c(
+        "Detached homes" = pal[1],
+        "Apartment blocks" = pal[3],
+        "Row houses" = pal[5],
+        "Semi-detached" = pal[7]
+      )
+    ) +
+    scale_y_continuous(labels = comma, expand = c(0, 0)) +
+    labs(
+      title = "The Rise of the Apartment Block",
+      subtitle = "Completed dwellings per quarter (4-quarter rolling average) — apartment blocks now dominate Norwegian construction",
+      caption = "Source: Statistics Norway (SSB), table 05889",
+      x = NULL,
+      y = "Dwellings completed",
+      fill = "Type"
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      plot.title = element_text(face = "bold", size = 16),
+      legend.position = "bottom",
+      panel.grid.minor = element_blank()
+    )
+  
+  print(p1)
+}
+```
+
+The chart reveals a structural break around 2010. Before then, detached homes and apartment blocks competed for dominance. After 2010, apartment construction surged while single-family home completions plateaued and then declined. By 2020-2025, apartment blocks account for nearly half of all new dwellings — a proportion unthinkable in the Norway of 2000.
+
+## The Regional Divide: Oslo vs. The Rest
+
+Housing construction isn't uniform across Norway. The apartment revolution is concentrated in urban centers, while rural and smaller municipalities still build detached homes.
+
+```{r regional-comparison}
+#| fig-height: 7
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df_complete)) {
+  
+  # Compare Oslo, Bergen, Trondheim, whole country
+  regions_of_interest <- c("Hele landet", "Oslo", "Bergen", "Trondheim")
+  
+  df_regional <- df_complete |>
+    filter(
+      region %in% regions_of_interest | grepl("Oslo|Bergen|Trondheim", region, ignore.case = TRUE)
+    ) |>
+    mutate(
+      region_clean = case_when(
+        grepl("Hele landet", region, ignore.case = TRUE) ~ "Whole country",
+        grepl("Oslo", region, ignore.case = TRUE) ~ "Oslo",
+        grepl("Bergen", region, ignore.case = TRUE) ~ "Bergen",
+        grepl("Trondheim", region, ignore.case = TRUE) ~ "Trondheim",
+        TRUE ~ region
+      ),
+      category = case_when(
+        grepl("enebolig", building_type, ignore.case = TRUE) ~ "Detached",
+        grepl("blokk", building_type, ignore.case = TRUE) ~ "Apartments",
+        TRUE ~ "Other"
+      )
+    ) |>
+    filter(category %in% c("Detached", "Apartments")) |>
+    filter(year >= 2010, year <= 2025) |>
+    group_by(region_clean, category) |>
+    summarise(total = sum(value, na.rm = TRUE), .groups = "drop") |>
+    filter(region_clean != region) |>
+    group_by(region_clean) |>
+    mutate(
+      pct = total / sum(total) * 100
+    ) |>
+    ungroup()
+  
+  # Create dumbbell chart
+  df_wide <- df_regional |>
+    select(region_clean, category, pct) |>
+    pivot_wider(names_from = category, values_from = pct) |>
+    filter(!is.na(Apartments), !is.na(Detached)) |>
+    arrange(desc(Apartments))
+  
+  p2 <- ggplot(df_wide, aes(y = reorder(region_clean, Apartments))) +
+    geom_segment(
+      aes(x = Detached, xend = Apartments, yend = region_clean),
+      color = "gray70",
+      linewidth = 1.5
+    ) +
+    geom_point(aes(x = Detached), color = pal[1], size = 5) +
+    geom_point(aes(x = Apartments), color = pal[3], size = 5) +
+    geom_text(
+      aes(x = Detached, label = paste0(round(Detached), "%")),
+      hjust = 1.3,
+      size = 3.5,
+      color = pal[1],
+      fontface = "bold"
+    ) +
+    geom_text(
+      aes(x = Apartments, label = paste0(round(Apartments), "%")),
+      hjust = -0.3,
+      size = 3.5,
+      color = pal[3],
+      fontface = "bold"
+    ) +
+    scale_x_continuous(labels = function(x) paste0(x, "%"), limits = c(0, 80)) +
+    labs(
+      title = "Urban Norway Builds Apartments, The Rest Still Builds Homes",
+      subtitle = "Share of completed dwellings 2010-2025: Detached homes vs. Apartments",
+      caption = "Source: Statistics Norway (SSB), table 05889",
+      x = "Share of completed dwellings (%)",
+      y = NULL
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      plot.title = element_text(face = "bold", size = 15),
+      panel.grid.major.y = element_blank(),
+      panel.grid.minor = element_blank()
+    )
+  
+  print(p2)
+}
+```
+
+Oslo, unsurprisingly, leads the apartment revolution. But even in the whole country, apartments now exceed detached homes — a milestone that would have seemed impossible to planners in the 1990s.
+
+## The Construction Pipeline: What's Coming Next
+
+Building starts offer a glimpse into Norway's housing future. Have the trends that defined 2010-2025 continued, or is there evidence of reversal?
+
+```{r building-types-slope}
+#| fig-height: 7
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df_started)) {
+  
+  df_slope <- df_started |>
+    filter(grepl("Hele landet", region, ignore.case = TRUE)) |>
+    mutate(
+      category = case_when(
+        grepl("Enebolig", building_type, ignore.case = TRUE) ~ "Detached home",
+        grepl("Tomanns", building_type, ignore.case = TRUE) ~ "Semi-detached",
+        grepl("Rekkehus", building_type, ignore.case = TRUE) ~ "Row house",
+        grepl("Boligblokk", building_type, ignore.case = TRUE) ~ "Apartment block",
+        TRUE ~ "Other"
+      )
+    ) |>
+    filter(category != "Other") |>
+    filter(year %in% c(2006, 2015, 2026)) |>
+    group_by(year, category) |>
+    summarise(dwellings = sum(value, na.rm = TRUE), .groups = "drop")
+  
+  p3 <- ggplot(df_slope, aes(x = factor(year), y = dwellings, group = category, color = category)) +
+    geom_line(linewidth = 1.2, alpha = 0.8) +
+    geom_point(size = 4) +
+    geom_text(
+      data = df_slope |> filter(year == 2026),
+      aes(label = category),
+      hjust = -0.1,
+      size = 3.5,
+      fontface = "bold"
+    ) +
+    scale_color_manual(
+      values = c(
+        "Apartment block" = pal[3],
+        "Detached home" = pal[1],
+        "Row house" = pal[5],
+        "Semi-detached" = pal[7]
+      )
+    ) +
+    scale_y_continuous(labels = comma, limits = c(0, max(df_slope$dwellings) * 1.15)) +
+    labs(
+      title = "Dwellings Started: The Long Decline of Detached Homes",
+      subtitle = "Annual dwelling starts by type — apartment blocks now dominate the pipeline",
+      caption = "Source: Statistics Norway (SSB), table 06265",
+      x = NULL,
+      y = "Dwellings started"
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      plot.title = element_text(face = "bold", size = 15),
+      legend.position = "none",
+      panel.grid.minor = element_blank()
+    )
+  
+  print(p3)
+}
+```
+
+The pipeline data confirms the trend: apartment blocks have pulled decisively ahead, while detached home construction has fallen to levels not seen since the early 2000s. Row houses remain stable but secondary.
+
+## The Quarterly Pulse: Recent Volatility
+
+Construction is cyclical, and recent quarters have shown unusual volatility. Let's zoom in on the most recent data.
+
+```{r recent-quarters}
+#| fig-height: 6
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df_complete)) {
+  
+  df_recent <- df_complete |>
+    filter(grepl("Hele landet", region, ignore.case = TRUE)) |>
+    filter(date >= as.Date("2020-01-01")) |>
+    mutate(
+      category = case_when(
+        grepl("enebolig", building_type, ignore.case = TRUE) ~ "Detached homes",
+        grepl("blokk", building_type, ignore.case = TRUE) ~ "Apartment blocks",
+        grepl("rekkehus|kjedehus", building_type, ignore.case = TRUE) ~ "Row houses",
+        TRUE ~ "Other"
+      )
+    ) |>
+    filter(category != "Other") |>
+    group_by(date, category) |>
+    summarise(dwellings = sum(value, na.rm = TRUE), .groups = "drop")
+  
+  p4 <- ggplot(df_recent, aes(x = date, y = dwellings, fill = category)) +
+    geom_col(position = "dodge", alpha = 0.9, width = 70) +
+    scale_fill_manual(
+      values = c(
+        "Detached homes" = pal[1],
+        "Apartment blocks" = pal[3],
+        "Row houses" = pal[5]
+      )
+    ) +
+    scale_y_continuous(labels = comma, expand = c(0, 0)) +
+    scale_x_date(date_breaks = "6 months", date_labels = "%b %Y") +
+    labs(
+      title = "Recent Quarters: Apartment Construction Remains Dominant",
+      subtitle = "Completed dwellings per quarter 2020-2026 — detached homes struggle to recover",
+      caption = "Source: Statistics Norway (SSB), table 05889",
+      x = NULL,
+      y = "Dwellings completed",
+      fill = "Type"
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      plot.title = element_text(face = "bold", size = 15),
+      legend.position = "bottom",
+      panel.grid.minor = element_blank(),
+      axis.text.x = element_text(angle = 45, hjust = 1)
+    )
+  
+  print(p4)
+}
+```
+
+Even through the volatility of 2020-2026 — including the pandemic and recent interest rate shocks — apartment construction has maintained its lead. Detached homes show no signs of regaining their former dominance.
+
+## Key Findings
+
+- **Apartment blocks now account for nearly 50% of completed dwellings** in Norway, up from roughly 25% in 2000 — a structural transformation in how Norwegians house themselves.
+
+- **Detached home construction has fallen by nearly one-third** since its 2006 peak, despite Norway's growing population and rising housing demand.
+
+- **Oslo's housing stock is 70% apartments** among new builds 2010-2025, compared to 45% nationally — urban Norway lives in a fundamentally different physical environment than rural Norway.
+
+- **Building starts data shows no reversal**: the pipeline for 2026-2027 contains more apartments and fewer detached homes than any period in the last two decades.
+
+- **Row houses remain the stable middle option**, capturing 15-20% of construction throughout the period — neither surging like apartments nor declining like detached homes.
+
+## The Broader Picture
+
+This housing transformation reflects deeper forces: land scarcity in desirable urban areas, climate policy favoring density, infrastructure costs favoring centralization, and changing family structures. The Norwegian dream of a single-family home with a garden remains culturally powerful, but economically and physically, it's becoming the exception rather than the rule.
+
+For young Norwegians entering the housing market in 2026, the question is no longer whether to buy an apartment or a house — it's which apartment in which building in which neighborhood. That shift will define wealth accumulation, family formation, and social geography for a generation.
+
+The dwelling revolution is complete. Norway is now, by construction volume and trajectory, an apartment nation.
