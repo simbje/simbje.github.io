@@ -331,23 +331,33 @@ tryCatch({{
 
 ## Column handling (CRITICAL)
 - NEVER use hardcoded Norwegian column names in rename() or filter()
-- Detect categorical columns by partial match using these patterns:
+- Norwegian special characters MUST use regex dot (.) in grepl patterns — never the raw character:
+    æ (U+00E6) → .   e.g. næring → "n.ring",  næringer → "n.ringer"
+    ø (U+00F8) → .   e.g. kjønn  → "kj.nn",   størrelse → "st.rrelse", lønn → "l.nn"
+    å (U+00E5) → .   e.g. år     → ".r",       måned → "m.ned"  (or use \\u00e5r / m\\u00e5ned)
+- Canonical detection patterns for the most common SSB column types:
   ```r
-  # Sector / industry column  (Norwegian: "næring" — use n.ring to match æ safely)
-  sector_col  <- names(tmp)[grepl("n.ring|nace|industry|sektor|branch", names(tmp), ignore.case=TRUE)][1]
+  # Sector / industry  (næring)
+  sector_col <- names(tmp)[grepl("n.ring|nace|industry|sektor|branch", names(tmp), ignore.case=TRUE)][1]
 
-  # Component / gas type / statistics variable
-  comp_col    <- names(tmp)[grepl("komponent|contents|innhold|statistikkvariabel|variable|type", names(tmp), ignore.case=TRUE)][1]
+  # Gas / component / statistics variable  (komponent, statistikkvariabel)
+  comp_col   <- names(tmp)[grepl("komponent|contents|innhold|statistikkvariabel|variable|type", names(tmp), ignore.case=TRUE)][1]
 
-  # Gender
-  gender_col  <- names(tmp)[grepl("kj.nn|gender|sex|kjonn", names(tmp), ignore.case=TRUE)][1]
+  # Gender  (kjønn)
+  gender_col <- names(tmp)[grepl("kj.nn|gender|sex|kjonn", names(tmp), ignore.case=TRUE)][1]
 
-  # Region / municipality
-  region_col  <- names(tmp)[grepl("region|kommune|fylke", names(tmp), ignore.case=TRUE)][1]
+  # Age  (alder)
+  age_col    <- names(tmp)[grepl("alder|age|aldersgruppe", names(tmp), ignore.case=TRUE)][1]
+
+  # Region / municipality  (fylke, kommune)
+  region_col <- names(tmp)[grepl("region|kommune|fylke", names(tmp), ignore.case=TRUE)][1]
+
+  # Wage / benefit  (lønn, stønad)
+  wage_col   <- names(tmp)[grepl("l.nn|wage|salary|earnings", names(tmp), ignore.case=TRUE)][1]
   ```
-- ALWAYS add an NA guard immediately after each column detection before using it:
+- ALWAYS add an NA guard right after each detection before the column is used in mutate/filter:
   ```r
-  if (is.na(sector_col)) stop("Cannot detect sector column — available: ", paste(names(tmp), collapse=", "))
+  if (is.na(sector_col)) stop("Cannot detect sector column — columns are: ", paste(names(tmp), collapse=", "))
   ```
 - Then use `.data[[sector_col]]` in mutate/filter, never the bare string
 
@@ -667,15 +677,25 @@ BUG 5 — CROSS-CHUNK VARIABLE WITHOUT exists() CHECK
          when df_combined was created inside a separate earlier if-block.
   Fix:   Add exists("df_combined") to the guard condition.
 
-BUG 6 — COLUMN DETECTION PATTERN MISSING NORWEGIAN NAMES OR MISSING NA GUARD
-  Check every `*_col <- names(tmp)[grepl(...)]` assignment for categorical columns.
-  a) Pattern must cover Norwegian SSB column names using these canonical patterns:
-       sector/industry : "n.ring|nace|industry|sektor|branch"   (n.ring matches næring)
+BUG 6 — COLUMN DETECTION PATTERN MISSING NORWEGIAN CHARACTERS OR MISSING NA GUARD
+  Norwegian special characters MUST be represented as regex dot (.) in grepl patterns:
+    æ → .   (næring → "n.ring",  næringer → "n.ringer")
+    ø → .   (kjønn  → "kj.nn",   størrelse → "st.rrelse",  lønn → "l.nn")
+    å → .   (år     → ".r",      måned → "m.ned")
+  Exception: the time_col pattern may use \\u00e5r / m\\u00e5ned — those are also correct.
+
+  a) Check every `*_col <- names(tmp)[grepl(...)]` pattern that targets a categorical column.
+     Canonical safe patterns:
+       sector/industry : "n.ring|nace|industry|sektor|branch"
        gas/component   : "komponent|contents|innhold|statistikkvariabel|variable"
        gender          : "kj.nn|gender|sex|kjonn"
+       age             : "alder|age|aldersgruppe"
        region          : "region|kommune|fylke"
-     If a column type is used but the grepl pattern omits the Norwegian terms, add them.
-  b) After EVERY `*_col <- names(tmp)[grepl(...)][1]` assignment, there must be an NA guard
+       wage/benefit    : "l.nn|wage|salary|st.nad"
+     If the pattern contains a raw æ, ø, or å character, replace it with ".".
+     If the pattern omits the Norwegian term entirely, add it.
+
+  b) After EVERY `*_col <- names(tmp)[grepl(...)][1]` assignment there must be an NA guard
      before the column is used in mutate() or filter():
        if (is.na(sector_col)) stop("Cannot detect sector column: ", paste(names(tmp), collapse=", "))
      If the guard is missing, add it.
