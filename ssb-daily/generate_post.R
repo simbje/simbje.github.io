@@ -331,13 +331,25 @@ tryCatch({{
 
 ## Column handling (CRITICAL)
 - NEVER use hardcoded Norwegian column names in rename() or filter()
-- Detect categorical columns by partial match:
+- Detect categorical columns by partial match using these patterns:
   ```r
-  gender_col <- names(tmp)[grepl("kj.nn|gender|sex|kjonn", names(tmp), ignore.case=TRUE)][1]
-  both_val   <- unique(df[[gender_col]])[grepl("begge|total|alle|both",
-                  unique(df[[gender_col]]), ignore.case=TRUE)][1]
-  df_f <- df |> filter(.data[[gender_col]] == both_val)
+  # Sector / industry column  (Norwegian: "næring" — use n.ring to match æ safely)
+  sector_col  <- names(tmp)[grepl("n.ring|nace|industry|sektor|branch", names(tmp), ignore.case=TRUE)][1]
+
+  # Component / gas type / statistics variable
+  comp_col    <- names(tmp)[grepl("komponent|contents|innhold|statistikkvariabel|variable|type", names(tmp), ignore.case=TRUE)][1]
+
+  # Gender
+  gender_col  <- names(tmp)[grepl("kj.nn|gender|sex|kjonn", names(tmp), ignore.case=TRUE)][1]
+
+  # Region / municipality
+  region_col  <- names(tmp)[grepl("region|kommune|fylke", names(tmp), ignore.case=TRUE)][1]
   ```
+- ALWAYS add an NA guard immediately after each column detection before using it:
+  ```r
+  if (is.na(sector_col)) stop("Cannot detect sector column — available: ", paste(names(tmp), collapse=", "))
+  ```
+- Then use `.data[[sector_col]]` in mutate/filter, never the bare string
 
 ## Plotting rules (CRITICAL)
 - ALWAYS: assign plot to variable, then call print() explicitly
@@ -654,6 +666,19 @@ BUG 5 — CROSS-CHUNK VARIABLE WITHOUT exists() CHECK
   Wrong: if (!is.null(df_a)) { use df_combined }
          when df_combined was created inside a separate earlier if-block.
   Fix:   Add exists("df_combined") to the guard condition.
+
+BUG 6 — COLUMN DETECTION PATTERN MISSING NORWEGIAN NAMES OR MISSING NA GUARD
+  Check every `*_col <- names(tmp)[grepl(...)]` assignment for categorical columns.
+  a) Pattern must cover Norwegian SSB column names using these canonical patterns:
+       sector/industry : "n.ring|nace|industry|sektor|branch"   (n.ring matches næring)
+       gas/component   : "komponent|contents|innhold|statistikkvariabel|variable"
+       gender          : "kj.nn|gender|sex|kjonn"
+       region          : "region|kommune|fylke"
+     If a column type is used but the grepl pattern omits the Norwegian terms, add them.
+  b) After EVERY `*_col <- names(tmp)[grepl(...)][1]` assignment, there must be an NA guard
+     before the column is used in mutate() or filter():
+       if (is.na(sector_col)) stop("Cannot detect sector column: ", paste(names(tmp), collapse=", "))
+     If the guard is missing, add it.
 
 OUTPUT FORMAT (required — no preamble, nothing else):
 Line 1:  ISSUES: <comma-separated bug types fixed, e.g. "BUG1,BUG3", or "none">
