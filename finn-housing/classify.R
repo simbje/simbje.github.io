@@ -190,6 +190,120 @@ if (nrow(unclassified) == 0) {
   }
 }
 
+# ── Standard classification ───────────────────────────────────────────────────
+# Separate pass: classify the interior standard / condition of each listing.
+# Uses description (Om boligen), year_built, price/m², and title as signals.
+
+STANDARD_PROMPT <- '
+You are a Norwegian real estate expert assessing the interior standard and physical condition of Oslo housing listings into exactly one of these 5 categories:
+
+1. Luxury finish       — Premium materials throughout: marble or stone surfaces, designer kitchen brands (Gaggenau, Miele, Bulthaup, Kvik high-end), underfloor heating in all rooms, bespoke joinery, high-specification bathrooms. Often explicitly described as "eksklusiv", "luksus", or very high price/m².
+2. High standard       — Fully renovated within approximately the last 10 years: new kitchen with quality appliances, updated bathroom(s), modern flooring throughout. Described as "nyrenovert", "totalrenovert", "gjennomgående oppgradert", or similar.
+3. Good standard       — Well-maintained and functional. Kitchen and bathroom in reasonable modern condition. Normal wear for the age of the building. No immediate renovation needed.
+4. Average / dated     — Functional but clearly dated finishes. Older kitchen or bathroom, worn flooring, or cosmetic issues. Liveable as-is but would benefit from updating. Often older buildings with no mention of renovation.
+5. Renovation project  — Requires significant work before comfortable habitation. Keywords: "oppussingsobjekt", "selges som den er", "as-is", "stor oppgraderingspotensial", very low price/m² (< 40 000 NOK/m²) for the Oslo area, or description explicitly states the property needs renovation.
+
+Rules:
+- Base the classification primarily on the description text.
+- Year built is a secondary signal: built after 2015 suggests modern standard; built before 1975 with no mention of renovation suggests Average / dated or Renovation project.
+- Explicit renovation keywords in title or description override age-based assumptions.
+- "Renovation project" requires clear evidence — do not assign it based on age alone.
+- If the description is very short or absent, use title and year_built to make your best assessment.
+
+Respond with ONLY valid JSON (no markdown, no explanation outside JSON):
+{"standard": "<category name>", "confidence": "high|medium|low", "reasoning": "<1-2 sentence explanation>"}
+'
+
+VALID_STANDARDS <- c("Luxury finish", "High standard", "Good standard",
+                     "Average / dated", "Renovation project")
+
+needs_standard <- dbGetQuery(con, paste0(
+  "SELECT finn_id, title, price, size_sqm, year_built, property_type, description
+   FROM listings
+   WHERE standard IS NULL
+     AND (description IS NOT NULL OR title IS NOT NULL)
+   LIMIT ", BATCH_SIZE
+))
+
+message("\nListings needing standard classification: ", nrow(needs_standard))
+
+if (nrow(needs_standard) > 0) {
+  for (i in seq_len(nrow(needs_standard))) {
+    row <- needs_standard[i, ]
+    message("  [", i, "/", nrow(needs_standard), "] Standard for finn_id=", row$finn_id)
+
+    price_sqm_val <- if (!is.na(row$price) && !is.na(row$size_sqm) && row$size_sqm > 0)
+      round(row$price / row$size_sqm) else NA_integer_
+
+    # Use more of the description for standard — condition is often in the detail
+    desc_std <- if (!is.na(row$description) && nchar(row$description) > 600) {
+      paste0(substr(row$description, 1, 597), "...")
+    } else {
+      row$description
+    }
+
+    std_prompt <- paste0(
+      "Assess the interior standard of this Oslo housing listing:\n\n",
+      "Title: ",       if (!is.na(row$title))      row$title      else "N/A", "\n",
+      "Year built: ",  if (!is.na(row$year_built))  row$year_built  else "N/A", "\n",
+      "Type: ",        if (!is.na(row$property_type)) row$property_type else "N/A", "\n",
+      "Price/m²: ",    if (!is.na(price_sqm_val))  paste0(format(price_sqm_val, big.mark = " "), " NOK/m²") else "N/A", "\n",
+      "Description: ", if (!is.na(desc_std))        desc_std        else "N/A"
+    )
+
+    result <- tryCatch({
+      response <- with_retry(function() {
+        request("https://api.anthropic.com/v1/messages") |>
+          req_headers(
+            "x-api-key"         = ANTHROPIC_API_KEY,
+            "anthropic-version" = "2023-06-01",
+            "content-type"      = "application/json"
+          ) |>
+          req_body_json(list(
+            model      = "claude-sonnet-4-6",
+            max_tokens = 256,
+            system     = trimws(STANDARD_PROMPT),
+            messages   = list(list(role = "user", content = std_prompt))
+          )) |>
+          req_timeout(60) |>
+          req_perform()
+      }, max_attempts = 3L, base_wait = 3)
+
+      raw_json  <- resp_body_json(response)
+      txt_blocks <- Filter(function(b) identical(b$type, "text"), raw_json$content)
+      raw_text  <- paste(vapply(txt_blocks, function(b) b$text, character(1L)), collapse = "")
+      raw_text  <- str_remove_all(raw_text, "```json|```")
+      fromJSON(trimws(raw_text))
+
+    }, error = function(e) {
+      message("    Standard classification failed: ", e$message)
+      NULL
+    })
+
+    if (is.null(result)) next
+
+    std_val  <- result$standard
+    conf_val <- result$confidence
+    reas_val <- result$reasoning
+
+    if (!std_val %in% VALID_STANDARDS) {
+      scores  <- vapply(VALID_STANDARDS, function(v)
+        adist(tolower(std_val), tolower(v)), numeric(1))
+      std_val <- VALID_STANDARDS[which.min(scores)]
+      message("    Fuzzy-matched '", result$standard, "' → '", std_val, "'")
+    }
+
+    dbExecute(con, "
+      UPDATE listings
+      SET standard = ?, standard_confidence = ?, standard_reasoning = ?
+      WHERE finn_id = ?",
+      params = list(std_val, conf_val, reas_val, row$finn_id)
+    )
+
+    Sys.sleep(0.3)
+  }
+}
+
 # ── Geocode listings that lack coordinates ────────────────────────────────────
 # Uses OpenStreetMap Nominatim (free, no API key). Max 1 req/sec per ToS.
 GEOCODE_BATCH <- 30  # geocode at most this many per run
@@ -240,7 +354,8 @@ message("\nExporting CSV snapshot to: ", CSV_PATH)
 all_listings <- dbGetQuery(con, "
   SELECT finn_id, title, price, size_sqm, rooms, address, neighborhood,
          property_type, year_built, broker, url, scraped_at, lat, lon,
-         category, category_confidence, category_reasoning, classified_at
+         category, category_confidence, category_reasoning, classified_at,
+         standard, standard_confidence, standard_reasoning
   FROM listings
   ORDER BY scraped_at DESC
 ")

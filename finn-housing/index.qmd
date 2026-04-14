@@ -56,8 +56,8 @@ df <- raw |>
     # Cast all optional text columns to character — prevents logical-NA vs character
     # type conflicts in coalesce() when columns are entirely NA in the CSV
     across(c(title, address, neighborhood, property_type, broker,
-             category, category_confidence, category_reasoning,
-             classified_at, url),
+             category, category_confidence, category_reasoning, classified_at,
+             standard, standard_confidence, standard_reasoning, url),
            as.character),
     scraped_date = as.Date(substr(scraped_at, 1, 10)),
     price_m      = price / 1e6,
@@ -373,6 +373,80 @@ ggplot(cat_counts, aes(x = n, y = fct_rev(category), fill = category)) +
   theme_minimal(base_size = 13) +
   theme(panel.grid.major.y = element_blank(),
         axis.text.y = element_text(size = 11))
+```
+
+---
+
+## Listing Standard
+
+*AI-assessed interior quality and condition based on the description (Om boligen), year built, and price/m².*
+
+```{r standard-chart, fig.height=4, fig.width=10}
+STANDARD_COLORS <- c(
+  "Luxury finish"      = "#8B0000",
+  "High standard"      = "#2A9D8F",
+  "Good standard"      = "#457B9D",
+  "Average / dated"    = "#E9C46A",
+  "Renovation project" = "#E76F51"
+)
+STANDARD_ORDER <- c("Luxury finish", "High standard", "Good standard",
+                    "Average / dated", "Renovation project")
+
+std_df <- df |>
+  filter(!is.na(standard), standard != "") |>
+  mutate(standard = factor(standard, levels = STANDARD_ORDER))
+
+if (nrow(std_df) < 3) {
+  cat("> Standard classification will appear after classify.R has run.\n")
+} else {
+  std_counts <- std_df |>
+    count(standard, name = "n") |>
+    mutate(
+      pct   = n / sum(n) * 100,
+      label = paste0(n, "  (", round(pct), "%)")
+    )
+
+  ggplot(std_counts, aes(x = n, y = fct_rev(standard), fill = standard)) +
+    geom_col(show.legend = FALSE, width = 0.68) +
+    geom_text(aes(label = label), hjust = -0.1, size = 3.4, colour = "grey25") +
+    scale_fill_manual(values = STANDARD_COLORS) +
+    scale_x_continuous(expand = expansion(mult = c(0, 0.18))) +
+    labs(x = "Listings", y = NULL,
+         title = "Listing standard distribution",
+         subtitle = "AI-assessed from description text, year built, and price/m²") +
+    theme_minimal(base_size = 13) +
+    theme(panel.grid.major.y = element_blank(),
+          axis.text.y = element_text(size = 11))
+}
+```
+
+```{r standard-price, fig.height=4.5, fig.width=10}
+std_price_df <- df |>
+  filter(!is.na(standard), standard != "",
+         !is.na(price_sqm), price_sqm > 10000, price_sqm < 250000) |>
+  mutate(standard = factor(standard, levels = STANDARD_ORDER))
+
+enough_std <- std_price_df |> count(standard) |> filter(n >= 3) |> pull(standard)
+
+if (length(enough_std) < 2) {
+  cat("> Price by standard will appear with more data.\n")
+} else {
+  ggplot(std_price_df |> filter(standard %in% enough_std),
+         aes(x = price_sqm / 1000, y = fct_rev(standard), fill = standard)) +
+    geom_violin(trim = TRUE, show.legend = FALSE, alpha = 0.72, linewidth = 0.25) +
+    geom_boxplot(width = 0.12, outlier.shape = NA, show.legend = FALSE,
+                 colour = "grey30", fill = "white", alpha = 0.6) +
+    stat_summary(fun = median, geom = "point",
+                 shape = 21, size = 2, fill = "white", colour = "grey30",
+                 show.legend = FALSE) +
+    scale_fill_manual(values = STANDARD_COLORS) +
+    scale_x_continuous(labels = label_number(suffix = "k NOK", accuracy = 1)) +
+    labs(x = "Price/m² (1 000 NOK)", y = NULL,
+         title = "Price per m² by listing standard",
+         subtitle = "White dot = median; box = IQR") +
+    theme_minimal(base_size = 13) +
+    theme(panel.grid.major.y = element_blank())
+}
 ```
 
 ---

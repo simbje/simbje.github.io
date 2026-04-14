@@ -71,8 +71,9 @@ jobs:
               library(DBI); library(RSQLite)
               con <- dbConnect(SQLite(), 'finn-housing/data/finn_housing.db')
               dbExecute(con, 'UPDATE listings SET category=NULL, category_confidence=NULL, category_reasoning=NULL, classified_at=NULL')
+              dbExecute(con, 'UPDATE listings SET standard=NULL, standard_confidence=NULL, standard_reasoning=NULL')
               n <- dbGetQuery(con, 'SELECT COUNT(*) AS n FROM listings')[[1]]
-              message('Reset classification for ', n, ' listings.')
+              message('Reset category + standard classification for ', n, ' listings.')
               dbDisconnect(con)
             "
           fi
