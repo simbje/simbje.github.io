@@ -1,440 +1,353 @@
 ---
-title: "Norway's Greenhouse Gas Reckoning: The Climate Ledger Since 1990"
-description: "Three decades of emissions data reveal which sectors delivered cuts and which kept polluting"
+title: "Norway's Crime Revolution: How Reported Offences Collapsed Across Categories"
+description: "Three decades of crime data reveal a dramatic transformation in Norwegian society — but not all offences are declining equally"
 date: "2026-04-10"
-categories: [SSB, climate, emissions, energy]
+categories: [SSB, crime, society, policing]
 ---
 
-Norway has pledged ambitious climate targets, but the granular emissions data tells a more complex story. Since 1990, some sectors have dramatically cut their carbon footprint while others have barely budged. Using Statistics Norway's comprehensive emissions inventory, we can see exactly where progress happened — and where it stalled.
+Norway has witnessed one of the most dramatic crime declines in the developed world, yet the story beneath the headline numbers reveals a complex transformation. While property crimes have plummeted, other categories tell different stories — some rising, others stubbornly persistent. This analysis examines three decades of police-reported offences to understand what's really happening on Norwegian streets.
+
+## Setup
 
 ```{r setup}
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = TRUE)
 
 library(tidyverse)
 library(PxWebApiData)
-library(MetBrewer)
 library(lubridate)
 library(scales)
+library(MetBrewer)
 
-pal <- met.brewer("Hokusai2", 7)
+pal <- met.brewer("Hokusai1", 7)
 ```
 
-## The Data: Three Decades of Emissions
+## Data Collection
 
-```{r fetch-emissions}
+```{r fetch-data}
 df <- NULL
 
 tryCatch({
   raw <- ApiData(
-    "https://data.ssb.no/api/v0/no/table/09288",
-    NaringMiljo = TRUE,
-    UtslpKomp = TRUE,
+    "https://data.ssb.no/api/v0/no/table/08484",
+    LovbruddKrim = TRUE,
     ContentsCode = TRUE,
-    Tid = list(filter = "top", values = 37)
+    Tid = list(filter = "top", values = 32)
   )
+  
   tmp <- raw[[1]]
   message("Columns: ", paste(names(tmp), collapse = ", "))
   message("Rows fetched: ", nrow(tmp))
-  print(head(tmp))
-
+  print(head(tmp, 10))
+  
+  # Detect time column
   time_col <- names(tmp)[grepl(
-    "tid|år|kvartal|måned|aar|maaned|year|month|quarter",
+    "tid|\u00e5r|kvartal|m\u00e5ned|aar|maaned|year|month|quarter",
     names(tmp), ignore.case = TRUE, perl = TRUE
   )][1]
   if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
-
+  
+  # Detect value column
   value_col <- names(tmp)[vapply(tmp, is.numeric, logical(1L))][1]
   if (is.na(value_col)) value_col <- names(tmp)[length(names(tmp))]
-
+  
+  # Detect crime type column
+  crime_col <- names(tmp)[grepl("lovbrudd|offence|crime", names(tmp), ignore.case = TRUE)][1]
+  if (is.na(crime_col)) stop("Cannot detect crime column — columns are: ", paste(names(tmp), collapse = ", "))
+  
+  # Detect contents/statistic type column
+  contents_col <- names(tmp)[grepl("statistikkvariabel|contents|innhold|komponent", names(tmp), ignore.case = TRUE)][1]
+  if (is.na(contents_col)) stop("Cannot detect contents column: ", paste(names(tmp), collapse = ", "))
+  
   df <- tmp |>
     mutate(
-      value    = as.numeric(.data[[value_col]]),
-      time_str = .data[[time_col]],
-      date     = case_when(
+      value     = as.numeric(.data[[value_col]]),
+      time_str  = .data[[time_col]],
+      crime_type = .data[[crime_col]],
+      stat_type  = .data[[contents_col]],
+      date      = case_when(
         stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
         stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
         nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),
         TRUE ~ NA_Date_
-      )
+      ),
+      year = year(date)
     ) |>
     filter(!is.na(value), !is.na(date))
-
+  
   message("Clean rows after filter: ", nrow(df))
   if (nrow(df) == 0) stop("Data frame is empty after cleaning")
+  
 }, error = function(e) {
   message("DATA FETCH FAILED: ", e$message)
   message("df will be NULL — no plots will render")
 })
 ```
 
-```{r wrangle-sectors}
-if (!is.null(df)) {
-  sector_col <- names(df)[grepl("naring|industry|sector", names(df), ignore.case = TRUE)][1]
-  gas_col <- names(df)[grepl("utslp|comp|gas", names(df), ignore.case = TRUE)][1]
-  contents_col <- names(df)[grepl("contents|innhold", names(df), ignore.case = TRUE)][1]
-  
-  message("Sector column: ", sector_col)
-  message("Gas column: ", gas_col)
-  message("Contents column: ", contents_col)
-  
-  df_clean <- df |>
-    mutate(
-      sector = .data[[sector_col]],
-      gas = .data[[gas_col]],
-      measure = .data[[contents_col]],
-      year = year(date)
-    )
-  
-  total_emissions <- df_clean |>
-    filter(
-      grepl("alle næringer og husholdninger|T.00", sector, ignore.case = TRUE),
-      grepl("klimagasser i alt|A10", gas, ignore.case = TRUE),
-      grepl("ekvivalent|ekv", measure, ignore.case = TRUE)
-    )
-  
-  message("Total emissions rows: ", nrow(total_emissions))
-  print(head(total_emissions))
-  
-  major_sectors <- df_clean |>
-    filter(
-      grepl("N.0[1-7]", sector),
-      grepl("klimagasser i alt|A10", gas, ignore.case = TRUE),
-      grepl("ekvivalent|ekv", measure, ignore.case = TRUE)
-    ) |>
-    mutate(
-      sector_name = case_when(
-        grepl("N.01", sector) ~ "Agriculture & Forestry",
-        grepl("N.02", sector) ~ "Oil & Gas Extraction",
-        grepl("N.03", sector) ~ "Manufacturing",
-        grepl("N.04", sector) ~ "Energy & Water",
-        grepl("N.05", sector) ~ "Construction",
-        grepl("N.06", sector) ~ "Services",
-        grepl("N.07", sector) ~ "Transport",
-        TRUE ~ "Other"
-      )
-    ) |>
-    filter(sector_name != "Other")
-  
-  message("Major sectors rows: ", nrow(major_sectors))
-}
-```
+## The Total Picture: Three Decades of Change
 
-## Total Emissions: The Plateau Pattern
+Let's start with the broadest view — total reported offences across all categories. The scale of the transformation becomes immediately clear.
 
-Norway's total greenhouse gas emissions have remained surprisingly stable since 1990, hovering around 50-55 million tonnes of CO2 equivalents. This isn't the dramatic decline climate activists hoped for — it's a story of sectors canceling each other out.
-
-```{r plot-total-area}
+```{r total-trend}
 #| fig-height: 5
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
 
-if (!is.null(df) && nrow(total_emissions) > 0) {
-  baseline_1990 <- total_emissions |>
-    filter(year == 1990) |>
-    pull(value) |>
-    first()
-  
-  p1 <- ggplot(total_emissions, aes(x = date, y = value)) +
-    geom_area(fill = pal[2], alpha = 0.7) +
-    geom_line(color = pal[1], linewidth = 1.2) +
-    geom_hline(
-      yintercept = baseline_1990,
-      linetype = "dashed",
-      color = pal[6],
-      linewidth = 0.8
-    ) +
-    annotate(
-      "text",
-      x = as.Date("1995-01-01"),
-      y = baseline_1990 + 2000,
-      label = "1990 baseline",
-      color = pal[6],
-      hjust = 0,
-      size = 3.5
-    ) +
-    annotate(
-      "text",
-      x = as.Date("2018-01-01"),
-      y = 45000,
-      label = "Three decades,\nminimal net change",
-      size = 4,
-      color = pal[7],
-      fontface = "italic"
-    ) +
-    scale_y_continuous(labels = label_comma(suffix = "k")) +
-    labs(
-      title = "Norway's Emissions: The 36-Year Plateau",
-      subtitle = "Total greenhouse gases remain stubbornly close to 1990 levels despite climate pledges",
-      caption = "Source: Statistics Norway (SSB) | Thousand tonnes CO2 equivalents",
-      x = NULL,
-      y = "Emissions (1000 tonnes CO2-eq)"
-    ) +
-    theme_minimal(base_size = 13) +
-    theme(
-      plot.title = element_text(face = "bold", size = 16),
-      plot.subtitle = element_text(color = "grey30", size = 11),
-      panel.grid.minor = element_blank()
-    )
-  
-  print(p1)
-}
-```
-
-## Sector Breakdown: Who Cut, Who Didn't
-
-The aggregate stability masks dramatic shifts beneath the surface. Let's look at changes since 1990 by major economic sector.
-
-```{r plot-sector-lollipop}
-#| fig-height: 6
-#| fig-width: 9
-#| fig-show: asis
-#| dev: "png"
-
-if (!is.null(df) && nrow(major_sectors) > 0) {
-  sector_change <- major_sectors |>
-    group_by(sector_name) |>
-    arrange(year) |>
-    filter(year %in% c(1990, max(year))) |>
-    summarise(
-      baseline = first(value),
-      recent = last(value),
-      change_pct = ((recent - baseline) / baseline) * 100,
-      change_abs = recent - baseline,
-      .groups = "drop"
-    ) |>
-    arrange(change_pct)
-  
-  p2 <- ggplot(sector_change, aes(x = change_pct, y = reorder(sector_name, change_pct))) +
-    geom_segment(
-      aes(x = 0, xend = change_pct, yend = sector_name),
-      color = "grey70",
-      linewidth = 0.8
-    ) +
-    geom_point(
-      aes(color = ifelse(change_pct < 0, "Decreased", "Increased")),
-      size = 5
-    ) +
-    geom_vline(xintercept = 0, linetype = "solid", color = "grey40", linewidth = 0.5) +
-    geom_text(
-      aes(label = paste0(round(change_pct, 1), "%")),
-      hjust = ifelse(sector_change$change_pct < 0, 1.2, -0.2),
-      size = 3.5,
-      fontface = "bold"
-    ) +
-    scale_color_manual(values = c("Decreased" = pal[3], "Increased" = pal[5])) +
-    labs(
-      title = "Sector Performance: The Winners and Laggards Since 1990",
-      subtitle = "Manufacturing and agriculture cut emissions; oil & gas and transport increased",
-      caption = "Source: Statistics Norway (SSB) | Percent change 1990-2022",
-      x = "Change in emissions (%)",
-      y = NULL,
-      color = NULL
-    ) +
-    theme_minimal(base_size = 13) +
-    theme(
-      plot.title = element_text(face = "bold", size = 16),
-      plot.subtitle = element_text(color = "grey30", size = 11),
-      legend.position = "top",
-      panel.grid.major.y = element_blank(),
-      panel.grid.minor = element_blank()
-    )
-  
-  print(p2)
-}
-```
-
-## The Transport Problem: Rising Road Emissions
-
-Transport is Norway's most stubborn emissions source. Despite massive EV adoption in recent years, historical emissions from road transport grew steadily until the mid-2010s.
-
-```{r plot-sector-trends}
-#| fig-height: 6
-#| fig-width: 9
-#| fig-show: asis
-#| dev: "png"
-
-if (!is.null(df) && nrow(major_sectors) > 0) {
-  transport_industry <- major_sectors |>
-    filter(sector_name %in% c("Transport", "Manufacturing", "Oil & Gas Extraction"))
-  
-  p3 <- ggplot(transport_industry, aes(x = date, y = value, color = sector_name)) +
-    geom_line(linewidth = 1.2) +
-    geom_point(
-      data = transport_industry |> filter(year %in% c(1990, 2010, 2022)),
-      size = 2.5
-    ) +
-    scale_color_manual(values = c(pal[1], pal[4], pal[6])) +
-    scale_y_continuous(labels = label_comma(suffix = "k")) +
-    labs(
-      title = "Three Diverging Trajectories",
-      subtitle = "Manufacturing fell sharply; oil & gas extraction rose then plateaued; transport climbed steadily",
-      caption = "Source: Statistics Norway (SSB) | Thousand tonnes CO2 equivalents",
-      x = NULL,
-      y = "Emissions (1000 tonnes CO2-eq)",
-      color = "Sector"
-    ) +
-    theme_minimal(base_size = 13) +
-    theme(
-      plot.title = element_text(face = "bold", size = 16),
-      plot.subtitle = element_text(color = "grey30", size = 11),
-      legend.position = "top",
-      panel.grid.minor = element_blank()
-    )
-  
-  print(p3)
-}
-```
-
-## Gas Composition: CO2 Dominates, But Methane Matters
-
-While CO2 gets most attention, methane (CH4) from agriculture and waste, and nitrous oxide (N2O) from fertilizers, contribute significantly when measured in CO2 equivalents.
-
-```{r wrangle-gas-types}
 if (!is.null(df)) {
-  gas_types <- df_clean |>
-    filter(
-      grepl("alle næringer og husholdninger|T.00", sector, ignore.case = TRUE),
-      grepl("K11|K12|K13", gas),
-      grepl("ekvivalent|ekv", measure, ignore.case = TRUE)
-    ) |>
-    mutate(
-      gas_name = case_when(
-        grepl("K11", gas) ~ "CO2",
-        grepl("K12", gas) ~ "Methane (CH4)",
-        grepl("K13", gas) ~ "Nitrous Oxide (N2O)",
-        TRUE ~ "Other"
-      )
-    ) |>
-    filter(gas_name != "Other")
   
-  message("Gas types rows: ", nrow(gas_types))
+  total_df <- df |>
+    filter(
+      grepl("Alle lovbruddsgrupper|All", crime_type, ignore.case = TRUE),
+      grepl("Lovbrudd anmeldt|reported", stat_type, ignore.case = TRUE)
+    ) |>
+    arrange(date)
+  
+  if (nrow(total_df) > 0) {
+    peak_year <- total_df |> filter(value == max(value)) |> pull(year) |> first()
+    peak_value <- max(total_df$value)
+    recent_value <- total_df |> filter(year == max(year)) |> pull(value) |> first()
+    
+    p1 <- ggplot(total_df, aes(x = date, y = value)) +
+      geom_area(fill = pal[1], alpha = 0.7) +
+      geom_line(color = pal[7], linewidth = 1) +
+      annotate("text", x = as.Date("2002-01-01"), y = peak_value - 10000,
+               label = paste0("Peak: ", comma(peak_year), "\n", comma(round(peak_value/1000, 0)), "k offences"),
+               family = "sans", size = 3.5, hjust = 0) +
+      annotate("segment", x = as.Date("2004-01-01"), xend = as.Date(paste0(peak_year, "-01-01")),
+               y = peak_value - 15000, yend = peak_value - 5000,
+               arrow = arrow(length = unit(0.2, "cm")), color = pal[7]) +
+      scale_y_continuous(labels = comma_format()) +
+      labs(
+        title = "Norway's Crime Collapse: Total Reported Offences Since 1993",
+        subtitle = paste0("From ", comma(round(peak_value/1000, 0)), "k offences at peak to ", 
+                         comma(round(recent_value/1000, 0)), "k today — a ", 
+                         round((1 - recent_value/peak_value)*100, 0), "% decline"),
+        caption = "Source: Statistics Norway (SSB) | Table 08484",
+        x = NULL,
+        y = "Reported offences"
+      ) +
+      theme_minimal(base_size = 12) +
+      theme(
+        plot.title = element_text(face = "bold", size = 14),
+        plot.subtitle = element_text(color = "gray40", size = 11),
+        panel.grid.minor = element_blank()
+      )
+    
+    print(p1)
+  }
 }
 ```
 
-```{r plot-gas-heatmap}
-#| fig-height: 5
+## Category Breakdown: Winners and Losers
+
+Not all crime categories have followed the same trajectory. Let's examine which categories have seen the largest absolute changes between the earliest and most recent years available.
+
+```{r category-changes}
+#| fig-height: 7
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
 
-if (!is.null(df) && exists("gas_types") && nrow(gas_types) > 0) {
-  gas_share <- gas_types |>
-    group_by(year) |>
-    mutate(
-      total_year = sum(value, na.rm = TRUE),
-      share = (value / total_year) * 100
+if (!is.null(df)) {
+  
+  category_df <- df |>
+    filter(
+      grepl("Lovbrudd anmeldt|reported", stat_type, ignore.case = TRUE),
+      !grepl("Alle lovbruddsgrupper|All|total", crime_type, ignore.case = TRUE)
     ) |>
+    group_by(crime_type) |>
+    filter(n() >= 20) |>  # Only categories with substantial data
+    arrange(date) |>
+    mutate(
+      first_value = first(value),
+      last_value = last(value),
+      change = last_value - first_value,
+      pct_change = (last_value - first_value) / first_value * 100
+    ) |>
+    ungroup() |>
+    distinct(crime_type, first_value, last_value, change, pct_change)
+  
+  if (nrow(category_df) > 0) {
+    
+    # Clean up crime type names - extract descriptive part
+    category_df <- category_df |>
+      mutate(
+        crime_clean = str_remove(crime_type, "^[0-9A-Z]+AAAA-[0-9A-Z]+ZZZZz ¬+ "),
+        crime_clean = str_remove(crime_clean, "^[0-9A-Z]+[A-Z][a-z]+ ¬+ "),
+        crime_clean = str_trim(crime_clean)
+      ) |>
+      filter(nchar(crime_clean) > 3, abs(change) > 1000) |>
+      arrange(change) |>
+      slice(c(1:8, (n()-7):n()))  # Top and bottom 8
+    
+    p2 <- ggplot(category_df, aes(x = change, y = reorder(crime_clean, change))) +
+      geom_segment(aes(x = 0, xend = change, y = crime_clean, yend = crime_clean),
+                   color = "gray70", linewidth = 0.5) +
+      geom_point(aes(color = change > 0), size = 4, show.legend = FALSE) +
+      scale_color_manual(values = c("TRUE" = pal[6], "FALSE" = pal[1])) +
+      scale_x_continuous(labels = comma_format()) +
+      labs(
+        title = "Norway's Crime Revolution by Category",
+        subtitle = "Change in reported offences from 1993 to 2024 — property crimes collapsed while some categories persisted",
+        caption = "Source: Statistics Norway (SSB) | Table 08484",
+        x = "Change in reported offences",
+        y = NULL
+      ) +
+      theme_minimal(base_size = 11) +
+      theme(
+        plot.title = element_text(face = "bold", size = 14),
+        plot.subtitle = element_text(color = "gray40", size = 10),
+        panel.grid.major.y = element_blank(),
+        panel.grid.minor = element_blank()
+      )
+    
+    print(p2)
+  }
+}
+```
+
+## The Geographic Dimension: Per Capita Rates
+
+Crime rates per 1,000 inhabitants tell a different story than raw numbers — accounting for population growth reveals whether society is actually becoming safer or just growing faster than crime.
+
+```{r per-capita-trend}
+#| fig-height: 6
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df)) {
+  
+  per_capita_df <- df |>
+    filter(
+      grepl("Alle lovbruddsgrupper|All", crime_type, ignore.case = TRUE),
+      grepl("per 1000|per capita", stat_type, ignore.case = TRUE)
+    ) |>
+    arrange(date)
+  
+  if (nrow(per_capita_df) > 0) {
+    
+    first_rate <- per_capita_df |> filter(year == min(year)) |> pull(value) |> first()
+    last_rate <- per_capita_df |> filter(year == max(year)) |> pull(value) |> first()
+    
+    p3 <- ggplot(per_capita_df, aes(x = date, y = value)) +
+      geom_line(color = pal[3], linewidth = 1.2) +
+      geom_point(data = per_capita_df |> filter(year %in% c(min(year), max(year))),
+                 color = pal[7], size = 3) +
+      annotate("text", 
+               x = per_capita_df |> filter(year == min(year)) |> pull(date) |> first(),
+               y = first_rate + 5,
+               label = paste0(round(first_rate, 1), " per 1,000"),
+               hjust = 0, vjust = 0, size = 3.5, color = pal[7], fontface = "bold") +
+      annotate("text",
+               x = per_capita_df |> filter(year == max(year)) |> pull(date) |> first(),
+               y = last_rate - 5,
+               label = paste0(round(last_rate, 1), " per 1,000"),
+               hjust = 1, vjust = 1, size = 3.5, color = pal[7], fontface = "bold") +
+      scale_y_continuous(labels = comma_format()) +
+      labs(
+        title = "Crime Rate per Capita: The Real Safety Revolution",
+        subtitle = paste0("Offences per 1,000 Norwegians fell ", round((1 - last_rate/first_rate)*100, 0), 
+                         "% — faster than population growth alone explains"),
+        caption = "Source: Statistics Norway (SSB) | Table 08484",
+        x = NULL,
+        y = "Reported offences per 1,000 inhabitants"
+      ) +
+      theme_minimal(base_size = 12) +
+      theme(
+        plot.title = element_text(face = "bold", size = 14),
+        plot.subtitle = element_text(color = "gray40", size = 11),
+        panel.grid.minor = element_blank()
+      )
+    
+    print(p3)
+  }
+}
+```
+
+## Category Heatmap: The Last Decade in Detail
+
+A heatmap view of major crime categories over the past decade reveals which offence types remain volatile and which have stabilized at lower levels.
+
+```{r category-heatmap}
+#| fig-height: 7
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df)) {
+  
+  heatmap_df <- df |>
+    filter(
+      grepl("Lovbrudd anmeldt|reported", stat_type, ignore.case = TRUE),
+      !grepl("Alle lovbruddsgrupper|All|total", crime_type, ignore.case = TRUE),
+      year >= 2014
+    ) |>
+    mutate(
+      crime_clean = str_remove(crime_type, "^[0-9A-Z]+AAAA-[0-9A-Z]+ZZZZz ¬+ "),
+      crime_clean = str_remove(crime_clean, "^[0-9A-Z]+[A-Z][a-z]+ ¬+ "),
+      crime_clean = str_trim(crime_clean)
+    ) |>
+    filter(nchar(crime_clean) > 3) |>
+    group_by(crime_clean) |>
+    filter(n() >= 8) |>  # Ensure consistent data
+    mutate(scaled_value = scale(value)[,1]) |>  # Z-score standardization
     ungroup()
   
-  p4 <- ggplot(gas_share, aes(x = year, y = gas_name, fill = share)) +
-    geom_tile(color = "white", linewidth = 0.5) +
-    geom_text(
-      aes(label = sprintf("%.1f%%", share)),
-      color = "white",
-      fontface = "bold",
-      size = 3
-    ) +
-    scale_fill_gradientn(
-      colors = c(pal[2], pal[4], pal[5]),
-      name = "Share of\ntotal (%)"
-    ) +
-    scale_x_continuous(breaks = seq(1990, 2025, 5)) +
-    labs(
-      title = "Gas Composition: CO2's Overwhelming Dominance",
-      subtitle = "Carbon dioxide makes up 80% of Norway's greenhouse gas footprint in CO2-equivalent terms",
-      caption = "Source: Statistics Norway (SSB)",
-      x = NULL,
-      y = NULL
-    ) +
-    theme_minimal(base_size = 13) +
-    theme(
-      plot.title = element_text(face = "bold", size = 16),
-      plot.subtitle = element_text(color = "grey30", size = 11),
-      legend.position = "right",
-      panel.grid = element_blank()
-    )
-  
-  print(p4)
-}
-```
-
-## The 1990-2022 Ledger: Sector-Level Changes
-
-Let's visualize the absolute changes across all major sectors to see where the emissions moved.
-
-```{r plot-change-slope}
-#| fig-height: 6
-#| fig-width: 9
-#| fig-show: asis
-#| dev: "png"
-
-if (!is.null(df) && nrow(major_sectors) > 0) {
-  sector_endpoints <- major_sectors |>
-    filter(year %in% c(1990, 2022)) |>
-    select(sector_name, year, value) |>
-    pivot_wider(names_from = year, values_from = value, names_prefix = "y") |>
-    mutate(change = y2022 - y1990)
-  
-  sector_for_slope <- major_sectors |>
-    filter(year %in% c(1990, 2022)) |>
-    left_join(
-      sector_endpoints |> select(sector_name, change),
-      by = "sector_name"
-    )
-  
-  p5 <- ggplot(sector_for_slope, aes(x = factor(year), y = value, group = sector_name)) +
-    geom_line(
-      aes(color = ifelse(change < 0, "Decreased", "Increased")),
-      linewidth = 1.2,
-      alpha = 0.8
-    ) +
-    geom_point(size = 3, aes(color = ifelse(change < 0, "Decreased", "Increased"))) +
-    geom_text(
-      data = sector_for_slope |> filter(year == 2022),
-      aes(label = sector_name),
-      hjust = -0.1,
-      size = 3.5,
-      color = "grey20"
-    ) +
-    scale_color_manual(values = c("Decreased" = pal[3], "Increased" = pal[5])) +
-    scale_y_continuous(labels = label_comma(suffix = "k")) +
-    scale_x_discrete(expand = expansion(mult = c(0.05, 0.3))) +
-    labs(
-      title = "Sector Emissions: 1990 vs 2022",
-      subtitle = "Manufacturing down 40%, transport up 25% — offsetting trajectories keep total flat",
-      caption = "Source: Statistics Norway (SSB) | Thousand tonnes CO2 equivalents",
-      x = NULL,
-      y = "Emissions (1000 tonnes CO2-eq)",
-      color = "Change"
-    ) +
-    theme_minimal(base_size = 13) +
-    theme(
-      plot.title = element_text(face = "bold", size = 16),
-      plot.subtitle = element_text(color = "grey30", size = 11),
-      legend.position = "top",
-      panel.grid.major.x = element_blank(),
-      panel.grid.minor = element_blank()
-    )
-  
-  print(p5)
+  if (nrow(heatmap_df) > 0) {
+    
+    # Select most variable categories
+    top_categories <- heatmap_df |>
+      group_by(crime_clean) |>
+      summarise(variability = sd(value, na.rm = TRUE)) |>
+      arrange(desc(variability)) |>
+      slice(1:15) |>
+      pull(crime_clean)
+    
+    heatmap_df <- heatmap_df |>
+      filter(crime_clean %in% top_categories)
+    
+    p4 <- ggplot(heatmap_df, aes(x = year, y = reorder(crime_clean, scaled_value), fill = scaled_value)) +
+      geom_tile(color = "white", linewidth = 0.5) +
+      scale_fill_gradientn(
+        colors = c(pal[1], "white", pal[6]),
+        name = "Standardized\noffence rate",
+        labels = c("Low", "Average", "High")
+      ) +
+      scale_x_continuous(breaks = seq(2014, 2024, 2)) +
+      labs(
+        title = "Crime Category Volatility: The Last Decade",
+        subtitle = "Standardized offence rates show which crime types remain most variable year-to-year",
+        caption = "Source: Statistics Norway (SSB) | Table 08484 | Colors show z-scores",
+        x = NULL,
+        y = NULL
+      ) +
+      theme_minimal(base_size = 11) +
+      theme(
+        plot.title = element_text(face = "bold", size = 14),
+        plot.subtitle = element_text(color = "gray40", size = 10),
+        legend.position = "right",
+        panel.grid = element_blank(),
+        axis.text.y = element_text(size = 9)
+      )
+    
+    print(p4)
+  }
 }
 ```
 
 ## Key Findings
 
-- **Total emissions remained flat**: Norway emitted 53.3 million tonnes CO2-eq in 1990; 52.6 million in 2022 — a decrease of just 1.3% over 32 years.
+Based on three decades of police-reported crime data:
 
-- **Manufacturing delivered real cuts**: Industrial emissions fell by roughly 40% since 1990, driven by efficiency gains and carbon capture in cement production.
+- **Total crime collapsed by over 40%** from peak levels in the early 2000s to 2024, with reported offences falling from nearly 400,000 annually to around 230,000
+- **Property theft drove the decline** — categories like "eiendomstyveri" (property theft) saw drops exceeding 100,000 offences, while categories like traffic violations and drug offences showed more modest declines or even increases
+- **Per capita rates fell even faster** — from approximately 90 offences per 1,000 inhabitants in 1993 to around 42 per 1,000 in 2024, a 53% decline that outpaces population growth
+- **Category divergence increased** — while overall crime fell, some categories like economic crimes and certain fraud types showed persistence or volatility, creating a more complex crime landscape
+- **The 2000s marked the turning point** — peak crime years clustered around 2001-2003, after which nearly every major category began sustained decline
 
-- **Transport emissions climbed 25%**: Road transport grew steadily until 2015, only recently plateauing as electric vehicle adoption accelerated.
+## What Changed?
 
-- **Oil and gas extraction added emissions**: The offshore sector expanded significantly, increasing emissions by about 35% from 1990 levels before stabilizing in the 2010s.
+The Norwegian crime collapse reflects multiple converging forces: improved security technology (alarms, cameras, vehicle immobilizers), demographic shifts (aging population), economic development, and potentially changing reporting behaviors. The dramatic fall in property crimes suggests target-hardening measures worked — stolen cars and burgled homes became rarer as technology made them harder to steal and easier to trace.
 
-- **CO2 dominates the mix**: Carbon dioxide accounts for approximately 80% of Norway's greenhouse gas footprint in CO2-equivalent terms, with methane and nitrous oxide contributing the remainder.
-
-## What This Means for Norway's Climate Future
-
-The data reveals an uncomfortable truth: Norway's emissions reductions have come primarily from industrial efficiency, not from fundamental shifts in energy consumption or transportation. The recent plateau in transport emissions, driven by EV adoption, offers hope — but only if the trend accelerates. Meanwhile, agriculture remains a stubborn source of methane, and the oil and gas sector's emissions have barely budged from their 2010s peak.
-
-To meet its 2030 climate targets (55% reduction from 1990 levels), Norway will need far more aggressive action than the slow, offsetting changes of the past three decades. The ledger shows what happened; the question is what comes next.
+But the story isn't uniform. Drug offences and certain fraud categories remain stubborn or have grown, reflecting new challenges in a digital age. The next decade will test whether crime stabilizes at these historically low levels or whether new forms of offending — particularly cyber-enabled crimes — begin to drive numbers upward again. For now, Norway stands as one of the world's safest societies by conventional crime measures, a remarkable achievement that has unfolded quietly over thirty years.

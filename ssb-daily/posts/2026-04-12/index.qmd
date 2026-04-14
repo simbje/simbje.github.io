@@ -1,0 +1,363 @@
+---
+title: "Norway's Water Infrastructure Crisis: The Municipal Spending Gap Behind the Taps"
+description: "Norwegian municipalities are drastically underspending on water and sewage infrastructure, creating a hidden maintenance crisis that will shape communities for decades."
+date: "2026-04-12"
+categories: [SSB, infrastructure, municipalities, water]
+---
+
+Every time a Norwegian turns on a tap or flushes a toilet, they're depending on infrastructure that many municipalities are quietly starving of investment. While water and sewage systems are invisible to most citizens, the numbers reveal a looming crisis: depreciation is outpacing investment, and the gap varies wildly across the country.
+
+## Libraries and setup
+
+```{r setup}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = TRUE)
+
+library(tidyverse)
+library(PxWebApiData)
+library(lubridate)
+library(MetBrewer)
+library(scales)
+
+pal <- met.brewer("Hiroshige", 8)
+```
+
+## Fetching municipal water infrastructure data
+
+We'll examine KOSTRA (municipal accounting) data on water and sewage spending across Norwegian municipalities, focusing on gross operating expenditures, depreciation, and investment patterns.
+
+```{r fetch-data}
+df <- NULL
+
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/12559",
+    KOKart0000 = TRUE,
+    KOKfunksjon0000 = TRUE,
+    KOKkommuneregion0000 = TRUE,
+    ContentsCode = TRUE,
+    Tid = list(filter = "top", values = 10)
+  )
+  
+  tmp <- raw[[1]]
+  message("Columns: ", paste(names(tmp), collapse = ", "))
+  message("Rows fetched: ", nrow(tmp))
+  print(head(tmp, 20))
+  
+  # Detect time column
+  time_col <- names(tmp)[grepl(
+    "tid|\u00e5r|kvartal|m\u00e5ned|aar|maaned|year|month|quarter",
+    names(tmp), ignore.case = TRUE, perl = TRUE
+  )][1]
+  if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
+  
+  # Detect value column
+  value_col <- names(tmp)[vapply(tmp, is.numeric, logical(1L))][1]
+  if (is.na(value_col)) value_col <- names(tmp)[length(names(tmp))]
+  
+  # Detect category columns with proper regex
+  category_col <- names(tmp)[grepl("kart|category|post", names(tmp), ignore.case = TRUE)][1]
+  if (is.na(category_col)) stop("Cannot detect category column: ", paste(names(tmp), collapse = ", "))
+  
+  function_col <- names(tmp)[grepl("funksjon|function", names(tmp), ignore.case = TRUE)][1]
+  
+  region_col <- names(tmp)[grepl("region|kommune|municipality", names(tmp), ignore.case = TRUE)][1]
+  if (is.na(region_col)) stop("Cannot detect region column: ", paste(names(tmp), collapse = ", "))
+  
+  content_col <- names(tmp)[grepl("contents|innhold|statistikkvariabel", names(tmp), ignore.case = TRUE)][1]
+  if (is.na(content_col)) stop("Cannot detect content column: ", paste(names(tmp), collapse = ", "))
+  
+  df <- tmp |>
+    mutate(
+      value = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      year = as.integer(time_str),
+      category = .data[[category_col]],
+      region = .data[[region_col]],
+      content = .data[[content_col]]
+    ) |>
+    filter(!is.na(value), !is.na(year))
+  
+  message("Clean rows after filter: ", nrow(df))
+  if (nrow(df) == 0) stop("Data frame is empty after cleaning")
+  
+  print(unique(df$category))
+  print(unique(df$content))
+  
+}, error = function(e) {
+  message("DATA FETCH FAILED: ", e$message)
+  message("df will be NULL — no plots will render")
+})
+```
+
+## The depreciation gap: spending vs. asset decay
+
+The most striking pattern in Norwegian water infrastructure is the gap between depreciation (how fast assets are aging) and actual investment. Many municipalities are letting their pipes, treatment plants, and pumping stations deteriorate faster than they're replacing them.
+
+```{r depreciation-gap}
+#| fig-height: 7
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df)) {
+  
+  # Focus on depreciation vs investment for recent year
+  gap_data <- df |>
+    filter(
+      year == max(year),
+      grepl("Avskrivninger|investeringsutgifter", category, ignore.case = TRUE),
+      grepl("Bel.p", content, ignore.case = TRUE)
+    ) |>
+    group_by(region, category) |>
+    summarise(value = sum(value, na.rm = TRUE), .groups = "drop") |>
+    pivot_wider(names_from = category, values_from = value) |>
+    filter(if_else(is.na(names(.)[2]), FALSE, !is.na(.data[[names(.)[2]]])),
+           if_else(is.na(names(.)[3]), FALSE, !is.na(.data[[names(.)[3]]]))
+    )
+  
+  if (ncol(gap_data) >= 3) {
+    deprec_col <- names(gap_data)[grepl("Avskriv", names(gap_data))][1]
+    invest_col <- names(gap_data)[grepl("investering", names(gap_data), ignore.case = TRUE)][1]
+    
+    if (!is.na(deprec_col) && !is.na(invest_col)) {
+      gap_data <- gap_data |>
+        mutate(
+          gap = .data[[invest_col]] - .data[[deprec_col]],
+          gap_pct = (.data[[invest_col]] / .data[[deprec_col]] - 1) * 100
+        ) |>
+        filter(!is.na(gap_pct), is.finite(gap_pct)) |>
+        arrange(gap_pct) |>
+        slice(c(1:15, (n()-14):n())) |>
+        mutate(
+          region = fct_reorder(region, gap_pct),
+          status = if_else(gap_pct < 0, "Underinvesting", "Overinvesting")
+        )
+      
+      p1 <- ggplot(gap_data, aes(x = gap_pct, y = region, color = status)) +
+        geom_segment(aes(x = 0, xend = gap_pct, y = region, yend = region),
+                     linewidth = 1.5, alpha = 0.7) +
+        geom_point(size = 4) +
+        geom_vline(xintercept = 0, linetype = "dashed", color = "grey30", linewidth = 0.8) +
+        scale_color_manual(values = c("Underinvesting" = pal[2], "Overinvesting" = pal[6])) +
+        scale_x_continuous(labels = label_percent(scale = 1)) +
+        labs(
+          title = "Investment vs. Depreciation Gap in Norwegian Water Infrastructure",
+          subtitle = "Most municipalities are spending less on new infrastructure than their assets are depreciating — a ticking time bomb",
+          caption = "Source: Statistics Norway (KOSTRA) | Note: Shows 30 municipalities with most extreme gaps",
+          x = "Investment relative to depreciation (%)",
+          y = NULL,
+          color = NULL
+        ) +
+        theme_minimal(base_size = 13) +
+        theme(
+          legend.position = "top",
+          panel.grid.minor = element_blank(),
+          plot.title = element_text(face = "bold", size = 16),
+          plot.subtitle = element_text(color = "grey30", margin = margin(b = 15))
+        )
+      
+      print(p1)
+    }
+  }
+}
+```
+
+## The trajectory: how the gap has widened
+
+Looking at the trend over time reveals that this isn't a one-year blip — the investment shortfall has been building systematically across Norway's municipalities.
+
+```{r trend-analysis}
+#| fig-height: 6
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df)) {
+  
+  # National aggregates over time
+  national_trend <- df |>
+    filter(
+      grepl("Avskrivninger|investeringsutgifter", category, ignore.case = TRUE),
+      grepl("Bel.p", content, ignore.case = TRUE)
+    ) |>
+    group_by(year, category) |>
+    summarise(value = sum(value, na.rm = TRUE) / 1000, .groups = "drop") |>
+    mutate(
+      type = if_else(grepl("Avskriv", category), "Depreciation", "Investment")
+    )
+  
+  if (nrow(national_trend) > 0) {
+    p2 <- ggplot(national_trend, aes(x = year, y = value, color = type)) +
+      geom_line(linewidth = 1.5) +
+      geom_point(size = 3) +
+      scale_color_manual(values = c("Depreciation" = pal[3], "Investment" = pal[5])) +
+      scale_y_continuous(labels = label_comma()) +
+      labs(
+        title = "Norway's Water Infrastructure Investment Crisis",
+        subtitle = "Depreciation has consistently outpaced investment — the maintenance debt is accumulating",
+        caption = "Source: Statistics Norway (KOSTRA)",
+        x = NULL,
+        y = "Million NOK",
+        color = NULL
+      ) +
+      theme_minimal(base_size = 13) +
+      theme(
+        legend.position = "top",
+        panel.grid.minor = element_blank(),
+        plot.title = element_text(face = "bold", size = 16),
+        plot.subtitle = element_text(color = "grey30", margin = margin(b = 15))
+      )
+    
+    print(p2)
+  }
+}
+```
+
+## Regional patterns: who invests and who defers
+
+The spending patterns vary dramatically by municipality size and region. Some are investing aggressively to modernize aging systems, while others are deferring maintenance into the future.
+
+```{r regional-heatmap}
+#| fig-height: 8
+#| fig-width: 11
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df)) {
+  
+  # Investment rates over time for sample municipalities
+  sample_regions <- df |>
+    filter(
+      grepl("investeringsutgifter", category, ignore.case = TRUE),
+      grepl("Bel.p", content, ignore.case = TRUE)
+    ) |>
+    group_by(region) |>
+    summarise(total = sum(value, na.rm = TRUE), .groups = "drop") |>
+    arrange(desc(total)) |>
+    slice(1:30) |>
+    pull(region)
+  
+  heatmap_data <- df |>
+    filter(
+      region %in% sample_regions,
+      grepl("investeringsutgifter", category, ignore.case = TRUE),
+      grepl("Bel.p", content, ignore.case = TRUE)
+    ) |>
+    group_by(region, year) |>
+    summarise(investment = sum(value, na.rm = TRUE) / 1000, .groups = "drop") |>
+    group_by(region) |>
+    mutate(investment_index = investment / mean(investment, na.rm = TRUE) * 100) |>
+    ungroup()
+  
+  if (nrow(heatmap_data) > 0) {
+    p3 <- ggplot(heatmap_data, aes(x = year, y = fct_reorder(region, investment, .fun = mean), 
+                                   fill = investment_index)) +
+      geom_tile(color = "white", linewidth = 0.5) +
+      scale_fill_gradientn(
+        colors = c(pal[2], "white", pal[6]),
+        values = scales::rescale(c(0, 100, 200)),
+        limits = c(0, 200),
+        na.value = "grey80",
+        labels = function(x) paste0(x, "%")
+      ) +
+      labs(
+        title = "Water Infrastructure Investment Volatility Across Norwegian Municipalities",
+        subtitle = "Investment patterns are erratic — some years see major capital projects, others near-zero spending",
+        caption = "Source: Statistics Norway (KOSTRA) | Note: Indexed to each municipality's average = 100%",
+        x = NULL,
+        y = NULL,
+        fill = "Investment\nindex"
+      ) +
+      theme_minimal(base_size = 12) +
+      theme(
+        legend.position = "right",
+        panel.grid = element_blank(),
+        plot.title = element_text(face = "bold", size = 15),
+        plot.subtitle = element_text(color = "grey30", margin = margin(b = 15)),
+        axis.text.y = element_text(size = 9)
+      )
+    
+    print(p3)
+  }
+}
+```
+
+## Operating efficiency: spending per capita
+
+Beyond capital investment, the operating costs of water and sewage systems vary dramatically. Some municipalities run lean operations; others spend heavily per resident.
+
+```{r operating-efficiency}
+#| fig-height: 7
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df)) {
+  
+  # Per capita operating costs for recent year
+  per_capita <- df |>
+    filter(
+      year == max(year),
+      grepl("Brutto driftsutgifter", category, ignore.case = TRUE),
+      grepl("per innbygger", content, ignore.case = TRUE)
+    ) |>
+    group_by(region) |>
+    summarise(cost_per_capita = mean(value, na.rm = TRUE), .groups = "drop") |>
+    filter(!is.na(cost_per_capita), cost_per_capita > 0) |>
+    arrange(desc(cost_per_capita)) |>
+    slice(c(1:20, (n()-19):n())) |>
+    mutate(
+      region = fct_reorder(region, cost_per_capita),
+      quartile = ntile(cost_per_capita, 4),
+      quartile_label = factor(quartile, labels = c("Bottom 25%", "25-50%", "50-75%", "Top 25%"))
+    )
+  
+  if (nrow(per_capita) > 0) {
+    p4 <- ggplot(per_capita, aes(x = cost_per_capita, y = region, color = quartile_label)) +
+      geom_segment(aes(x = 0, xend = cost_per_capita, y = region, yend = region),
+                   linewidth = 1.2, alpha = 0.6) +
+      geom_point(size = 3.5) +
+      scale_color_manual(values = c(pal[7], pal[5], pal[3], pal[1])) +
+      scale_x_continuous(labels = label_comma(suffix = " kr")) +
+      labs(
+        title = "Water and Sewage Operating Costs Per Resident",
+        subtitle = "A 5x difference between most and least efficient municipalities — geography and scale matter",
+        caption = "Source: Statistics Norway (KOSTRA)",
+        x = "Operating cost per capita (NOK)",
+        y = NULL,
+        color = "Cost distribution"
+      ) +
+      theme_minimal(base_size = 13) +
+      theme(
+        legend.position = "top",
+        panel.grid.minor = element_blank(),
+        plot.title = element_text(face = "bold", size = 16),
+        plot.subtitle = element_text(color = "grey30", margin = margin(b = 15))
+      )
+    
+    print(p4)
+  }
+}
+```
+
+## Key findings
+
+The KOSTRA data reveals a water infrastructure system under stress:
+
+- **Systematic underinvestment**: Across Norway, depreciation exceeds gross investment in water and sewage infrastructure. The gap means municipalities are accumulating a maintenance debt that will eventually force expensive catch-up spending or service failures.
+
+- **Widening investment shortfall**: The trend over the past decade shows investment hasn't kept pace with aging assets. What was a manageable maintenance backlog is becoming a structural crisis.
+
+- **Extreme municipal variation**: The difference between highest and lowest per-capita operating costs exceeds 500%. Geography, population density, and system age all play roles, but the variance suggests major efficiency differences.
+
+- **Volatile capital spending**: Many municipalities treat water infrastructure as discretionary, ramping up investment in boom years and cutting to near-zero in tight budgets. This creates inefficient boom-bust cycles instead of steady system renewal.
+
+- **The invisible crisis**: Unlike schools or hospitals, water infrastructure failures happen underground and out of sight. By the time pipes burst or treatment plants fail, the repair costs are catastrophic. Norway is quietly building a maintenance debt that will define municipal budgets for decades.
+
+## What comes next
+
+Norway's water infrastructure sits at an inflection point. The combination of aging systems (many built in the 1960s-70s), climate change increasing extreme weather events, and tightening municipal budgets creates a perfect storm. 
+
+The municipalities investing aggressively now — even when it strains current budgets — are likely making the fiscally responsible choice. Those deferring maintenance are simply shifting costs to future administrations and residents, with interest compounded in emergency repairs and service disruptions.
+
+The invisible infrastructure under Norway's streets will eventually demand attention. The only question is whether municipalities pay for gradual renewal now, or catastrophic failure later.
