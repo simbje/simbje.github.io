@@ -549,47 +549,6 @@ if (nrow(pick) == 0) {
 }
 ```
 
----
-
-## All Listings
-
-```{r all-table}
-table_df <- df |>
-  left_join(classified |> select(finn_id, value_pct), by = "finn_id") |>
-  arrange(desc(scraped_date)) |>
-  transmute(
-    Title    = ifelse(!is.na(url) & !is.na(title),
-                 paste0('<a href="', url, '" target="_blank">',
-                        str_trunc(title, 45), '</a>'),
-                 coalesce(title, "—")),
-    `Price`  = ifelse(!is.na(price),
-                 paste0(format(price, big.mark = " "), " NOK"), "—"),
-    `Size`   = ifelse(!is.na(size_sqm), paste0(size_sqm, " m²"), "—"),
-    `kr/m²`  = ifelse(!is.na(price_sqm),
-                 paste0(format(round(price_sqm / 1000, 0), big.mark = " "), "k"), "—"),
-    Rooms    = ifelse(!is.na(rooms), as.character(rooms), "—"),
-    Address  = coalesce(address, "—"),
-    Category = category,
-    `Value`  = ifelse(!is.na(value_pct),
-                 paste0(ifelse(value_pct >= 0, "+", ""), round(value_pct), "%"), "—"),
-    Scraped  = as.character(scraped_date)
-  )
-
-datatable(
-  table_df,
-  escape    = FALSE,
-  rownames  = FALSE,
-  filter    = "top",
-  options   = list(
-    pageLength = 25,
-    dom        = "ftip",
-    scrollX    = TRUE,
-    columnDefs = list(list(className = "dt-right", targets = c(1, 2, 3, 7)))
-  )
-)
-```
-
----
 
 *Data scraped daily from [finn.no](https://www.finn.no/realestate/homes/search.html?location=0.20061){target="_blank"} for personal/educational use only.
 Categories and value scores computed by Claude AI. This is not financial or investment advice.*
