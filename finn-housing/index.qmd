@@ -49,6 +49,12 @@ raw <- read.csv(CSV_PATH, stringsAsFactors = FALSE, fileEncoding = "UTF-8")
 
 df <- raw |>
   mutate(
+    # Cast all optional text columns to character — prevents logical-NA vs character
+    # type conflicts in coalesce() when columns are entirely NA in the CSV
+    across(c(title, address, neighborhood, property_type,
+             category, category_confidence, category_reasoning,
+             classified_at, url),
+           as.character),
     scraped_date = as.Date(substr(scraped_at, 1, 10)),
     price_m      = price / 1e6,
     price_sqm    = ifelse(!is.na(price) & !is.na(size_sqm) & size_sqm > 0,
