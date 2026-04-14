@@ -99,7 +99,7 @@ med_size     <- median(classified$size_sqm, na.rm = TRUE)
 med_psqm     <- median(classified$price_sqm, na.rm = TRUE)
 ```
 
-Explore **`r format(total_n, big.mark = " ")`** for-sale listings in Oslo, scraped from finn.no and classified by AI into 10 housing segments. Use the charts and map below to find patterns — or scroll to the bottom for this week's standout pick.
+Explore **`r format(total_n, big.mark = " ")`** for-sale listings in Oslo, scraped from finn.no and classified by AI into 10 housing segments. Use the charts and map below to find patterns.
 
 ---
 
@@ -111,6 +111,154 @@ Median size **`r paste0(round(med_size), " m²")`** &nbsp;·&nbsp;
 Median price/m² **`r paste0(format(round(med_psqm / 1000, 0), big.mark = " "), " k NOK")`** &nbsp;·&nbsp;
 Last updated **`r format(last_scrape, "%d %b %Y")`**
 :::
+
+---
+
+## Listing of the Week :trophy:
+
+```{r pick-of-week}
+# Algorithm:
+#  1. Filter to classified listings with full data (price, size, address, url)
+#  2. Require size >= 30 m², valid value_score, scraped within 14 days
+#     (fall back to all-time if too few recent listings)
+#  3. Rank by value_score (higher = cheaper per m² vs category), break ties by size
+#  4. Pick #1
+
+pick_pool <- classified |>
+  filter(!is.na(price), !is.na(size_sqm), !is.na(url),
+         !is.na(value_score), price_sqm > 10000,
+         size_sqm >= 30, category != "Unclassified") |>
+  arrange(desc(value_score), desc(size_sqm))
+
+# Prefer recent listings
+recent_pool <- pick_pool |> filter(scraped_date >= Sys.Date() - 14)
+if (nrow(recent_pool) >= 1) pick_pool <- recent_pool
+
+pick <- pick_pool |> slice_head(n = 1)
+
+if (nrow(pick) == 0) {
+  cat("> Not enough classified listings yet to make a recommendation.\n")
+} else {
+  # Build the "why chosen" explanation
+  why_text <- paste0(
+    "Selected from ", nrow(pick_pool), " candidate listing",
+    if (nrow(pick_pool) != 1) "s" else "", " as the best value for money in its segment. ",
+    "At ", format(round(pick$price_sqm), big.mark = "\u00a0"), "\u00a0NOK/m\u00b2, it is ",
+    abs(round(pick$value_pct)), "% ",
+    if (pick$value_pct >= 0) "below" else "above",
+    " the median for ",
+    pick$category,
+    " listings",
+    if (!is.na(pick$cat_med_psqm))
+      paste0(" (", format(round(pick$cat_med_psqm), big.mark = "\u00a0"), "\u00a0NOK/m\u00b2)")
+    else "",
+    ". Value score ranks listings by how much cheaper they are per m\u00b2 relative to comparable properties in the same category."
+  )
+
+  cat(htmltools::doRenderTags(
+    htmltools::tags$div(
+      class = "card border-success mb-4",
+      style = "max-width:680px; border-width:2px;",
+
+      htmltools::tags$div(
+        class = "card-header bg-success text-white d-flex align-items-center gap-2",
+        htmltools::tags$span("\U0001F3C6", style = "font-size:1.3em"),
+        htmltools::tags$strong("Listing of the Week")
+      ),
+
+      htmltools::tags$div(
+        class = "card-body",
+
+        htmltools::tags$h5(
+          class = "card-title mb-1",
+          htmltools::tags$a(
+            href = pick$url, target = "_blank", rel = "noopener",
+            coalesce(pick$title, "View listing")
+          )
+        ),
+
+        htmltools::tags$p(
+          class = "text-muted mb-2", style = "font-size:0.9em",
+          coalesce(pick$address, "Oslo")
+        ),
+
+        htmltools::tags$div(
+          class = "d-flex flex-wrap gap-3 mb-3",
+
+          htmltools::tags$div(
+            htmltools::tags$div(class = "text-muted", style = "font-size:0.75em", "PRICE"),
+            htmltools::tags$strong(
+              if (!is.na(pick$price)) paste0(format(pick$price, big.mark = " "), " NOK") else "—"
+            )
+          ),
+          htmltools::tags$div(
+            htmltools::tags$div(class = "text-muted", style = "font-size:0.75em", "SIZE"),
+            htmltools::tags$strong(
+              if (!is.na(pick$size_sqm)) paste0(pick$size_sqm, " m²") else "—"
+            )
+          ),
+          htmltools::tags$div(
+            htmltools::tags$div(class = "text-muted", style = "font-size:0.75em", "ROOMS"),
+            htmltools::tags$strong(
+              if (!is.na(pick$rooms)) as.character(pick$rooms) else "—"
+            )
+          ),
+          htmltools::tags$div(
+            htmltools::tags$div(class = "text-muted", style = "font-size:0.75em", "PRICE / m²"),
+            htmltools::tags$strong(
+              if (!is.na(pick$price_sqm))
+                paste0(format(round(pick$price_sqm), big.mark = " "), " NOK")
+              else "—"
+            )
+          )
+        ),
+
+        # Category badge + value badge
+        htmltools::tags$p(
+          htmltools::tags$span(
+            class = "badge rounded-pill text-white me-2",
+            style = paste0("background-color:", CAT_COLORS[pick$category]),
+            pick$category
+          ),
+          if (!is.na(pick$value_score))
+            htmltools::tags$span(
+              class = "badge bg-success-subtle text-success-emphasis",
+              paste0("+", round(pick$value_pct), "% value vs category median")
+            )
+        ),
+
+        # Why chosen
+        htmltools::tags$p(
+          class = "card-text mb-2",
+          style = "font-size:0.88em; border-left:3px solid #198754; padding-left:8px; color:#155724",
+          htmltools::tags$strong("Why chosen: "),
+          why_text
+        ),
+
+        # AI category reasoning
+        if (!is.na(pick$category_reasoning) && nchar(pick$category_reasoning) > 5)
+          htmltools::tags$p(
+            class = "card-text fst-italic text-muted",
+            style = "font-size:0.88em; border-left:3px solid #ccc; padding-left:8px",
+            paste0("\u201C", pick$category_reasoning, "\u201D")
+          ),
+
+        htmltools::tags$a(
+          href = pick$url, target = "_blank", rel = "noopener",
+          class = "btn btn-outline-success btn-sm",
+          "View on finn.no \u2192"
+        )
+      ),
+
+      htmltools::tags$div(
+        class = "card-footer text-muted",
+        style = "font-size:0.8em",
+        paste0("Selected by value score algorithm · Scraped ", format(pick$scraped_date, "%d %b %Y"))
+      )
+    )
+  ))
+}
+```
 
 ---
 
@@ -467,130 +615,5 @@ if (nrow(daily) < 2) {
 }
 ```
 
----
-
-## Listing of the Week :trophy:
-
-```{r pick-of-week}
-# Algorithm:
-#  1. Filter to classified listings with full data (price, size, address, url)
-#  2. Require size >= 30 m², valid value_score, scraped within 14 days
-#     (fall back to all-time if too few recent listings)
-#  3. Rank by value_score (higher = cheaper per m² vs category), break ties by size
-#  4. Pick #1
-
-pick_pool <- classified |>
-  filter(!is.na(price), !is.na(size_sqm), !is.na(url),
-         !is.na(value_score), price_sqm > 10000,
-         size_sqm >= 30, category != "Unclassified") |>
-  arrange(desc(value_score), desc(size_sqm))
-
-# Prefer recent listings
-recent_pool <- pick_pool |> filter(scraped_date >= Sys.Date() - 14)
-if (nrow(recent_pool) >= 1) pick_pool <- recent_pool
-
-pick <- pick_pool |> slice_head(n = 1)
-
-if (nrow(pick) == 0) {
-  cat("> Not enough classified listings yet to make a recommendation.\n")
-} else {
-  cat(htmltools::doRenderTags(
-    htmltools::tags$div(
-      class = "card border-success mb-4",
-      style = "max-width:680px; border-width:2px;",
-
-      htmltools::tags$div(
-        class = "card-header bg-success text-white d-flex align-items-center gap-2",
-        htmltools::tags$span("\U0001F3C6", style = "font-size:1.3em"),
-        htmltools::tags$strong("Listing of the Week")
-      ),
-
-      htmltools::tags$div(
-        class = "card-body",
-
-        htmltools::tags$h5(
-          class = "card-title mb-1",
-          htmltools::tags$a(
-            href = pick$url, target = "_blank", rel = "noopener",
-            coalesce(pick$title, "View listing")
-          )
-        ),
-
-        htmltools::tags$p(
-          class = "text-muted mb-2", style = "font-size:0.9em",
-          coalesce(pick$address, "Oslo")
-        ),
-
-        htmltools::tags$div(
-          class = "d-flex flex-wrap gap-3 mb-3",
-
-          htmltools::tags$div(
-            htmltools::tags$div(class = "text-muted", style = "font-size:0.75em", "PRICE"),
-            htmltools::tags$strong(
-              if (!is.na(pick$price)) paste0(format(pick$price, big.mark = " "), " NOK") else "—"
-            )
-          ),
-          htmltools::tags$div(
-            htmltools::tags$div(class = "text-muted", style = "font-size:0.75em", "SIZE"),
-            htmltools::tags$strong(
-              if (!is.na(pick$size_sqm)) paste0(pick$size_sqm, " m²") else "—"
-            )
-          ),
-          htmltools::tags$div(
-            htmltools::tags$div(class = "text-muted", style = "font-size:0.75em", "ROOMS"),
-            htmltools::tags$strong(
-              if (!is.na(pick$rooms)) as.character(pick$rooms) else "—"
-            )
-          ),
-          htmltools::tags$div(
-            htmltools::tags$div(class = "text-muted", style = "font-size:0.75em", "PRICE / m²"),
-            htmltools::tags$strong(
-              if (!is.na(pick$price_sqm))
-                paste0(format(round(pick$price_sqm), big.mark = " "), " NOK")
-              else "—"
-            )
-          )
-        ),
-
-        # Category badge
-        htmltools::tags$p(
-          htmltools::tags$span(
-            class = "badge rounded-pill text-white me-2",
-            style = paste0("background-color:", CAT_COLORS[pick$category]),
-            pick$category
-          ),
-          if (!is.na(pick$value_score))
-            htmltools::tags$span(
-              class = "badge bg-success-subtle text-success-emphasis",
-              paste0("+", round(pick$value_pct), "% value vs category median")
-            )
-        ),
-
-        # AI reasoning
-        if (!is.na(pick$category_reasoning) && nchar(pick$category_reasoning) > 5)
-          htmltools::tags$p(
-            class = "card-text fst-italic text-muted",
-            style = "font-size:0.88em; border-left:3px solid #ccc; padding-left:8px",
-            paste0("\u201C", pick$category_reasoning, "\u201D")
-          ),
-
-        htmltools::tags$a(
-          href = pick$url, target = "_blank", rel = "noopener",
-          class = "btn btn-outline-success btn-sm",
-          "View on finn.no \u2192"
-        )
-      ),
-
-      htmltools::tags$div(
-        class = "card-footer text-muted",
-        style = "font-size:0.8em",
-        paste0("Selected by value score algorithm · Scraped ", format(pick$scraped_date, "%d %b %Y"))
-      )
-    )
-  ))
-}
-```
-
-
-*Data scraped daily from [finn.no](https://www.finn.no/realestate/homes/search.html?location=0.20061){target="_blank"} for personal/educational use only.
+*Data scraped from [finn.no](https://www.finn.no/realestate/homes/search.html?location=0.20061){target="_blank"} for personal/educational use only.
 Categories and value scores computed by Claude AI. This is not financial or investment advice.*
