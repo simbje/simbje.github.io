@@ -18,6 +18,10 @@ if (!file.exists(CSV_PATH)) {
   cat("> **No data yet.** Run `finn-housing/scraper.R` locally (or wait for the daily workflow) to populate the data.\n")
   knitr::opts_chunk$set(eval = FALSE)
 }
+
+# Ensure ggplot2 figures have a solid white background so they render
+# correctly when embedded in HTML (theme_minimal uses transparent bg by default)
+ggplot2::theme_update(plot.background = ggplot2::element_rect(fill = "white", colour = NA))
 ```
 
 ```{r setup}
