@@ -9,6 +9,17 @@ execute:
   message: false
 ---
 
+```{r check-data}
+# Guard chunk — must be separate from setup so read.csv is never reached when
+# the file is missing. knitr::opts_chunk$set(eval=FALSE) disables all
+# subsequent chunks reliably in Quarto (knit_exit() is not reliable here).
+CSV_PATH <- here::here("finn-housing", "data", "listings_export.csv")
+if (!file.exists(CSV_PATH)) {
+  cat("> **No data yet.** Run `finn-housing/scraper.R` locally (or wait for the daily workflow) to populate the data.\n")
+  knitr::opts_chunk$set(eval = FALSE)
+}
+```
+
 ```{r setup}
 library(dplyr)
 library(ggplot2)
@@ -17,13 +28,6 @@ library(leaflet)
 library(DT)
 library(stringr)
 library(tidyr)
-
-CSV_PATH <- here::here("finn-housing", "data", "listings_export.csv")
-
-if (!file.exists(CSV_PATH)) {
-  cat("> **No data yet.** Run `finn-housing/scraper.R` then `finn-housing/classify.R` locally, or wait for the daily GitHub Actions workflow.\n")
-  knitr::knit_exit()
-}
 
 # ── Colour palette (shared across all plots) ──────────────────────────────────
 CAT_COLORS <- c(

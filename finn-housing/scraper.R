@@ -327,4 +327,17 @@ for (i in seq_len(nrow(search_results))) {
 
 total <- dbGetQuery(con, "SELECT COUNT(*) AS n FROM listings")$n
 message("\nDone. Total listings in DB: ", total)
+
+# ── Export CSV snapshot so the Quarto page can render even before classify.R ──
+# Category columns will be NA until classify.R runs — the dashboard handles this.
+CSV_PATH <- file.path("finn-housing", "data", "listings_export.csv")
+snap <- dbGetQuery(con, "
+  SELECT finn_id, title, price, size_sqm, rooms, address, neighborhood,
+         property_type, year_built, url, scraped_at, lat, lon,
+         category, category_confidence, category_reasoning, classified_at
+  FROM listings ORDER BY scraped_at DESC
+")
+write.csv(snap, CSV_PATH, row.names = FALSE, fileEncoding = "UTF-8")
+message("CSV snapshot written: ", CSV_PATH)
+
 dbDisconnect(con)

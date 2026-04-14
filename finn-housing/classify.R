@@ -18,7 +18,7 @@ library(stringr)
 # ── Config ────────────────────────────────────────────────────────────────────
 DB_PATH    <- file.path("finn-housing", "data", "finn_housing.db")
 CSV_PATH   <- file.path("finn-housing", "data", "listings_export.csv")
-BATCH_SIZE <- 50   # max listings to classify per run (cost control)
+BATCH_SIZE <- 500  # max listings to classify per run
 
 ANTHROPIC_API_KEY <- Sys.getenv("ANTHROPIC_API_KEY")
 if (nchar(ANTHROPIC_API_KEY) == 0) stop("ANTHROPIC_API_KEY not set")
