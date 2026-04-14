@@ -24,6 +24,7 @@ if (!file.exists(CSV_PATH)) {
 library(dplyr)
 library(ggplot2)
 library(scales)
+library(forcats)
 library(leaflet)
 library(DT)
 library(stringr)
