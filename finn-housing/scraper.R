@@ -211,16 +211,14 @@ scrape_listing_detail <- function(finn_id) {
     NULL
   })
   if (is.null(doc)) {
-    return(list(neighborhood = NA_character_, property_type = NA_character_,
-                year_built = NA_integer_, description = NA_character_))
+    return(list(title = NA_character_, price = NA_integer_,
+                size_sqm = NA_real_, rooms = NA_integer_,
+                address = NA_character_, neighborhood = NA_character_,
+                property_type = NA_character_, year_built = NA_integer_,
+                description = NA_character_))
   }
 
-  # ── Description ──────────────────────────────────────────────────────────
-  desc_node <- html_element(doc, "[class*='description'], [class*='Description'],
-                                  section p, article p")
-  description <- if (!is.null(desc_node)) trimws(html_text(desc_node)) else NA_character_
-
-  # ── Key facts table (dl/dt/dd pattern common on finn.no detail pages) ────
+  # ── Key facts table (dl/dt/dd pattern on finn.no detail pages) ───────────
   dts <- trimws(html_text(html_elements(doc, "dt")))
   dds <- trimws(html_text(html_elements(doc, "dd")))
   facts <- setNames(as.list(dds), dts)
@@ -235,26 +233,66 @@ scrape_listing_detail <- function(finn_id) {
     NA_character_
   }
 
-  # Neighborhood / municipality
+  # ── Title (h1 on the detail page) ────────────────────────────────────────
+  title_node <- html_element(doc, "h1")
+  title <- if (!is.null(title_node)) trimws(html_text(title_node)) else NA_character_
+
+  # ── Price ─────────────────────────────────────────────────────────────────
+  # "Prisantydning" = asking price; avoid "Totalpris" which includes debt
+  price <- parse_number_no(get_fact(c("Prisantydning", "Pris")))
+
+  # ── Size ──────────────────────────────────────────────────────────────────
+  # Prefer interior usable area (BRA-i), fall back to total usable area (BRA)
+  size_raw <- get_fact(c(
+    "Internt bruksareal (BRA-i)", "BRA-i", "Prim\u00e6rrom", "P-ROM",
+    "Bruksareal", "BRA"
+  ))
+  size_sqm <- if (!is.na(size_raw)) {
+    m <- str_match(size_raw, "(\\d+[,.]?\\d*)")
+    if (!is.na(m[1, 2])) as.numeric(gsub(",", ".", m[1, 2])) else NA_real_
+  } else NA_real_
+
+  # ── Rooms ─────────────────────────────────────────────────────────────────
+  rooms <- suppressWarnings(as.integer(get_fact(c("Rom", "Antall rom"))))
+
+  # ── Address ───────────────────────────────────────────────────────────────
+  # Try common selectors first, then fall back to parsing the page <title>
+  addr_node <- html_element(doc, "[data-testid*='address'], h1 + p, h1 ~ p")
+  address <- if (!is.null(addr_node)) trimws(html_text(addr_node)) else NA_character_
+  if (is.na(address) || nchar(address) == 0) {
+    page_title_text <- tryCatch(
+      html_text(html_element(doc, "title")), error = function(e) NA_character_
+    )
+    # Page title: "3-roms leilighet - Grefsenveien 35, 0485 Oslo - FINN Eiendom"
+    m_addr <- str_match(page_title_text,
+                        "-\\s*([^-|]+\\d{4}\\s+[A-Za-z\u00c6\u00d8\u00c5\u00e6\u00f8\u00e5]+[^-|]*)\\s*(?:-|\\|)")
+    if (!is.na(m_addr[1, 2])) address <- trimws(m_addr[1, 2])
+  }
+
+  # ── Neighborhood / municipality ───────────────────────────────────────────
   neighborhood <- get_fact(c("Bydel", "Beliggenhet", "Nabolag", "Sted"))
   if (is.na(neighborhood)) {
-    # Try to extract from page title or breadcrumb
     bc_node <- html_element(doc, "nav[aria-label*='breadcrumb'] a:last-child,
                                   [class*='breadcrumb'] a:last-child")
     if (!is.null(bc_node)) neighborhood <- trimws(html_text(bc_node))
   }
 
-  # Property type
+  # ── Property type ─────────────────────────────────────────────────────────
   property_type <- get_fact(c("Boligtype", "Type", "Eiendomstype"))
 
-  # Year built
-  year_raw  <- get_fact(c("Byggeår", "Bygge\u00e5r", "År bygget"))
+  # ── Year built ────────────────────────────────────────────────────────────
+  year_raw   <- get_fact(c("Bygg\u00e5r", "Bygge\u00e5r", "\u00c5r bygget"))
   year_built <- suppressWarnings(as.integer(year_raw))
 
-  list(neighborhood  = neighborhood,
-       property_type = property_type,
-       year_built    = year_built,
-       description   = description)
+  # ── Description ───────────────────────────────────────────────────────────
+  desc_node <- html_element(doc, "[class*='description'], [class*='Description'],
+                                  section p, article p")
+  description <- if (!is.null(desc_node)) trimws(html_text(desc_node)) else NA_character_
+
+  list(title = title, price = price, size_sqm = size_sqm, rooms = rooms,
+       address = address, neighborhood = neighborhood,
+       property_type = property_type, year_built = year_built,
+       description = description)
 }
 
 # ── Main scrape loop ───────────────────────────────────────────────────────────
@@ -286,23 +324,27 @@ for (pg in seq_len(MAX_PAGES)) {
   Sys.sleep(PAGE_SLEEP)
 }
 
-if (length(new_rows) == 0) {
-  message("No new listings found. DB unchanged.")
-  dbDisconnect(con)
-  quit(save = "no", status = 0)
-}
+if (length(new_rows) > 0) {
+  search_results <- bind_rows(new_rows)
+  message("\nFetching details for ", nrow(search_results), " new listings...")
 
-search_results <- bind_rows(new_rows)
-message("\nFetching details for ", nrow(search_results), " new listings...")
+  scraped_at <- format(Sys.time(), "%Y-%m-%dT%H:%M:%S")
 
-scraped_at <- format(Sys.time(), "%Y-%m-%dT%H:%M:%S")
-
-for (i in seq_len(nrow(search_results))) {
+  for (i in seq_len(nrow(search_results))) {
   row <- search_results[i, ]
   message("  [", i, "/", nrow(search_results), "] finn_id=", row$finn_id)
 
   detail <- scrape_listing_detail(row$finn_id)
   Sys.sleep(DETAIL_SLEEP)
+
+  # Prefer search-result values when available; fall back to detail-page values.
+  # (Search results page is often JS-rendered, so most fields arrive as NA.)
+  final_title   <- if (!is.na(row$title))    row$title    else detail$title
+  final_price   <- if (!is.na(row$price))    row$price    else detail$price
+  final_size    <- if (!is.na(row$size_sqm)) row$size_sqm else detail$size_sqm
+  final_rooms   <- if (!is.na(row$rooms))    row$rooms    else detail$rooms
+  final_address <- if (!is.na(row$address) && nchar(row$address) > 0)
+                     row$address else detail$address
 
   dbExecute(con, "
     INSERT OR IGNORE INTO listings
@@ -311,24 +353,63 @@ for (i in seq_len(nrow(search_results))) {
        url, scraped_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     params = list(
-      row$finn_id,
-      row$title,
-      row$price,
-      row$size_sqm,
-      row$rooms,
-      row$address,
-      detail$neighborhood,
-      detail$property_type,
-      detail$year_built,
-      detail$description,
-      row$url,
-      scraped_at
+      row$finn_id, final_title, final_price, final_size, final_rooms, final_address,
+      detail$neighborhood, detail$property_type, detail$year_built, detail$description,
+      row$url, scraped_at
     )
   )
+  }  # end new-listings loop
+} else {
+  message("No new listings found.")
 }
 
 total <- dbGetQuery(con, "SELECT COUNT(*) AS n FROM listings")$n
-message("\nDone. Total listings in DB: ", total)
+message("\nTotal listings in DB: ", total)
+
+# ── Backfill existing listings that are missing core data ─────────────────────
+# The search-results page stopped returning metadata (JS rendering), so old
+# listings in the DB have NULL price / size_sqm. Re-fetch their detail pages
+# to fill in the gaps. Cap at 60 per run to stay within CI time limits.
+BACKFILL_BATCH <- 60L
+
+needs_backfill <- dbGetQuery(con, paste0(
+  "SELECT finn_id FROM listings
+   WHERE (price IS NULL OR size_sqm IS NULL)
+     AND scraped_at IS NOT NULL
+   ORDER BY scraped_at DESC
+   LIMIT ", BACKFILL_BATCH
+))
+
+if (nrow(needs_backfill) > 0) {
+  message("\nBackfilling ", nrow(needs_backfill),
+          " existing listings missing price/size...")
+  for (i in seq_len(nrow(needs_backfill))) {
+    fid <- needs_backfill$finn_id[i]
+    message("  [", i, "/", nrow(needs_backfill), "] backfill finn_id=", fid)
+    d <- tryCatch(scrape_listing_detail(fid), error = function(e) NULL)
+    if (is.null(d)) { Sys.sleep(DETAIL_SLEEP); next }
+
+    dbExecute(con, "
+      UPDATE listings SET
+        title         = COALESCE(title,         ?),
+        price         = COALESCE(price,         ?),
+        size_sqm      = COALESCE(size_sqm,      ?),
+        rooms         = COALESCE(rooms,         ?),
+        address       = COALESCE(address,       ?),
+        neighborhood  = COALESCE(neighborhood,  ?),
+        property_type = COALESCE(property_type, ?),
+        year_built    = COALESCE(year_built,    ?)
+      WHERE finn_id = ?",
+      params = list(
+        d$title, d$price, d$size_sqm, d$rooms, d$address,
+        d$neighborhood, d$property_type, d$year_built,
+        fid
+      )
+    )
+    Sys.sleep(DETAIL_SLEEP)
+  }
+  message("  Backfill done.")
+}
 
 # ── Export CSV snapshot so the Quarto page can render even before classify.R ──
 # Category columns will be NA until classify.R runs — the dashboard handles this.
