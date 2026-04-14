@@ -694,39 +694,45 @@ if (nrow(daily) < 2) {
 ## What Drives Apartment Prices in Oslo?
 
 ::: {.callout-note appearance="simple"}
-An OLS regression of **log(price)** on all available predictors. Coefficients are converted to **% price difference** so factors measured on different scales can be compared directly. Category effects are relative to *Central urban* (the reference group). Error bars show 95% confidence intervals — grey points are not statistically distinguishable from zero.
+An OLS regression of **log(price)** on all available predictors. Coefficients show the **% price difference** associated with each factor, holding others constant. Reference levels: *Central urban* (housing category), *Good standard* (listing standard). Standard is included when ≥ 30% of listings have been classified. Error bars = 95% CI; grey = not significant.
 :::
 
-```{r price-drivers, fig.height=7, fig.width=10}
+```{r price-drivers, fig.height=9, fig.width=10}
 reg_df <- classified |>
   filter(!is.na(price), !is.na(size_sqm),
          price > 500000, price < 50e6,
          size_sqm > 10, size_sqm < 450) |>
   mutate(
-    log_price = log(price),
-    size_std  = as.numeric(scale(size_sqm)),
-    rooms_std = if_else(!is.na(rooms), as.numeric(scale(rooms)), NA_real_),
-    year_std  = if_else(!is.na(year_built), as.numeric(scale(year_built)), NA_real_),
-    category  = factor(category)
+    log_price  = log(price),
+    size_std   = as.numeric(scale(size_sqm)),
+    rooms_std  = if_else(!is.na(rooms), as.numeric(scale(rooms)), NA_real_),
+    year_std   = if_else(!is.na(year_built), as.numeric(scale(year_built)), NA_real_),
+    category   = factor(category),
+    std_factor = factor(
+      if_else(!is.na(standard) & standard != "", standard, NA_character_),
+      levels = STANDARD_ORDER
+    )
   )
 
 if (nrow(reg_df) < 30) {
   cat("> Not enough data yet — needs at least 30 classified listings with price and size.\n")
 } else {
-  # Use Central urban as reference if present, else most common category
+  # Reference levels
   ref_cat <- if ("Central urban" %in% levels(reg_df$category)) "Central urban" else levels(reg_df$category)[1]
-  reg_df$category <- relevel(reg_df$category, ref = ref_cat)
+  reg_df$category   <- relevel(reg_df$category,   ref = ref_cat)
+  reg_df$std_factor <- relevel(reg_df$std_factor, ref = "Good standard")
 
-  # Include rooms / year_built only when enough non-NA observations exist
+  # Include each predictor only when ≥ 30% of rows have non-NA values
   preds <- "size_std"
   if (sum(!is.na(reg_df$rooms))      > nrow(reg_df) * 0.3) preds <- c(preds, "rooms_std")
   if (sum(!is.na(reg_df$year_built)) > nrow(reg_df) * 0.3) preds <- c(preds, "year_std")
   preds <- c(preds, "category")
+  if (sum(!is.na(reg_df$std_factor)) > nrow(reg_df) * 0.3) preds <- c(preds, "std_factor")
 
-  fit <- lm(as.formula(paste("log_price ~", paste(preds, collapse = " + "))),
-            data = reg_df, na.action = na.omit)
-  s   <- summary(fit)
-  r2  <- round(s$r.squared * 100, 1)
+  fit   <- lm(as.formula(paste("log_price ~", paste(preds, collapse = " + "))),
+              data = reg_df, na.action = na.omit)
+  s     <- summary(fit)
+  r2    <- round(s$r.squared * 100, 1)
   n_obs <- nrow(model.frame(fit))
 
   coef_mat <- s$coefficients
@@ -738,23 +744,26 @@ if (nrow(reg_df) < 30) {
   ) |>
     filter(term != "(Intercept)") |>
     mutate(
-      lower      = estimate - 1.96 * se,
-      upper      = estimate + 1.96 * se,
-      sig        = sign(lower) == sign(upper),
-      pct        = (exp(estimate) - 1) * 100,
-      pct_lo     = (exp(lower)    - 1) * 100,
-      pct_hi     = (exp(upper)    - 1) * 100,
-      term       = gsub("^category", "", term),
-      term       = case_when(
-        term == "size_std"  ~ "Size (per SD ≈ 1 std dev in m²)",
+      lower  = estimate - 1.96 * se,
+      upper  = estimate + 1.96 * se,
+      sig    = sign(lower) == sign(upper),
+      pct    = (exp(estimate) - 1) * 100,
+      pct_lo = (exp(lower)    - 1) * 100,
+      pct_hi = (exp(upper)    - 1) * 100,
+      # Assign facet group BEFORE stripping prefix
+      predictor_type = case_when(
+        term %in% c("size_std", "rooms_std", "year_std") ~ "Continuous predictors",
+        startsWith(term, "category")   ~ paste0("Housing category  (vs ", ref_cat, ")"),
+        startsWith(term, "std_factor") ~ "Listing standard  (vs Good standard)",
+        TRUE ~ "Other"
+      ),
+      # Clean up term labels
+      term = gsub("^(category|std_factor)", "", term),
+      term = case_when(
+        term == "size_std"  ~ "Size (per SD)",
         term == "rooms_std" ~ "Rooms (per SD)",
         term == "year_std"  ~ "Year built (per SD)",
         TRUE ~ term
-      ),
-      predictor_type = if_else(
-        term %in% c("Size (per SD ≈ 1 std dev in m²)", "Rooms (per SD)", "Year built (per SD)"),
-        "Continuous predictors",
-        paste0("Housing category  (vs ", ref_cat, ")")
       )
     )
 
@@ -776,7 +785,7 @@ if (nrow(reg_df) < 30) {
     ) +
     scale_x_continuous(
       labels = pct_label,
-      expand = expansion(mult = c(0.05, 0.18))
+      expand = expansion(mult = c(0.05, 0.20))
     ) +
     facet_grid(rows = vars(predictor_type), scales = "free_y", space = "free_y") +
     labs(
@@ -785,8 +794,7 @@ if (nrow(reg_df) < 30) {
       title    = "What drives apartment prices in Oslo?",
       subtitle = paste0(
         "OLS on log(price), n = ", format(n_obs, big.mark = " "),
-        " listings. R² = ", r2, "% — the model explains ", r2,
-        "% of price variation. Reference category: ", ref_cat, "."
+        " listings. R² = ", r2, "%."
       )
     ) +
     theme_minimal(base_size = 13) +
@@ -803,7 +811,7 @@ if (nrow(reg_df) < 30) {
 ## Broker Pricing: Above or Below the Local Market?
 
 ::: {.callout-note appearance="simple"}
-For each listing, the asking price/m² is compared to the **median price/m² of other listings in the same neighbourhood** (minimum 3 listings; falls back to the city-wide median when a neighbourhood has too few). Brokers with a positive average deviation consistently list above the local reference — this may reflect specialisation in premium properties, not overpricing per se. Only brokers with ≥ 3 listings are shown.
+**Chart 1** compares each broker's average asking price/m² against the neighbourhood median (falls back to city median when fewer than 3 listings exist in a neighbourhood). **Chart 2** shows the listing-standard mix per broker — a key confound: brokers that appear expensive may simply handle more high-standard properties. Read both charts together. Only brokers with ≥ 3 listings are shown.
 :::
 
 ```{r broker-pricing, fig.height=5.5, fig.width=10}
@@ -883,6 +891,51 @@ if (nrow(broker_summary) < 2) {
       legend.position    = "bottom"
     ) +
     guides(colour = guide_legend(override.aes = list(size = 3)))
+}
+```
+
+```{r broker-standard-mix, fig.height=5, fig.width=10}
+broker_std_mix <- df |>
+  filter(!is.na(broker), broker != "",
+         !is.na(standard), standard != "") |>
+  mutate(standard = factor(standard, levels = STANDARD_ORDER)) |>
+  group_by(broker, standard) |>
+  summarise(n = n(), .groups = "drop") |>
+  group_by(broker) |>
+  mutate(total = sum(n), pct = n / total * 100) |>
+  ungroup() |>
+  filter(total >= 3)
+
+if (nrow(broker_std_mix) < 2) {
+  cat("> Standard mix will appear once listings have been classified.\n")
+} else {
+  # Sort brokers: highest share of Luxury + High standard at the top
+  broker_std_order <- broker_std_mix |>
+    filter(standard %in% c("Luxury finish", "High standard")) |>
+    group_by(broker) |>
+    summarise(high_pct = sum(pct), .groups = "drop") |>
+    arrange(high_pct) |>
+    pull(broker)
+
+  # Include any broker not in the order (all Avg/Reno listings)
+  missing <- setdiff(unique(broker_std_mix$broker), broker_std_order)
+  broker_std_order <- c(missing, broker_std_order)
+
+  broker_std_mix <- broker_std_mix |>
+    mutate(broker = factor(broker, levels = broker_std_order))
+
+  ggplot(broker_std_mix, aes(x = pct, y = broker, fill = fct_rev(standard))) +
+    geom_col(width = 0.7) +
+    scale_fill_manual(values = STANDARD_COLORS, name = "Standard",
+                      breaks = STANDARD_ORDER) +
+    scale_x_continuous(labels = label_number(suffix = "%"),
+                       expand = expansion(mult = c(0, 0.02))) +
+    labs(x = "Share of listings", y = NULL,
+         title = "Listing standard mix per broker",
+         subtitle = "Sorted by share of Luxury + High standard listings (top = highest quality mix)") +
+    theme_minimal(base_size = 13) +
+    theme(panel.grid.major.y = element_blank()) +
+    guides(fill = guide_legend(reverse = TRUE))
 }
 ```
 
