@@ -284,10 +284,31 @@ scrape_listing_detail <- function(finn_id) {
   year_raw   <- get_fact(c("Bygg\u00e5r", "Bygge\u00e5r", "\u00c5r bygget"))
   year_built <- suppressWarnings(as.integer(year_raw))
 
-  # ── Description ───────────────────────────────────────────────────────────
-  desc_node <- html_element(doc, "[class*='description'], [class*='Description'],
-                                  section p, article p")
-  description <- if (!is.null(desc_node)) trimws(html_text(desc_node)) else NA_character_
+  # ── Description (Om boligen) ──────────────────────────────────────────────
+  # Strategy 1: find the "Om boligen" heading and collect its following paragraphs
+  description <- tryCatch({
+    headings <- html_elements(doc, "h2, h3, h4")
+    om_idx   <- which(grepl("om\\s+boligen", tolower(trimws(html_text(headings)))))
+    if (length(om_idx) > 0) {
+      h     <- headings[[om_idx[1]]]
+      paras <- html_elements(h, xpath = "following-sibling::p")
+      if (length(paras) == 0)
+        paras <- html_elements(h, xpath = "../following-sibling::*/p | ../following-sibling::p")
+      paras <- paras[nchar(trimws(html_text(paras))) > 10]
+      if (length(paras) > 0)
+        paste(trimws(html_text(paras)), collapse = "\n\n")
+      else
+        NA_character_
+    } else NA_character_
+  }, error = function(e) NA_character_)
+
+  # Strategy 2: class/tag fallback when heading not found
+  if (is.na(description) || nchar(description) < 20) {
+    desc_node <- html_element(
+      doc, "[class*='description'], [class*='Description'], section p, article p"
+    )
+    if (!is.null(desc_node)) description <- trimws(html_text(desc_node))
+  }
 
   list(title = title, price = price, size_sqm = size_sqm, rooms = rooms,
        address = address, neighborhood = neighborhood,
