@@ -28,7 +28,6 @@ library(forcats)
 library(leaflet)
 library(DT)
 library(stringr)
-library(tidyr)
 
 # ── Colour palette (shared across all plots) ──────────────────────────────────
 CAT_COLORS <- c(
