@@ -615,5 +615,114 @@ if (nrow(daily) < 2) {
 }
 ```
 
+---
+
+## What Drives Apartment Prices in Oslo?
+
+::: {.callout-note appearance="simple"}
+An OLS regression of **log(price)** on all available predictors. Coefficients are converted to **% price difference** so factors measured on different scales can be compared directly. Category effects are relative to *Central urban* (the reference group). Error bars show 95% confidence intervals — grey points are not statistically distinguishable from zero.
+:::
+
+```{r price-drivers, fig.height=7, fig.width=10}
+reg_df <- classified |>
+  filter(!is.na(price), !is.na(size_sqm),
+         price > 500000, price < 50e6,
+         size_sqm > 10, size_sqm < 450) |>
+  mutate(
+    log_price = log(price),
+    size_std  = as.numeric(scale(size_sqm)),
+    rooms_std = if_else(!is.na(rooms), as.numeric(scale(rooms)), NA_real_),
+    year_std  = if_else(!is.na(year_built), as.numeric(scale(year_built)), NA_real_),
+    category  = factor(category)
+  )
+
+if (nrow(reg_df) < 30) {
+  cat("> Not enough data yet — needs at least 30 classified listings with price and size.\n")
+} else {
+  # Use Central urban as reference if present, else most common category
+  ref_cat <- if ("Central urban" %in% levels(reg_df$category)) "Central urban" else levels(reg_df$category)[1]
+  reg_df$category <- relevel(reg_df$category, ref = ref_cat)
+
+  # Include rooms / year_built only when enough non-NA observations exist
+  preds <- "size_std"
+  if (sum(!is.na(reg_df$rooms))      > nrow(reg_df) * 0.3) preds <- c(preds, "rooms_std")
+  if (sum(!is.na(reg_df$year_built)) > nrow(reg_df) * 0.3) preds <- c(preds, "year_std")
+  preds <- c(preds, "category")
+
+  fit <- lm(as.formula(paste("log_price ~", paste(preds, collapse = " + "))),
+            data = reg_df, na.action = na.omit)
+  s   <- summary(fit)
+  r2  <- round(s$r.squared * 100, 1)
+  n_obs <- nrow(model.frame(fit))
+
+  coef_mat <- s$coefficients
+  coef_df <- data.frame(
+    term     = rownames(coef_mat),
+    estimate = coef_mat[, "Estimate"],
+    se       = coef_mat[, "Std. Error"],
+    stringsAsFactors = FALSE
+  ) |>
+    filter(term != "(Intercept)") |>
+    mutate(
+      lower      = estimate - 1.96 * se,
+      upper      = estimate + 1.96 * se,
+      sig        = sign(lower) == sign(upper),
+      pct        = (exp(estimate) - 1) * 100,
+      pct_lo     = (exp(lower)    - 1) * 100,
+      pct_hi     = (exp(upper)    - 1) * 100,
+      term       = gsub("^category", "", term),
+      term       = case_when(
+        term == "size_std"  ~ "Size (per SD ≈ 1 std dev in m²)",
+        term == "rooms_std" ~ "Rooms (per SD)",
+        term == "year_std"  ~ "Year built (per SD)",
+        TRUE ~ term
+      ),
+      predictor_type = if_else(
+        term %in% c("Size (per SD ≈ 1 std dev in m²)", "Rooms (per SD)", "Year built (per SD)"),
+        "Continuous predictors",
+        paste0("Housing category  (vs ", ref_cat, ")")
+      )
+    )
+
+  pct_label <- function(x) paste0(ifelse(x >= 0, "+", ""), round(x), "%")
+
+  ggplot(coef_df,
+         aes(x = pct, y = reorder(term, pct), colour = sig)) +
+    geom_vline(xintercept = 0, linetype = "dashed",
+               colour = "grey55", linewidth = 0.7) +
+    geom_errorbarh(aes(xmin = pct_lo, xmax = pct_hi),
+                   height = 0.35, linewidth = 0.55, colour = "grey65") +
+    geom_point(size = 3.2) +
+    geom_text(aes(label = pct_label(pct)),
+              hjust = -0.35, size = 3, show.legend = FALSE) +
+    scale_colour_manual(
+      values = c("TRUE" = "#1a1a2e", "FALSE" = "#bbbbbb"),
+      labels = c("TRUE" = "Significant (95% CI)", "FALSE" = "Not significant"),
+      name   = NULL
+    ) +
+    scale_x_continuous(
+      labels = pct_label,
+      expand = expansion(mult = c(0.05, 0.18))
+    ) +
+    facet_grid(rows = vars(predictor_type), scales = "free_y", space = "free_y") +
+    labs(
+      x        = "Association with asking price (% difference)",
+      y        = NULL,
+      title    = "What drives apartment prices in Oslo?",
+      subtitle = paste0(
+        "OLS on log(price), n = ", format(n_obs, big.mark = " "),
+        " listings. R² = ", r2, "% — the model explains ", r2,
+        "% of price variation. Reference category: ", ref_cat, "."
+      )
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      strip.text         = element_text(face = "bold", size = 11),
+      panel.grid.major.y = element_blank(),
+      legend.position    = "bottom"
+    )
+}
+```
+
 *Data scraped from [finn.no](https://www.finn.no/realestate/homes/search.html?location=0.20061){target="_blank"} for personal/educational use only.
 Categories and value scores computed by Claude AI. This is not financial or investment advice.*
