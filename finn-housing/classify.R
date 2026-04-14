@@ -239,7 +239,7 @@ message("\nExporting CSV snapshot to: ", CSV_PATH)
 
 all_listings <- dbGetQuery(con, "
   SELECT finn_id, title, price, size_sqm, rooms, address, neighborhood,
-         property_type, year_built, url, scraped_at, lat, lon,
+         property_type, year_built, broker, url, scraped_at, lat, lon,
          category, category_confidence, category_reasoning, classified_at
   FROM listings
   ORDER BY scraped_at DESC

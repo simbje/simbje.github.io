@@ -80,9 +80,10 @@ dbExecute(con, "
   );
 ")
 
-# Migrate existing DBs: add lat/lon columns if they don't exist yet
-tryCatch(dbExecute(con, "ALTER TABLE listings ADD COLUMN lat REAL"), error = function(e) NULL)
-tryCatch(dbExecute(con, "ALTER TABLE listings ADD COLUMN lon REAL"), error = function(e) NULL)
+# Migrate existing DBs: add new columns if they don't exist yet
+tryCatch(dbExecute(con, "ALTER TABLE listings ADD COLUMN lat    REAL"), error = function(e) NULL)
+tryCatch(dbExecute(con, "ALTER TABLE listings ADD COLUMN lon    REAL"), error = function(e) NULL)
+tryCatch(dbExecute(con, "ALTER TABLE listings ADD COLUMN broker TEXT"), error = function(e) NULL)
 
 existing_ids <- dbGetQuery(con, "SELECT finn_id FROM listings")$finn_id
 message("Existing listings in DB: ", length(existing_ids))
@@ -202,6 +203,28 @@ scrape_search_page <- function(page_num) {
   bind_rows(rows)
 }
 
+# ── Broker domain → display name lookup ──────────────────────────────────────
+# Keyed on the first subdomain segment of the broker's external link URL.
+BROKER_DOMAINS <- c(
+  "dnbeiendom"     = "DNB Eiendom",
+  "privatmegleren" = "PrivatMegleren",
+  "eie"            = "EIE Eiendomsmegling",
+  "krogsveen"      = "Krogsveen",
+  "aktiv"          = "Aktiv Eiendomsmegling",
+  "nordvik"        = "Nordvik",
+  "obos"           = "OBOS Eiendomsmeglere",
+  "garanti"        = "Garanti Eiendomsmegling",
+  "sem-johnsen"    = "Sem & Johnsen",
+  "usbl"           = "USBL",
+  "meglerhuset"    = "Meglerhuset",
+  "foss"           = "Foss & Co",
+  "home"           = "Home Eiendomsmegling",
+  "remax"          = "RE/MAX",
+  "buysellrent"    = "Buy Sell Rent",
+  "ambita"         = "Ambita",
+  "estate"         = "Estate Eiendomsmegling"
+)
+
 # ── Scrape individual listing page for extra details ──────────────────────────
 scrape_listing_detail <- function(finn_id) {
   url <- paste0("https://www.finn.no/realestate/homes/ad.html?finnkode=", finn_id)
@@ -215,7 +238,7 @@ scrape_listing_detail <- function(finn_id) {
                 size_sqm = NA_real_, rooms = NA_integer_,
                 address = NA_character_, neighborhood = NA_character_,
                 property_type = NA_character_, year_built = NA_integer_,
-                description = NA_character_))
+                description = NA_character_, broker = NA_character_))
   }
 
   # ── Key facts table (dl/dt/dd pattern on finn.no detail pages) ───────────
@@ -310,10 +333,35 @@ scrape_listing_detail <- function(finn_id) {
     if (!is.null(desc_node)) description <- trimws(html_text(desc_node))
   }
 
+  # ── Broker (eiendomsmegler firma) ─────────────────────────────────────────
+  # Broker name is not in the facts table; identify it from external link domains.
+  broker <- tryCatch({
+    hrefs <- html_attr(html_elements(doc, "a[href^='http']"), "href")
+    hrefs <- hrefs[!is.na(hrefs) &
+                   !grepl("finn\\.no|facebook|instagram|google|maps\\.app|vitecnext", hrefs,
+                           ignore.case = TRUE)]
+    found <- NA_character_
+    for (h in hrefs) {
+      # Extract first domain segment, e.g. "dnbeiendom" from "dnbeiendom.no"
+      seg <- tolower(str_match(h, "https?://(?:www\\.)?([^\\.]+)")[, 2])
+      if (!is.na(seg) && seg %in% names(BROKER_DOMAINS)) {
+        found <- BROKER_DOMAINS[seg]
+        break
+      }
+    }
+    # Fallback: clean up first unknown external domain as display name
+    if (is.na(found) && length(hrefs) > 0) {
+      seg <- str_match(hrefs[1], "https?://(?:www\\.)?([^\\.]+)")[, 2]
+      if (!is.na(seg))
+        found <- tools::toTitleCase(gsub("[-_]", " ", seg))
+    }
+    found
+  }, error = function(e) NA_character_)
+
   list(title = title, price = price, size_sqm = size_sqm, rooms = rooms,
        address = address, neighborhood = neighborhood,
        property_type = property_type, year_built = year_built,
-       description = description)
+       description = description, broker = broker)
 }
 
 # ── Main scrape loop ───────────────────────────────────────────────────────────
@@ -371,12 +419,12 @@ if (length(new_rows) > 0) {
     INSERT OR IGNORE INTO listings
       (finn_id, title, price, size_sqm, rooms, address,
        neighborhood, property_type, year_built, description,
-       url, scraped_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+       broker, url, scraped_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     params = list(
       row$finn_id, final_title, final_price, final_size, final_rooms, final_address,
       detail$neighborhood, detail$property_type, detail$year_built, detail$description,
-      row$url, scraped_at
+      detail$broker, row$url, scraped_at
     )
   )
   }  # end new-listings loop
@@ -419,11 +467,12 @@ if (nrow(needs_backfill) > 0) {
         address       = COALESCE(address,       ?),
         neighborhood  = COALESCE(neighborhood,  ?),
         property_type = COALESCE(property_type, ?),
-        year_built    = COALESCE(year_built,    ?)
+        year_built    = COALESCE(year_built,    ?),
+        broker        = COALESCE(broker,        ?)
       WHERE finn_id = ?",
       params = list(
         d$title, d$price, d$size_sqm, d$rooms, d$address,
-        d$neighborhood, d$property_type, d$year_built,
+        d$neighborhood, d$property_type, d$year_built, d$broker,
         fid
       )
     )
@@ -437,7 +486,7 @@ if (nrow(needs_backfill) > 0) {
 CSV_PATH <- file.path("finn-housing", "data", "listings_export.csv")
 snap <- dbGetQuery(con, "
   SELECT finn_id, title, price, size_sqm, rooms, address, neighborhood,
-         property_type, year_built, url, scraped_at, lat, lon,
+         property_type, year_built, broker, url, scraped_at, lat, lon,
          category, category_confidence, category_reasoning, classified_at
   FROM listings ORDER BY scraped_at DESC
 ")
