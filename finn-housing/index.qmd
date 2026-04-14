@@ -55,7 +55,7 @@ df <- raw |>
   mutate(
     # Cast all optional text columns to character — prevents logical-NA vs character
     # type conflicts in coalesce() when columns are entirely NA in the CSV
-    across(c(title, address, neighborhood, property_type,
+    across(c(title, address, neighborhood, property_type, broker,
              category, category_confidence, category_reasoning,
              classified_at, url),
            as.character),
@@ -721,6 +721,94 @@ if (nrow(reg_df) < 30) {
       panel.grid.major.y = element_blank(),
       legend.position    = "bottom"
     )
+}
+```
+
+---
+
+## Broker Pricing: Above or Below the Local Market?
+
+::: {.callout-note appearance="simple"}
+For each listing, the asking price/m² is compared to the **median price/m² of other listings in the same neighbourhood** (minimum 3 listings; falls back to the city-wide median when a neighbourhood has too few). Brokers with a positive average deviation consistently list above the local reference — this may reflect specialisation in premium properties, not overpricing per se. Only brokers with ≥ 3 listings are shown.
+:::
+
+```{r broker-pricing, fig.height=5.5, fig.width=10}
+# Neighbourhood reference: median price/m² where ≥ 3 listings exist
+hood_ref <- df |>
+  filter(!is.na(neighborhood), neighborhood != "",
+         !is.na(price_sqm), price_sqm > 10000, price_sqm < 250000) |>
+  group_by(neighborhood) |>
+  summarise(hood_med = median(price_sqm), n_hood = n(), .groups = "drop") |>
+  filter(n_hood >= 3)
+
+city_med <- median(df$price_sqm[df$price_sqm > 10000 & df$price_sqm < 250000],
+                   na.rm = TRUE)
+
+broker_listings <- df |>
+  filter(!is.na(broker), broker != "",
+         !is.na(price_sqm), price_sqm > 10000, price_sqm < 250000) |>
+  left_join(hood_ref, by = "neighborhood") |>
+  mutate(
+    ref_psqm = if_else(!is.na(hood_med), hood_med, city_med),
+    delta    = (price_sqm - ref_psqm) / ref_psqm * 100
+  )
+
+broker_summary <- broker_listings |>
+  group_by(broker) |>
+  summarise(
+    mean_delta = mean(delta,  na.rm = TRUE),
+    se         = sd(delta,    na.rm = TRUE) / sqrt(n()),
+    n          = n(),
+    .groups    = "drop"
+  ) |>
+  filter(n >= 3) |>
+  arrange(mean_delta)
+
+if (nrow(broker_summary) < 2) {
+  cat("> Not enough broker data yet — will appear once more listings are scraped and geocoded.\n")
+} else {
+  pct_lbl <- function(x) paste0(ifelse(x >= 0, "+", ""), round(x, 1), "%")
+
+  ggplot(broker_summary,
+         aes(x = mean_delta, y = reorder(broker, mean_delta))) +
+    geom_vline(xintercept = 0, linetype = "dashed",
+               colour = "grey55", linewidth = 0.7) +
+    geom_errorbarh(
+      aes(xmin = mean_delta - 1.96 * se,
+          xmax = mean_delta + 1.96 * se),
+      height = 0.35, linewidth = 0.55, colour = "grey65"
+    ) +
+    geom_point(aes(colour = mean_delta > 0, size = n)) +
+    geom_text(
+      aes(label = paste0(pct_lbl(mean_delta), "  (n=", n, ")")),
+      hjust = -0.15, size = 3, colour = "grey30"
+    ) +
+    scale_colour_manual(
+      values = c("TRUE" = "#C0392B", "FALSE" = "#2A9D8F"),
+      labels = c("TRUE" = "Above area median", "FALSE" = "Below area median"),
+      name   = NULL
+    ) +
+    scale_size_continuous(name = "Listings", range = c(2.5, 6)) +
+    scale_x_continuous(
+      labels = pct_lbl,
+      expand = expansion(mult = c(0.05, 0.25))
+    ) +
+    labs(
+      x        = "Avg price/m² vs neighbourhood median (%)",
+      y        = NULL,
+      title    = "Do brokers list above or below the local market?",
+      subtitle = paste0(
+        "Deviation from neighbourhood median price/m². ",
+        "Red = above, teal = below. Error bars = 95% CI. ",
+        "n = number of listings per broker."
+      )
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      panel.grid.major.y = element_blank(),
+      legend.position    = "bottom"
+    ) +
+    guides(colour = guide_legend(override.aes = list(size = 3)))
 }
 ```
 
