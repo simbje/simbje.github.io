@@ -555,6 +555,7 @@ if (nrow(pick) == 0) {
 
 ```{r all-table}
 table_df <- df |>
+  left_join(classified |> select(finn_id, value_pct), by = "finn_id") |>
   arrange(desc(scraped_date)) |>
   transmute(
     Title    = ifelse(!is.na(url) & !is.na(title),
