@@ -1,6 +1,6 @@
 ---
 title: "Oslo Housing Market"
-description: "Daily snapshot of for-sale listings in Oslo, AI-classified into 10 housing categories."
+description: "Overview of listings in Oslo, AI-classified into 10 housing categories. The listings information is scraped from Finn.no every 2 weeks stored in a SQL database and processed here. "
 date: today
 execute:
   freeze: false
@@ -376,6 +376,44 @@ if (nrow(hood_counts) < 3) {
          subtitle = "Top 20 neighbourhoods with ≥ 3 listings") +
     theme_minimal(base_size = 13) +
     theme(panel.grid.major.y = element_blank())
+}
+```
+
+---
+
+## Price per m² by Category Over Time
+
+*How does the average asking price per m² evolve across housing segments between scrape runs?*
+
+```{r psqm-timeseries, fig.height=5, fig.width=10}
+psqm_ts <- classified |>
+  filter(!is.na(price_sqm), price_sqm > 10000, price_sqm < 250000,
+         !is.na(scraped_date)) |>
+  group_by(scraped_date, category) |>
+  summarise(
+    avg_psqm = mean(price_sqm, na.rm = TRUE),
+    n        = n(),
+    .groups  = "drop"
+  ) |>
+  filter(n >= 3)  # skip category/date combos with too few listings to be meaningful
+
+if (length(unique(psqm_ts$scraped_date)) < 2) {
+  cat("> Time series will appear after at least 2 scrape runs with classified listings.\n")
+} else {
+  ggplot(psqm_ts, aes(x = scraped_date, y = avg_psqm / 1000, colour = category)) +
+    geom_line(linewidth = 0.8, alpha = 0.85) +
+    geom_point(aes(size = n), alpha = 0.75) +
+    scale_colour_manual(values = CAT_COLORS, name = "Category") +
+    scale_size_continuous(name = "Listings", range = c(2, 5)) +
+    scale_x_date(date_labels = "%d %b %Y", date_breaks = "2 weeks") +
+    scale_y_continuous(labels = label_number(suffix = "k NOK", accuracy = 1)) +
+    labs(x = NULL, y = "Avg price/m² (1 000 NOK)",
+         title = "Average price per m² by category over time",
+         subtitle = "Mean across listings scraped each run. Point size = number of listings. Categories with < 3 listings per run hidden.") +
+    theme_minimal(base_size = 13) +
+    theme(axis.text.x = element_text(angle = 30, hjust = 1)) +
+    guides(colour = guide_legend(ncol = 2),
+           size   = guide_legend(override.aes = list(alpha = 0.7)))
 }
 ```
 
