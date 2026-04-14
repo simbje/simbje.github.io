@@ -1,0 +1,101 @@
+name: 🏠 Finn.no Oslo Housing Scraper
+
+on:
+  schedule:
+    - cron: '0 7 * * *'   # 07:00 UTC daily (one hour after SSB pipeline)
+  workflow_dispatch:
+    inputs:
+      force_reclassify:
+        description: 'Re-classify already-classified listings (set category=NULL first)'
+        required: false
+        default: 'false'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: "finn-housing"
+  cancel-in-progress: false
+
+jobs:
+  scrape-and-classify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 🔧 Set up R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.4.0'
+          use-public-rspm: true
+
+      - name: 📦 Cache R packages
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.R_LIBS_USER }}
+          key: ${{ runner.os }}-r-4.4-finn-${{ hashFiles('finn-housing/r-packages.txt') }}
+          restore-keys: ${{ runner.os }}-r-4.4-finn-
+
+      - name: 📚 Install R packages
+        run: |
+          Rscript -e "
+            pkgs <- c(
+              'httr2', 'rvest', 'jsonlite', 'dplyr', 'stringr',
+              'lubridate', 'DBI', 'RSQLite', 'here',
+              'ggplot2', 'scales', 'ggrepel', 'leaflet', 'DT', 'tidyr'
+            )
+            missing <- pkgs[!pkgs %in% installed.packages()[,'Package']]
+            if (length(missing) > 0) {
+              message('Installing: ', paste(missing, collapse=', '))
+              install.packages(missing,
+                repos = 'https://packagemanager.posit.co/cran/__linux__/noble/latest',
+                quiet = TRUE)
+            } else {
+              message('All packages already installed.')
+            }
+          "
+
+      - name: 🕷️ Scrape finn.no listings
+        run: Rscript finn-housing/scraper.R
+
+      - name: 🏷️ Classify listings via Claude API
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ "${{ github.event.inputs.force_reclassify }}" = "true" ]; then
+            Rscript -e "
+              library(DBI); library(RSQLite)
+              con <- dbConnect(SQLite(), 'finn-housing/data/finn_housing.db')
+              dbExecute(con, 'UPDATE listings SET category=NULL, category_confidence=NULL, category_reasoning=NULL, classified_at=NULL')
+              n <- dbGetQuery(con, 'SELECT COUNT(*) AS n FROM listings')[[1]]
+              message('Reset classification for ', n, ' listings.')
+              dbDisconnect(con)
+            "
+          fi
+          Rscript finn-housing/classify.R
+
+      - name: 💾 Commit updated data
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git stash --include-untracked
+          git pull --rebase origin main
+          git stash pop || true
+          git add finn-housing/data/finn_housing.db finn-housing/data/listings_export.csv
+          if git diff --staged --quiet; then
+            echo "Nothing to commit — no new listings or classifications."
+          else
+            COUNT=$(Rscript -e "
+              library(DBI); library(RSQLite)
+              con <- dbConnect(SQLite(), 'finn-housing/data/finn_housing.db')
+              n <- dbGetQuery(con, 'SELECT COUNT(*) AS n FROM listings')[[1]]
+              cat(n)
+              dbDisconnect(con)
+            " 2>/dev/null)
+            git commit -m "🏠 Oslo housing — $(date +%Y-%m-%d) — ${COUNT} listings [skip ci]"
+            git push
+          fi

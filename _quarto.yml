@@ -29,6 +29,8 @@ website:
             text: Grand Slam Point-by-Point
       - text: "SSB Daily"
         href: ssb-daily/index.qmd
+      - text: "Oslo Housing"
+        href: finn-housing/index.qmd
       - text: "Risk analysis and Machine Learning"
         href: https://simen-bjerkelund.shinyapps.io/tradingstats_shiny_app/
     right:

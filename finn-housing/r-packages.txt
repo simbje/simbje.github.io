@@ -1,0 +1,15 @@
+httr2
+rvest
+jsonlite
+dplyr
+stringr
+lubridate
+DBI
+RSQLite
+here
+ggplot2
+scales
+ggrepel
+leaflet
+DT
+tidyr

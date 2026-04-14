@@ -1,0 +1,584 @@
+---
+title: "Oslo Housing Market"
+description: "Daily snapshot of for-sale listings in Oslo, AI-classified into 10 housing categories."
+date: today
+execute:
+  freeze: false
+  echo: false
+  warning: false
+  message: false
+---
+
+```{r setup}
+library(dplyr)
+library(ggplot2)
+library(scales)
+library(leaflet)
+library(DT)
+library(stringr)
+library(tidyr)
+
+CSV_PATH <- here::here("finn-housing", "data", "listings_export.csv")
+
+if (!file.exists(CSV_PATH)) {
+  cat("> **No data yet.** Run `finn-housing/scraper.R` then `finn-housing/classify.R` locally, or wait for the daily GitHub Actions workflow.\n")
+  knitr::knit_exit()
+}
+
+# ── Colour palette (shared across all plots) ──────────────────────────────────
+CAT_COLORS <- c(
+  "Luxury"                        = "#8B0000",
+  "Family home"                   = "#2E86AB",
+  "Starter / budget"              = "#A8DADC",
+  "Investment"                    = "#457B9D",
+  "Student / young professional"  = "#F4A261",
+  "New development"               = "#2A9D8F",
+  "Renovation"                    = "#E9C46A",
+  "Central urban"                 = "#264653",
+  "Suburban"                      = "#6D6875",
+  "Waterfront / premium location" = "#1D3557",
+  "Unclassified"                  = "#BBBBBB"
+)
+
+# ── Load & clean data ─────────────────────────────────────────────────────────
+raw <- read.csv(CSV_PATH, stringsAsFactors = FALSE, fileEncoding = "UTF-8")
+
+df <- raw |>
+  mutate(
+    scraped_date = as.Date(substr(scraped_at, 1, 10)),
+    price_m      = price / 1e6,
+    price_sqm    = ifelse(!is.na(price) & !is.na(size_sqm) & size_sqm > 0,
+                          price / size_sqm, NA_real_),
+    category     = ifelse(is.na(category) | category == "", "Unclassified", category),
+    lat          = suppressWarnings(as.numeric(lat)),
+    lon          = suppressWarnings(as.numeric(lon))
+  )
+
+classified <- df |> filter(category != "Unclassified")
+
+# ── Value-for-money score ─────────────────────────────────────────────────────
+# Definition: how much cheaper is this listing per m² vs the median for its
+# category?  score = category_median_price_sqm / listing_price_sqm
+# score > 1  →  cheaper than category median  →  good value
+# score < 1  →  more expensive than category median  →  premium pricing
+#
+# A score of 1.40 means you pay 29 % less per m² than the typical listing in
+# the same category.
+cat_medians <- classified |>
+  filter(!is.na(price_sqm), price_sqm > 10000, price_sqm < 250000) |>
+  group_by(category) |>
+  summarise(cat_med_psqm = median(price_sqm, na.rm = TRUE), .groups = "drop")
+
+classified <- classified |>
+  left_join(cat_medians, by = "category") |>
+  mutate(
+    value_score = ifelse(!is.na(price_sqm) & price_sqm > 0,
+                         cat_med_psqm / price_sqm, NA_real_),
+    value_pct   = round((value_score - 1) * 100, 1)   # % below(+) / above(-) median
+  )
+
+last_scrape  <- max(df$scraped_date, na.rm = TRUE)
+total_n      <- nrow(df)
+classified_n <- nrow(classified)
+med_price    <- median(classified$price, na.rm = TRUE)
+med_size     <- median(classified$size_sqm, na.rm = TRUE)
+med_psqm     <- median(classified$price_sqm, na.rm = TRUE)
+```
+
+Explore **`r format(total_n, big.mark = " ")`** for-sale listings in Oslo, scraped from finn.no and classified by AI into 10 housing segments. Use the charts and map below to find patterns — or scroll to the bottom for this week's standout pick.
+
+---
+
+::: {.callout-note appearance="minimal"}
+**`r format(total_n, big.mark = " ")`** listings &nbsp;·&nbsp;
+**`r format(classified_n, big.mark = " ")`** classified &nbsp;·&nbsp;
+Median price **`r paste0(round(med_price / 1e6, 1), " M NOK")`** &nbsp;·&nbsp;
+Median size **`r paste0(round(med_size), " m²")`** &nbsp;·&nbsp;
+Median price/m² **`r paste0(format(round(med_psqm / 1000, 0), big.mark = " "), " k NOK")`** &nbsp;·&nbsp;
+Last updated **`r format(last_scrape, "%d %b %Y")`**
+:::
+
+---
+
+## Oslo on the Map
+
+*Bubble size = asking price. Colour = category. Click a bubble to open the listing.*
+
+```{r map}
+map_df <- df |>
+  filter(!is.na(lat), !is.na(lon),
+         lat > 59.5, lat < 60.2,
+         lon > 10.3, lon < 11.2,
+         !is.na(price))
+
+if (nrow(map_df) == 0) {
+  cat("> Map will appear once geocoding has run (happens automatically after each classify step).\n")
+} else {
+  # Radius: log-scale of price, capped to avoid giant bubbles
+  map_df <- map_df |>
+    mutate(
+      radius   = pmin(pmax(log(price / 1e6) * 5, 4), 22),
+      col_hex  = CAT_COLORS[category],
+      col_hex  = ifelse(is.na(col_hex), "#BBBBBB", col_hex),
+      popup_txt = paste0(
+        "<b><a href='", url, "' target='_blank'>", title, "</a></b><br>",
+        "<b>", ifelse(!is.na(price), paste0(format(price, big.mark = " "), " NOK"), "—"), "</b>",
+        ifelse(!is.na(size_sqm), paste0(" · ", size_sqm, " m²"), ""),
+        ifelse(!is.na(rooms),    paste0(" · ", rooms, " rom"), ""), "<br>",
+        ifelse(!is.na(address),  paste0(address, "<br>"), ""),
+        "<span style='background:", col_hex, ";color:#fff;padding:2px 6px;border-radius:3px;font-size:0.8em'>",
+        category, "</span>"
+      )
+    )
+
+  leaflet(map_df) |>
+    addProviderTiles(providers$CartoDB.Positron) |>
+    setView(lng = 10.757, lat = 59.913, zoom = 11) |>
+    addCircleMarkers(
+      lng        = ~lon,
+      lat        = ~lat,
+      radius     = ~radius,
+      color      = ~col_hex,
+      fillColor  = ~col_hex,
+      fillOpacity = 0.65,
+      weight     = 1,
+      opacity    = 0.9,
+      popup      = ~popup_txt
+    ) |>
+    addLegend(
+      position = "bottomright",
+      colors   = CAT_COLORS[names(CAT_COLORS) %in% unique(map_df$category)],
+      labels   = names(CAT_COLORS)[names(CAT_COLORS) %in% unique(map_df$category)],
+      title    = "Category",
+      opacity  = 0.8
+    )
+}
+```
+
+---
+
+## Price vs Size
+
+*Each point is one listing. The grey trend line shows the general price–size relationship across all categories.*
+
+```{r price-size, fig.height=5.5, fig.width=9}
+scatter_df <- classified |>
+  filter(!is.na(price_m), !is.na(size_sqm),
+         price_m > 0.3, price_m < 35,
+         size_sqm > 10, size_sqm < 450)
+
+# Annotations: median markers per category
+cat_med <- scatter_df |>
+  group_by(category) |>
+  summarise(med_sqm = median(size_sqm), med_price = median(price_m), .groups = "drop")
+
+ggplot(scatter_df, aes(x = size_sqm, y = price_m)) +
+  geom_point(aes(colour = category), alpha = 0.45, size = 1.6) +
+  geom_smooth(method = "lm", formula = y ~ x,
+              colour = "grey50", linewidth = 0.8, se = TRUE, alpha = 0.12) +
+  scale_colour_manual(values = CAT_COLORS, name = "Category") +
+  scale_y_continuous(labels = label_number(suffix = " M", accuracy = 0.5)) +
+  scale_x_continuous(labels = label_number(suffix = " m²")) +
+  labs(x = "Size (m²)", y = "Asking price",
+       title = "Price vs size",
+       subtitle = "Linear trend across all listings shown in grey") +
+  theme_minimal(base_size = 13) +
+  guides(colour = guide_legend(override.aes = list(size = 3, alpha = 1),
+                               ncol = 2))
+```
+
+---
+
+## Market Segments
+
+```{r segments, fig.height=4.5, fig.width=10}
+cat_counts <- classified |>
+  count(category, name = "n") |>
+  arrange(desc(n)) |>
+  mutate(
+    category = factor(category, levels = category),
+    pct      = n / sum(n) * 100,
+    label    = paste0(n, "  (", round(pct), "%)")
+  )
+
+ggplot(cat_counts, aes(x = n, y = fct_rev(category), fill = category)) +
+  geom_col(show.legend = FALSE, width = 0.72) +
+  geom_text(aes(label = label), hjust = -0.1, size = 3.4, colour = "grey25") +
+  scale_fill_manual(values = CAT_COLORS) +
+  scale_x_continuous(expand = expansion(mult = c(0, 0.18))) +
+  labs(x = "Listings", y = NULL,
+       title = "Distribution of listings by AI-assigned category") +
+  theme_minimal(base_size = 13) +
+  theme(panel.grid.major.y = element_blank(),
+        axis.text.y = element_text(size = 11))
+```
+
+---
+
+## Price Distribution by Category
+
+```{r price-violin, fig.height=5.5, fig.width=10}
+violin_df <- classified |>
+  filter(!is.na(price_m), price_m > 0.3, price_m < 30) |>
+  mutate(category = factor(category, levels = rev(levels(cat_counts$category))))
+
+# Only draw violins for categories with enough data
+enough <- violin_df |> count(category) |> filter(n >= 5) |> pull(category)
+
+ggplot(violin_df |> filter(category %in% enough),
+       aes(x = price_m, y = category, fill = category)) +
+  geom_violin(trim = TRUE, show.legend = FALSE, alpha = 0.72, linewidth = 0.25) +
+  geom_boxplot(width = 0.10, outlier.shape = NA, show.legend = FALSE,
+               colour = "grey30", fill = "white", alpha = 0.55) +
+  stat_summary(fun = median, geom = "point",
+               shape = 21, size = 2, fill = "white", colour = "grey30",
+               show.legend = FALSE) +
+  scale_fill_manual(values = CAT_COLORS) +
+  scale_x_continuous(labels = label_number(suffix = " M NOK", accuracy = 1),
+                     limits = c(0, 30)) +
+  labs(x = "Asking price", y = NULL,
+       title = "Price distribution within each category",
+       subtitle = "White dot = median; box = IQR") +
+  theme_minimal(base_size = 13) +
+  theme(panel.grid.major.y = element_blank())
+```
+
+---
+
+## Value for Money
+
+::: {.callout-tip appearance="simple"}
+**How is "value for money" defined here?**
+
+For each listing we compute a **value score**:
+
+$$\text{Value Score} = \frac{\text{Category median price/m}^2}{\text{Listing price/m}^2}$$
+
+A score of **1.0** means the listing is priced exactly at the median per m² for its category.
+A score of **1.30** means you pay **30 % less per m²** than the typical listing in that segment — genuine value.
+Scores **below 1.0** indicate premium pricing.
+:::
+
+```{r value-scatter, fig.height=5.5, fig.width=9}
+val_df <- classified |>
+  filter(!is.na(value_score), !is.na(size_sqm),
+         size_sqm > 10, size_sqm < 450,
+         value_score > 0.3, value_score < 3.5,
+         price_sqm > 10000)
+
+# Top-5 best-value picks to label
+top5 <- val_df |>
+  filter(!is.na(title)) |>
+  arrange(desc(value_score)) |>
+  slice_head(n = 5) |>
+  mutate(short_label = paste0(
+    str_trunc(coalesce(neighborhood, address, ""), 18, ellipsis = "…"),
+    "\n", round(value_score, 2), "×"
+  ))
+
+ggplot(val_df, aes(x = size_sqm, y = value_score)) +
+  geom_hline(yintercept = 1, linetype = "dashed", colour = "grey60", linewidth = 0.7) +
+  annotate("text", x = max(val_df$size_sqm, na.rm = TRUE) * 0.98, y = 1.02,
+           label = "← at category median", hjust = 1, size = 3.2, colour = "grey55") +
+  geom_point(aes(colour = category, size = price_m), alpha = 0.5) +
+  ggrepel::geom_label_repel(
+    data = top5,
+    aes(label = short_label, colour = category),
+    size = 3, show.legend = FALSE, fill = "white",
+    label.size = 0.25, max.overlaps = 8
+  ) +
+  scale_colour_manual(values = CAT_COLORS, name = "Category") +
+  scale_size_continuous(name = "Price (M NOK)", range = c(1.5, 6),
+                        labels = label_number(suffix = " M")) +
+  scale_y_continuous(labels = label_number(accuracy = 0.1, suffix = "×")) +
+  scale_x_continuous(labels = label_number(suffix = " m²")) +
+  labs(x = "Size (m²)", y = "Value score",
+       title = "Value for money vs size",
+       subtitle = "Above dashed line = cheaper per m² than category median. Labelled = top-5 picks.") +
+  theme_minimal(base_size = 13) +
+  guides(colour = guide_legend(override.aes = list(size = 3, alpha = 1), ncol = 2),
+         size   = guide_legend(override.aes = list(alpha = 0.7)))
+```
+
+### Top 10 Best-Value Listings
+
+```{r value-table}
+top10 <- classified |>
+  filter(!is.na(value_score), !is.na(price), !is.na(size_sqm),
+         size_sqm >= 25, price_sqm > 10000) |>
+  arrange(desc(value_score)) |>
+  slice_head(n = 10) |>
+  transmute(
+    Listing = ifelse(!is.na(url),
+      paste0('<a href="', url, '" target="_blank">', str_trunc(coalesce(title, "—"), 40), '</a>'),
+      coalesce(title, "—")),
+    Price   = paste0(format(price, big.mark = " "), " NOK"),
+    `Size`  = paste0(size_sqm, " m²"),
+    `kr/m²` = paste0(format(round(price_sqm), big.mark = " "), " NOK"),
+    Category = category,
+    `Value score` = paste0(round(value_score, 2), "×  (+", round(value_pct), "%)")
+  )
+
+datatable(top10, escape = FALSE, rownames = FALSE,
+          options = list(dom = "t", pageLength = 10, scrollX = TRUE))
+```
+
+---
+
+## Price per m² by Neighbourhood
+
+```{r psqm-hood, fig.height=5, fig.width=9}
+hood_df <- classified |>
+  filter(!is.na(neighborhood), neighborhood != "",
+         !is.na(price_sqm), price_sqm > 10000, price_sqm < 250000)
+
+hood_counts <- hood_df |> count(neighborhood) |> filter(n >= 3)
+
+if (nrow(hood_counts) < 3) {
+  cat("> Not enough neighbourhood data yet — will appear as more listings are scraped and geocoded.\n")
+} else {
+  hood_summary <- hood_df |>
+    filter(neighborhood %in% hood_counts$neighborhood) |>
+    group_by(neighborhood) |>
+    summarise(
+      med_psqm = median(price_sqm),
+      n        = n(),
+      .groups  = "drop"
+    ) |>
+    arrange(desc(med_psqm)) |>
+    slice_head(n = 20) |>
+    mutate(neighborhood = factor(neighborhood, levels = rev(neighborhood)))
+
+  ggplot(hood_summary, aes(x = med_psqm / 1000, y = neighborhood)) +
+    geom_col(fill = "#264653", alpha = 0.82, width = 0.7) +
+    geom_text(aes(label = paste0(round(med_psqm / 1000), "k  (n=", n, ")")),
+              hjust = -0.1, size = 3.2, colour = "grey30") +
+    scale_x_continuous(
+      labels  = label_number(suffix = "k NOK"),
+      expand  = expansion(mult = c(0, 0.18))
+    ) +
+    labs(x = "Median price/m² (1 000 NOK)", y = NULL,
+         title = "Median price per m² by neighbourhood",
+         subtitle = "Top 20 neighbourhoods with ≥ 3 listings") +
+    theme_minimal(base_size = 13) +
+    theme(panel.grid.major.y = element_blank())
+}
+```
+
+---
+
+## Size & Rooms
+
+```{r size-rooms, fig.height=4, fig.width=10}
+sr_df <- classified |>
+  filter(!is.na(rooms), rooms >= 1, rooms <= 8,
+         !is.na(size_sqm), size_sqm > 10, size_sqm < 450)
+
+if (nrow(sr_df) < 10) {
+  cat("> Not enough rooms data yet.\n")
+} else {
+  ggplot(sr_df, aes(x = factor(rooms), y = size_sqm, fill = category)) +
+    geom_boxplot(outlier.alpha = 0.3, linewidth = 0.35, alpha = 0.75) +
+    scale_fill_manual(values = CAT_COLORS, name = "Category") +
+    scale_y_continuous(labels = label_number(suffix = " m²")) +
+    labs(x = "Number of rooms", y = "Size (m²)",
+         title = "Size distribution by number of rooms",
+         subtitle = "Coloured by category") +
+    theme_minimal(base_size = 13) +
+    guides(fill = guide_legend(ncol = 2))
+}
+```
+
+---
+
+## Daily Listing Activity
+
+```{r daily-activity, fig.height=3.5, fig.width=9}
+daily <- df |>
+  count(scraped_date, name = "n") |>
+  filter(!is.na(scraped_date)) |>
+  arrange(scraped_date)
+
+if (nrow(daily) < 2) {
+  cat("> Daily trend will appear after at least 2 days of scraping.\n")
+} else {
+  ggplot(daily, aes(x = scraped_date, y = n)) +
+    geom_col(fill = "#2A9D8F", alpha = 0.85, width = 0.7) +
+    geom_text(aes(label = n), vjust = -0.4, size = 3, colour = "grey35") +
+    scale_x_date(date_labels = "%b %d") +
+    scale_y_continuous(expand = expansion(mult = c(0, 0.15))) +
+    labs(x = NULL, y = "New listings",
+         title = "New listings scraped per day",
+         subtitle = "Cumulative unique listings added to the database each run") +
+    theme_minimal(base_size = 13) +
+    theme(panel.grid.major.x = element_blank())
+}
+```
+
+---
+
+## Listing of the Week :trophy:
+
+```{r pick-of-week}
+# Algorithm:
+#  1. Filter to classified listings with full data (price, size, address, url)
+#  2. Require size >= 30 m², valid value_score, scraped within 14 days
+#     (fall back to all-time if too few recent listings)
+#  3. Rank by value_score (higher = cheaper per m² vs category), break ties by size
+#  4. Pick #1
+
+pick_pool <- classified |>
+  filter(!is.na(price), !is.na(size_sqm), !is.na(url),
+         !is.na(value_score), price_sqm > 10000,
+         size_sqm >= 30, category != "Unclassified") |>
+  arrange(desc(value_score), desc(size_sqm))
+
+# Prefer recent listings
+recent_pool <- pick_pool |> filter(scraped_date >= Sys.Date() - 14)
+if (nrow(recent_pool) >= 1) pick_pool <- recent_pool
+
+pick <- pick_pool |> slice_head(n = 1)
+
+if (nrow(pick) == 0) {
+  cat("> Not enough classified listings yet to make a recommendation.\n")
+} else {
+  cat(htmltools::doRenderTags(
+    htmltools::tags$div(
+      class = "card border-success mb-4",
+      style = "max-width:680px; border-width:2px;",
+
+      htmltools::tags$div(
+        class = "card-header bg-success text-white d-flex align-items-center gap-2",
+        htmltools::tags$span("\U0001F3C6", style = "font-size:1.3em"),
+        htmltools::tags$strong("Listing of the Week")
+      ),
+
+      htmltools::tags$div(
+        class = "card-body",
+
+        htmltools::tags$h5(
+          class = "card-title mb-1",
+          htmltools::tags$a(
+            href = pick$url, target = "_blank", rel = "noopener",
+            coalesce(pick$title, "View listing")
+          )
+        ),
+
+        htmltools::tags$p(
+          class = "text-muted mb-2", style = "font-size:0.9em",
+          coalesce(pick$address, "Oslo")
+        ),
+
+        htmltools::tags$div(
+          class = "d-flex flex-wrap gap-3 mb-3",
+
+          htmltools::tags$div(
+            htmltools::tags$div(class = "text-muted", style = "font-size:0.75em", "PRICE"),
+            htmltools::tags$strong(
+              if (!is.na(pick$price)) paste0(format(pick$price, big.mark = " "), " NOK") else "—"
+            )
+          ),
+          htmltools::tags$div(
+            htmltools::tags$div(class = "text-muted", style = "font-size:0.75em", "SIZE"),
+            htmltools::tags$strong(
+              if (!is.na(pick$size_sqm)) paste0(pick$size_sqm, " m²") else "—"
+            )
+          ),
+          htmltools::tags$div(
+            htmltools::tags$div(class = "text-muted", style = "font-size:0.75em", "ROOMS"),
+            htmltools::tags$strong(
+              if (!is.na(pick$rooms)) as.character(pick$rooms) else "—"
+            )
+          ),
+          htmltools::tags$div(
+            htmltools::tags$div(class = "text-muted", style = "font-size:0.75em", "PRICE / m²"),
+            htmltools::tags$strong(
+              if (!is.na(pick$price_sqm))
+                paste0(format(round(pick$price_sqm), big.mark = " "), " NOK")
+              else "—"
+            )
+          )
+        ),
+
+        # Category badge
+        htmltools::tags$p(
+          htmltools::tags$span(
+            class = "badge rounded-pill text-white me-2",
+            style = paste0("background-color:", CAT_COLORS[pick$category]),
+            pick$category
+          ),
+          if (!is.na(pick$value_score))
+            htmltools::tags$span(
+              class = "badge bg-success-subtle text-success-emphasis",
+              paste0("+", round(pick$value_pct), "% value vs category median")
+            )
+        ),
+
+        # AI reasoning
+        if (!is.na(pick$category_reasoning) && nchar(pick$category_reasoning) > 5)
+          htmltools::tags$p(
+            class = "card-text fst-italic text-muted",
+            style = "font-size:0.88em; border-left:3px solid #ccc; padding-left:8px",
+            paste0("\u201C", pick$category_reasoning, "\u201D")
+          ),
+
+        htmltools::tags$a(
+          href = pick$url, target = "_blank", rel = "noopener",
+          class = "btn btn-outline-success btn-sm",
+          "View on finn.no \u2192"
+        )
+      ),
+
+      htmltools::tags$div(
+        class = "card-footer text-muted",
+        style = "font-size:0.8em",
+        paste0("Selected by value score algorithm · Scraped ", format(pick$scraped_date, "%d %b %Y"))
+      )
+    )
+  ))
+}
+```
+
+---
+
+## All Listings
+
+```{r all-table}
+table_df <- df |>
+  arrange(desc(scraped_date)) |>
+  transmute(
+    Title    = ifelse(!is.na(url) & !is.na(title),
+                 paste0('<a href="', url, '" target="_blank">',
+                        str_trunc(title, 45), '</a>'),
+                 coalesce(title, "—")),
+    `Price`  = ifelse(!is.na(price),
+                 paste0(format(price, big.mark = " "), " NOK"), "—"),
+    `Size`   = ifelse(!is.na(size_sqm), paste0(size_sqm, " m²"), "—"),
+    `kr/m²`  = ifelse(!is.na(price_sqm),
+                 paste0(format(round(price_sqm / 1000, 0), big.mark = " "), "k"), "—"),
+    Rooms    = ifelse(!is.na(rooms), as.character(rooms), "—"),
+    Address  = coalesce(address, "—"),
+    Category = category,
+    `Value`  = ifelse(!is.na(value_pct),
+                 paste0(ifelse(value_pct >= 0, "+", ""), round(value_pct), "%"), "—"),
+    Scraped  = as.character(scraped_date)
+  )
+
+datatable(
+  table_df,
+  escape    = FALSE,
+  rownames  = FALSE,
+  filter    = "top",
+  options   = list(
+    pageLength = 25,
+    dom        = "ftip",
+    scrollX    = TRUE,
+    columnDefs = list(list(className = "dt-right", targets = c(1, 2, 3, 7)))
+  )
+)
+```
+
+---
+
+*Data scraped daily from [finn.no](https://www.finn.no/realestate/homes/search.html?location=0.20061){target="_blank"} for personal/educational use only.
+Categories and value scores computed by Claude AI. This is not financial or investment advice.*
