@@ -2,7 +2,7 @@ name: 🏠 Finn.no Oslo Housing Scraper
 
 on:
   schedule:
-    - cron: '0 7 * * *'   # 07:00 UTC daily (one hour after SSB pipeline)
+    - cron: '0 7 1,15 * *'   # 07:00 UTC on the 1st and 15th of each month (~biweekly)
   workflow_dispatch:
     inputs:
       force_reclassify:

@@ -136,6 +136,8 @@ scrape_search_page <- function(page_num) {
 
   if (length(cards) == 0) {
     # Fallback: any link pointing to a realestate ad
+    warning("No <article> cards found on page ", page_num,
+            " — finn.no HTML may have changed. Falling back to link-only extraction.")
     links <- html_elements(doc, "a[href*='finnkode']")
     if (length(links) == 0) {
       message("  No listing cards found on page ", page_num, " — stopping pagination.")

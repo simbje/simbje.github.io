@@ -218,6 +218,7 @@ ungeocoded <- dbGetQuery(con, paste0(
 
 if (nrow(ungeocoded) > 0) {
   message("\nGeocoding ", nrow(ungeocoded), " listings via Nominatim...")
+  geocoded_n <- 0L
   for (i in seq_len(nrow(ungeocoded))) {
     row <- ungeocoded[i, ]
     coords <- geocode_osm(row$address)
@@ -226,11 +227,11 @@ if (nrow(ungeocoded) > 0) {
         "UPDATE listings SET lat = ?, lon = ? WHERE finn_id = ?",
         params = list(coords[1], coords[2], row$finn_id)
       )
+      geocoded_n <- geocoded_n + 1L
     }
     Sys.sleep(1.1)  # Nominatim rate limit: max 1 req/sec
   }
-  geocoded_n <- sum(!is.na(ungeocoded$address))
-  message("  Geocoding done.")
+  message("  Geocoded ", geocoded_n, "/", nrow(ungeocoded), " listings.")
 }
 
 # ── Export CSV snapshot for Quarto rendering ──────────────────────────────────
