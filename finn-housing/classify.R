@@ -19,6 +19,8 @@ library(stringr)
 DB_PATH    <- file.path("finn-housing", "data", "finn_housing.db")
 CSV_PATH   <- file.path("finn-housing", "data", "listings_export.csv")
 BATCH_SIZE <- 999999  # classify everything unclassified
+API_BATCH  <- 10L    # listings per Claude API call (batching = fewer, faster calls)
+MODEL      <- "claude-haiku-4-5-20251001"  # cheap + fast; good enough for classification
 
 ANTHROPIC_API_KEY <- Sys.getenv("ANTHROPIC_API_KEY")
 if (nchar(ANTHROPIC_API_KEY) == 0) stop("ANTHROPIC_API_KEY not set")
@@ -42,6 +44,59 @@ with_retry <- function(fn, max_attempts = 3L, base_wait = 2) {
   }
   stop(last_error)
 }
+
+# ── Batch Claude helper ───────────────────────────────────────────────────────
+# Sends up to API_BATCH listing prompts in one API call and returns a list of
+# parsed result objects (one per prompt, same order).
+# Returns NULL on failure — caller falls back gracefully.
+call_claude_batch <- function(system_prompt, user_prompts, max_tokens_each = 160L) {
+  n <- length(user_prompts)
+
+  numbered <- paste(
+    vapply(seq_len(n), function(i)
+      paste0("### Listing ", i, "\n", user_prompts[[i]]),
+      character(1L)),
+    collapse = "\n\n"
+  )
+
+  batch_header <- paste0(
+    "Classify each of the following ", n, " listings.\n",
+    "Return ONLY a valid JSON array with exactly ", n, " objects ",
+    "in the same order as the input. Each object must use the same keys ",
+    "described in your instructions.\n\n"
+  )
+
+  response <- with_retry(function() {
+    request("https://api.anthropic.com/v1/messages") |>
+      req_headers(
+        "x-api-key"         = ANTHROPIC_API_KEY,
+        "anthropic-version" = "2023-06-01",
+        "content-type"      = "application/json"
+      ) |>
+      req_body_json(list(
+        model      = MODEL,
+        max_tokens = max_tokens_each * n + 100L,
+        system     = trimws(system_prompt),
+        messages   = list(list(role = "user",
+                               content = paste0(batch_header, numbered)))
+      )) |>
+      req_timeout(120) |>
+      req_perform()
+  }, max_attempts = 3L, base_wait = 3)
+
+  raw_json   <- resp_body_json(response)
+  txt_blocks <- Filter(function(b) identical(b$type, "text"), raw_json$content)
+  raw_text   <- paste(vapply(txt_blocks, function(b) b$text, character(1L)), collapse = "")
+  raw_text   <- str_remove_all(raw_text, "```json|```")
+  parsed     <- fromJSON(trimws(raw_text), simplifyDataFrame = FALSE)
+
+  # fromJSON may return a data.frame when all objects share keys — normalise to list
+  if (is.data.frame(parsed))
+    lapply(seq_len(nrow(parsed)), function(i) as.list(parsed[i, ]))
+  else
+    parsed
+}
+
 
 # ── Classification system prompt ──────────────────────────────────────────────
 SYSTEM_PROMPT <- '
@@ -89,104 +144,71 @@ unclassified <- dbGetQuery(con, paste0(
 
 message("Unclassified listings to process: ", nrow(unclassified))
 
+valid_cats <- c("Luxury", "Family home", "Starter / budget", "Investment",
+                "Student / young professional", "New development",
+                "Renovation", "Central urban", "Suburban",
+                "Waterfront / premium location")
+
 if (nrow(unclassified) == 0) {
-  message("Nothing to classify. Exporting CSV and exiting.")
+  message("Nothing to classify.")
 } else {
+  for (batch_start in seq(1, nrow(unclassified), by = API_BATCH)) {
+    idx   <- batch_start:min(batch_start + API_BATCH - 1L, nrow(unclassified))
+    batch <- unclassified[idx, ]
+    message("  Category batch [", batch_start, "–", max(idx),
+            " / ", nrow(unclassified), "]")
 
-  # ── Classify each listing ─────────────────────────────────────────────────
-  for (i in seq_len(nrow(unclassified))) {
-    row <- unclassified[i, ]
-    message("  [", i, "/", nrow(unclassified), "] Classifying finn_id=", row$finn_id)
-
-    # Build compact prompt
-    desc_short <- if (!is.na(row$description) && nchar(row$description) > 300) {
-      paste0(substr(row$description, 1, 297), "...")
-    } else {
-      row$description
-    }
-
-    price_fmt <- if (!is.na(row$price)) {
-      paste0(formatC(row$price, format = "d", big.mark = " "), " NOK")
-    } else "ukjent pris"
-
-    size_fmt <- if (!is.na(row$size_sqm)) paste0(row$size_sqm, " m²") else "ukjent størrelse"
-    rooms_fmt <- if (!is.na(row$rooms)) paste0(row$rooms, " rom") else "ukjent antall rom"
-
-    user_prompt <- paste0(
-      "Classify this Oslo housing listing:\n\n",
-      "Title: ", if (!is.na(row$title)) row$title else "N/A", "\n",
-      "Price: ", price_fmt, "\n",
-      "Size: ", size_fmt, "\n",
-      "Rooms: ", rooms_fmt, "\n",
-      "Address: ", if (!is.na(row$address)) row$address else "N/A", "\n",
-      "Neighborhood: ", if (!is.na(row$neighborhood)) row$neighborhood else "N/A", "\n",
-      "Type: ", if (!is.na(row$property_type)) row$property_type else "N/A", "\n",
-      "Year built: ", if (!is.na(row$year_built)) row$year_built else "N/A", "\n",
-      "Description: ", if (!is.na(desc_short)) desc_short else "N/A"
-    )
-
-    # Call Claude API
-    result <- tryCatch({
-      response <- with_retry(function() {
-        request("https://api.anthropic.com/v1/messages") |>
-          req_headers(
-            "x-api-key"         = ANTHROPIC_API_KEY,
-            "anthropic-version" = "2023-06-01",
-            "content-type"      = "application/json"
-          ) |>
-          req_body_json(list(
-            model      = "claude-sonnet-4-6",
-            max_tokens = 256,
-            system     = trimws(SYSTEM_PROMPT),
-            messages   = list(list(role = "user", content = user_prompt))
-          )) |>
-          req_timeout(60) |>
-          req_perform()
-      }, max_attempts = 3L, base_wait = 3)
-
-      raw_json <- resp_body_json(response)
-      text_blocks <- Filter(function(b) identical(b$type, "text"), raw_json$content)
-      raw_text <- paste(vapply(text_blocks, function(b) b$text, character(1L)), collapse = "")
-
-      # Strip any accidental markdown fences
-      raw_text <- str_remove_all(raw_text, "```json|```")
-      fromJSON(trimws(raw_text))
-
-    }, error = function(e) {
-      message("    Classification failed: ", e$message)
-      NULL
+    prompts <- lapply(seq_len(nrow(batch)), function(i) {
+      row       <- batch[i, ]
+      desc_short <- if (!is.na(row$description) && nchar(row$description) > 300)
+        paste0(substr(row$description, 1, 297), "...") else row$description
+      price_fmt  <- if (!is.na(row$price))
+        paste0(formatC(row$price, format = "d", big.mark = " "), " NOK") else "ukjent pris"
+      paste0(
+        "Title: ",        if (!is.na(row$title))         row$title         else "N/A", "\n",
+        "Price: ",        price_fmt, "\n",
+        "Size: ",         if (!is.na(row$size_sqm))  paste0(row$size_sqm, " m²")  else "N/A", "\n",
+        "Rooms: ",        if (!is.na(row$rooms))      paste0(row$rooms, " rom")    else "N/A", "\n",
+        "Address: ",      if (!is.na(row$address))       row$address       else "N/A", "\n",
+        "Neighborhood: ", if (!is.na(row$neighborhood))  row$neighborhood  else "N/A", "\n",
+        "Type: ",         if (!is.na(row$property_type)) row$property_type else "N/A", "\n",
+        "Year built: ",   if (!is.na(row$year_built))    row$year_built    else "N/A", "\n",
+        "Description: ",  if (!is.na(desc_short))        desc_short        else "N/A"
+      )
     })
 
-    if (is.null(result)) next
-
-    # Validate category name against our list
-    valid_cats <- c("Luxury", "Family home", "Starter / budget", "Investment",
-                    "Student / young professional", "New development",
-                    "Renovation", "Central urban", "Suburban",
-                    "Waterfront / premium location")
-
-    cat_val  <- result$category
-    conf_val <- result$confidence
-    reas_val <- result$reasoning
-
-    if (!cat_val %in% valid_cats) {
-      # Fuzzy match to nearest valid category
-      scores <- vapply(valid_cats, function(v)
-        adist(tolower(cat_val), tolower(v)), numeric(1))
-      cat_val <- valid_cats[which.min(scores)]
-      message("    Fuzzy-matched '", result$category, "' → '", cat_val, "'")
-    }
+    results <- tryCatch(
+      call_claude_batch(SYSTEM_PROMPT, prompts),
+      error = function(e) { message("    Batch failed: ", e$message); NULL }
+    )
+    if (is.null(results)) { Sys.sleep(2); next }
 
     classified_at <- format(Sys.time(), "%Y-%m-%dT%H:%M:%S")
 
-    dbExecute(con, "
-      UPDATE listings
-      SET category = ?, category_confidence = ?, category_reasoning = ?, classified_at = ?
-      WHERE finn_id = ?",
-      params = list(cat_val, conf_val, reas_val, classified_at, row$finn_id)
-    )
+    for (j in seq_len(nrow(batch))) {
+      item <- results[[j]]
+      if (is.null(item)) next
 
-    Sys.sleep(0.3)  # small pause between API calls
+      cat_val  <- item$category
+      conf_val <- item$confidence
+      reas_val <- item$reasoning
+      if (is.null(cat_val) || is.na(cat_val)) next
+
+      if (!cat_val %in% valid_cats) {
+        scores  <- vapply(valid_cats, function(v)
+          adist(tolower(cat_val), tolower(v)), numeric(1))
+        cat_val <- valid_cats[which.min(scores)]
+        message("    Fuzzy-matched '", item$category, "' → '", cat_val, "'")
+      }
+
+      dbExecute(con, "
+        UPDATE listings
+        SET category = ?, category_confidence = ?, category_reasoning = ?, classified_at = ?
+        WHERE finn_id = ?",
+        params = list(cat_val, conf_val, reas_val, classified_at, batch$finn_id[j])
+      )
+    }
+    Sys.sleep(0.5)
   }
 }
 
@@ -228,79 +250,60 @@ needs_standard <- dbGetQuery(con, paste0(
 message("\nListings needing standard classification: ", nrow(needs_standard))
 
 if (nrow(needs_standard) > 0) {
-  for (i in seq_len(nrow(needs_standard))) {
-    row <- needs_standard[i, ]
-    message("  [", i, "/", nrow(needs_standard), "] Standard for finn_id=", row$finn_id)
+  for (batch_start in seq(1, nrow(needs_standard), by = API_BATCH)) {
+    idx   <- batch_start:min(batch_start + API_BATCH - 1L, nrow(needs_standard))
+    batch <- needs_standard[idx, ]
+    message("  Standard batch [", batch_start, "–", max(idx),
+            " / ", nrow(needs_standard), "]")
 
-    price_sqm_val <- if (!is.na(row$price) && !is.na(row$size_sqm) && row$size_sqm > 0)
-      round(row$price / row$size_sqm) else NA_integer_
-
-    # Use more of the description for standard — condition is often in the detail
-    desc_std <- if (!is.na(row$description) && nchar(row$description) > 600) {
-      paste0(substr(row$description, 1, 597), "...")
-    } else {
-      row$description
-    }
-
-    std_prompt <- paste0(
-      "Assess the interior standard of this Oslo housing listing:\n\n",
-      "Title: ",       if (!is.na(row$title))      row$title      else "N/A", "\n",
-      "Year built: ",  if (!is.na(row$year_built))  row$year_built  else "N/A", "\n",
-      "Type: ",        if (!is.na(row$property_type)) row$property_type else "N/A", "\n",
-      "Price/m²: ",    if (!is.na(price_sqm_val))  paste0(format(price_sqm_val, big.mark = " "), " NOK/m²") else "N/A", "\n",
-      "Description: ", if (!is.na(desc_std))        desc_std        else "N/A"
-    )
-
-    result <- tryCatch({
-      response <- with_retry(function() {
-        request("https://api.anthropic.com/v1/messages") |>
-          req_headers(
-            "x-api-key"         = ANTHROPIC_API_KEY,
-            "anthropic-version" = "2023-06-01",
-            "content-type"      = "application/json"
-          ) |>
-          req_body_json(list(
-            model      = "claude-sonnet-4-6",
-            max_tokens = 256,
-            system     = trimws(STANDARD_PROMPT),
-            messages   = list(list(role = "user", content = std_prompt))
-          )) |>
-          req_timeout(60) |>
-          req_perform()
-      }, max_attempts = 3L, base_wait = 3)
-
-      raw_json  <- resp_body_json(response)
-      txt_blocks <- Filter(function(b) identical(b$type, "text"), raw_json$content)
-      raw_text  <- paste(vapply(txt_blocks, function(b) b$text, character(1L)), collapse = "")
-      raw_text  <- str_remove_all(raw_text, "```json|```")
-      fromJSON(trimws(raw_text))
-
-    }, error = function(e) {
-      message("    Standard classification failed: ", e$message)
-      NULL
+    prompts <- lapply(seq_len(nrow(batch)), function(i) {
+      row           <- batch[i, ]
+      price_sqm_val <- if (!is.na(row$price) && !is.na(row$size_sqm) && row$size_sqm > 0)
+        round(row$price / row$size_sqm) else NA_integer_
+      # Use more of the description for standard — condition is often in the detail
+      desc_std <- if (!is.na(row$description) && nchar(row$description) > 600)
+        paste0(substr(row$description, 1, 597), "...") else row$description
+      paste0(
+        "Assess the interior standard of this Oslo housing listing:\n\n",
+        "Title: ",       if (!is.na(row$title))         row$title         else "N/A", "\n",
+        "Year built: ",  if (!is.na(row$year_built))     row$year_built     else "N/A", "\n",
+        "Type: ",        if (!is.na(row$property_type))  row$property_type  else "N/A", "\n",
+        "Price/m²: ",    if (!is.na(price_sqm_val))
+                           paste0(format(price_sqm_val, big.mark = " "), " NOK/m²") else "N/A", "\n",
+        "Description: ", if (!is.na(desc_std))            desc_std           else "N/A"
+      )
     })
 
-    if (is.null(result)) next
-
-    std_val  <- result$standard
-    conf_val <- result$confidence
-    reas_val <- result$reasoning
-
-    if (!std_val %in% VALID_STANDARDS) {
-      scores  <- vapply(VALID_STANDARDS, function(v)
-        adist(tolower(std_val), tolower(v)), numeric(1))
-      std_val <- VALID_STANDARDS[which.min(scores)]
-      message("    Fuzzy-matched '", result$standard, "' → '", std_val, "'")
-    }
-
-    dbExecute(con, "
-      UPDATE listings
-      SET standard = ?, standard_confidence = ?, standard_reasoning = ?
-      WHERE finn_id = ?",
-      params = list(std_val, conf_val, reas_val, row$finn_id)
+    results <- tryCatch(
+      call_claude_batch(STANDARD_PROMPT, prompts, max_tokens_each = 160L),
+      error = function(e) { message("    Batch failed: ", e$message); NULL }
     )
+    if (is.null(results)) { Sys.sleep(2); next }
 
-    Sys.sleep(0.3)
+    for (j in seq_len(nrow(batch))) {
+      item <- results[[j]]
+      if (is.null(item)) next
+
+      std_val  <- item$standard
+      conf_val <- item$confidence
+      reas_val <- item$reasoning
+      if (is.null(std_val) || is.na(std_val)) next
+
+      if (!std_val %in% VALID_STANDARDS) {
+        scores  <- vapply(VALID_STANDARDS, function(v)
+          adist(tolower(std_val), tolower(v)), numeric(1))
+        std_val <- VALID_STANDARDS[which.min(scores)]
+        message("    Fuzzy-matched '", item$standard, "' → '", std_val, "'")
+      }
+
+      dbExecute(con, "
+        UPDATE listings
+        SET standard = ?, standard_confidence = ?, standard_reasoning = ?
+        WHERE finn_id = ?",
+        params = list(std_val, conf_val, reas_val, batch$finn_id[j])
+      )
+    }
+    Sys.sleep(0.5)
   }
 }
 
