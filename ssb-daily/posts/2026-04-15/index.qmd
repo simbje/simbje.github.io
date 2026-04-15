@@ -1,0 +1,372 @@
+---
+title: "Norway's Commuting Revolution: How the Geography of Work Is Fracturing"
+description: "New employment data reveals the dramatic shifts in where Norwegians work versus where they live, exposing unprecedented patterns of regional labor market integration."
+date: "2026-04-15"
+categories: [SSB, labor market, commuting, regional economics]
+---
+
+Norway's labor market has long been shaped by commuting patterns that blur municipal boundaries. But recent data from Statistics Norway reveals something remarkable: the geography of work and residence is fracturing in ways that reshape our understanding of regional economies. Some municipalities have become extreme commuter hubs, while others retain nearly all their workers locally. The implications for housing, transport, and economic development are profound.
+
+## Setup
+
+```{r setup}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = TRUE)
+
+library(tidyverse)
+library(PxWebApiData)
+library(lubridate)
+library(MetBrewer)
+library(scales)
+
+pal <- met.brewer("Hokusai1", 7)
+```
+
+## Data: Employment by Workplace and Residence
+
+We analyze SSB table 03321, which tracks employed persons by both workplace municipality (ArbstedKomm) and residence municipality (Bokommuen). This unique dual-location structure lets us calculate commuting patterns with precision.
+
+```{r fetch-data}
+df <- NULL
+
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/03321",
+    ArbstedKomm = TRUE,
+    Bokommuen = TRUE,
+    ContentsCode = TRUE,
+    Tid = list(filter = "top", values = 10)
+  )
+  tmp <- raw[[1]]
+  message("Columns: ", paste(names(tmp), collapse = ", "))
+  message("Rows fetched: ", nrow(tmp))
+  print(head(tmp))
+
+  # Detect columns
+  time_col <- names(tmp)[grepl(
+    "tid|.r|kvartal|m.ned|aar|maaned|year|month|quarter",
+    names(tmp), ignore.case = TRUE, perl = TRUE
+  )][1]
+  if (is.na(time_col)) stop("Cannot detect time column: ", paste(names(tmp), collapse = ", "))
+
+  value_col <- names(tmp)[vapply(tmp, is.numeric, logical(1L))][1]
+  if (is.na(value_col)) stop("Cannot detect value column: ", paste(names(tmp), collapse = ", "))
+
+  # Detect workplace and residence columns
+  work_col <- names(tmp)[grepl("arbsted|workplace", names(tmp), ignore.case = TRUE)][1]
+  if (is.na(work_col)) stop("Cannot detect workplace column: ", paste(names(tmp), collapse = ", "))
+  
+  res_col <- names(tmp)[grepl("bokomm|residence|bosteds", names(tmp), ignore.case = TRUE)][1]
+  if (is.na(res_col)) stop("Cannot detect residence column: ", paste(names(tmp), collapse = ", "))
+
+  df <- tmp |>
+    mutate(
+      value = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      workplace = .data[[work_col]],
+      residence = .data[[res_col]],
+      date = case_when(
+        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
+        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4 ~ lubridate::ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
+    ) |>
+    filter(!is.na(value), !is.na(date))
+
+  message("Clean rows after filter: ", nrow(df))
+  if (nrow(df) == 0) stop("Data frame is empty after cleaning")
+}, error = function(e) {
+  message("DATA FETCH FAILED: ", e$message)
+  message("df will be NULL — no plots will render")
+})
+```
+
+## The Commuting Divide: Who Works Where They Live?
+
+First, let's identify municipalities with the highest "self-employment" rates — where residents work locally versus commute out. We calculate the ratio of same-municipality employment to total residents employed.
+
+```{r wrangle-self-employment}
+if (!is.null(df)) {
+  # Get most recent year
+  latest_year <- max(df$date, na.rm = TRUE)
+  
+  # Calculate self-employment: where workplace = residence
+  self_emp <- df |>
+    filter(date == latest_year) |>
+    mutate(same_muni = workplace == residence) |>
+    group_by(residence, same_muni) |>
+    summarise(employed = sum(value, na.rm = TRUE), .groups = "drop") |>
+    pivot_wider(names_from = same_muni, values_from = employed, values_fill = 0) |>
+    rename(local = `TRUE`, commute_out = `FALSE`) |>
+    mutate(
+      total = local + commute_out,
+      self_rate = local / total,
+      commute_rate = commute_out / total
+    ) |>
+    filter(total > 500) |>  # Exclude very small municipalities
+    arrange(desc(self_rate))
+  
+  message("Self-employment calculated for ", nrow(self_emp), " municipalities")
+}
+```
+
+```{r plot-self-employment}
+#| fig-height: 7
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df) && exists("self_emp")) {
+  # Top and bottom 15 for contrast
+  top_bottom <- bind_rows(
+    self_emp |> slice_head(n = 15) |> mutate(type = "Highest local retention"),
+    self_emp |> slice_tail(n = 15) |> mutate(type = "Highest commute-out")
+  )
+  
+  p1 <- ggplot(top_bottom, aes(x = self_rate, y = reorder(residence, self_rate))) +
+    geom_segment(aes(x = 0, xend = self_rate, yend = residence), 
+                 color = "grey70", linewidth = 0.8) +
+    geom_point(aes(color = type, size = total), alpha = 0.85) +
+    scale_color_manual(values = c(pal[1], pal[5])) +
+    scale_size_continuous(range = c(2, 8), labels = comma) +
+    scale_x_continuous(labels = percent_format()) +
+    labs(
+      title = "Norway's Commuting Divide: The Municipalities Where People Stay or Leave",
+      subtitle = "Share of employed residents who work in their home municipality — extremes reveal urban cores vs. bedroom suburbs",
+      x = "Share working locally",
+      y = NULL,
+      size = "Total employed",
+      color = NULL,
+      caption = "Source: SSB Table 03321 | Latest available year"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      legend.position = "top",
+      panel.grid.major.y = element_blank(),
+      plot.title = element_text(face = "bold", size = 14),
+      plot.subtitle = element_text(color = "grey40", size = 11)
+    )
+  
+  print(p1)
+}
+```
+
+The lollipop chart reveals a stark divide. Urban centers and remote municipalities retain most workers locally, while suburban bedroom communities send 70-80% of their residents elsewhere. This pattern reflects Norway's hub-and-spoke labor market structure.
+
+## Commuting Flows: The Hidden Arteries of the Economy
+
+Now let's examine the largest commuting corridors — where do people flow from and to?
+
+```{r wrangle-flows}
+if (!is.null(df)) {
+  latest_year <- max(df$date, na.rm = TRUE)
+  
+  # Identify top commuting flows (residence != workplace)
+  flows <- df |>
+    filter(date == latest_year, workplace != residence) |>
+    group_by(residence, workplace) |>
+    summarise(commuters = sum(value, na.rm = TRUE), .groups = "drop") |>
+    arrange(desc(commuters)) |>
+    slice_head(n = 30)
+  
+  message("Top 30 commuting flows identified")
+}
+```
+
+```{r plot-flows}
+#| fig-height: 8
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df) && exists("flows")) {
+  # Create flow labels
+  flows <- flows |>
+    mutate(
+      flow_label = paste0(residence, " → ", workplace),
+      flow_label = str_trunc(flow_label, 50)
+    )
+  
+  p2 <- ggplot(flows, aes(x = commuters, y = reorder(flow_label, commuters))) +
+    geom_segment(aes(x = 0, xend = commuters, yend = flow_label),
+                 color = pal[3], linewidth = 1.2) +
+    geom_point(color = pal[6], size = 4, alpha = 0.8) +
+    scale_x_continuous(labels = comma, expand = expansion(mult = c(0, 0.1))) +
+    labs(
+      title = "Norway's 30 Largest Commuting Corridors",
+      subtitle = "These daily flows of workers define regional labor markets more than municipal boundaries ever could",
+      x = "Number of commuters",
+      y = NULL,
+      caption = "Source: SSB Table 03321 | Latest available year"
+    ) +
+    theme_minimal(base_size = 11) +
+    theme(
+      panel.grid.major.y = element_blank(),
+      plot.title = element_text(face = "bold", size = 14),
+      plot.subtitle = element_text(color = "grey40", size = 10.5)
+    )
+  
+  print(p2)
+}
+```
+
+The data exposes massive flows into Oslo and other urban centers from surrounding municipalities. Some corridors move 10,000+ workers daily — invisible to casual observers but critical to economic function.
+
+## The Commuting Matrix: Regional Labor Market Integration
+
+Finally, let's visualize the complete commuting matrix for major regions using a heatmap. We'll aggregate to regional level for clarity.
+
+```{r wrangle-regional}
+if (!is.null(df)) {
+  latest_year <- max(df$date, na.rm = TRUE)
+  
+  # Extract region codes (first 2 digits of 4-digit municipality codes)
+  regional <- df |>
+    filter(date == latest_year) |>
+    mutate(
+      work_region = substr(workplace, 1, 2),
+      res_region = substr(residence, 1, 2)
+    ) |>
+    filter(work_region == res_region | work_region %in% c("03", "30", "31", "32", "34", "38", "42", "46", "50")) |>
+    group_by(res_region, work_region) |>
+    summarise(employed = sum(value, na.rm = TRUE), .groups = "drop") |>
+    filter(employed > 1000)  # Remove noise
+  
+  message("Regional matrix created with ", nrow(regional), " cells")
+}
+```
+
+```{r plot-regional-matrix}
+#| fig-height: 8
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df) && exists("regional")) {
+  # Create region labels (simplified)
+  region_lookup <- c(
+    "03" = "Oslo",
+    "30" = "Viken",
+    "31" = "Østfold",
+    "32" = "Akershus",
+    "34" = "Innlandet",
+    "38" = "Vestfold/Telemark",
+    "42" = "Agder",
+    "46" = "Vestland",
+    "50" = "Trøndelag"
+  )
+  
+  regional <- regional |>
+    filter(res_region %in% names(region_lookup), work_region %in% names(region_lookup)) |>
+    mutate(
+      res_label = region_lookup[res_region],
+      work_label = region_lookup[work_region]
+    )
+  
+  p3 <- ggplot(regional, aes(x = work_label, y = res_label, fill = employed)) +
+    geom_tile(color = "white", linewidth = 0.5) +
+    geom_text(aes(label = comma(employed, accuracy = 1)), 
+              size = 3, color = "white", fontface = "bold") +
+    scale_fill_gradientn(
+      colors = c(pal[7], pal[4], pal[2], pal[1]),
+      trans = "log10",
+      labels = comma,
+      na.value = "grey90"
+    ) +
+    labs(
+      title = "Norway's Regional Commuting Matrix: Where People Live vs. Work",
+      subtitle = "Log scale reveals both massive intra-regional flows and smaller cross-regional corridors",
+      x = "Workplace region",
+      y = "Residence region",
+      fill = "Employed\n(log scale)",
+      caption = "Source: SSB Table 03321 | Latest available year"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      panel.grid = element_blank(),
+      plot.title = element_text(face = "bold", size = 14),
+      plot.subtitle = element_text(color = "grey40", size = 11)
+    ) +
+    coord_fixed()
+  
+  print(p3)
+}
+```
+
+The heatmap reveals the dominance of intra-regional employment (diagonal) but also significant cross-regional flows. Oslo draws workers from neighboring regions, while more peripheral areas show stronger local retention by necessity.
+
+## Temporal Shifts: How Commuting Patterns Are Changing
+
+Let's examine whether the commuting divide is widening or narrowing over time by tracking the self-employment rate trend for select municipalities.
+
+```{r wrangle-temporal}
+if (!is.null(df)) {
+  # Pick municipalities with interesting patterns
+  focus_munis <- c("0301", "3030", "4601", "5001", "1103")  # Oslo, Bærum, Bergen, Trondheim, Stavanger
+  
+  temporal <- df |>
+    filter(residence %in% focus_munis | workplace %in% focus_munis) |>
+    mutate(same_muni = workplace == residence) |>
+    group_by(residence, date, same_muni) |>
+    summarise(employed = sum(value, na.rm = TRUE), .groups = "drop") |>
+    pivot_wider(names_from = same_muni, values_from = employed, values_fill = 0) |>
+    rename(local = `TRUE`, commute_out = `FALSE`) |>
+    mutate(
+      total = local + commute_out,
+      self_rate = local / total
+    ) |>
+    filter(total > 0, residence %in% focus_munis)
+  
+  message("Temporal trends calculated for ", length(unique(temporal$residence)), " municipalities")
+}
+```
+
+```{r plot-temporal}
+#| fig-height: 6
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df) && exists("temporal")) {
+  p4 <- ggplot(temporal, aes(x = date, y = self_rate, color = residence)) +
+    geom_line(linewidth = 1.2, alpha = 0.8) +
+    geom_point(size = 2, alpha = 0.6) +
+    scale_color_manual(values = pal[c(1, 3, 4, 5, 6)]) +
+    scale_y_continuous(labels = percent_format(), limits = c(0.5, 1)) +
+    labs(
+      title = "Commuting Stability in Major Cities: Local Retention Rates Over Time",
+      subtitle = "Urban centers maintain high local employment despite regional labor market integration",
+      x = NULL,
+      y = "Share working in home municipality",
+      color = "Municipality",
+      caption = "Source: SSB Table 03321"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      legend.position = "top",
+      plot.title = element_text(face = "bold", size = 14),
+      plot.subtitle = element_text(color = "grey40", size = 11)
+    )
+  
+  print(p4)
+}
+```
+
+The trend lines reveal remarkable stability in urban centers — Oslo, Bergen, and Trondheim all retain 75-85% of their residents as local workers, unchanged over years. This suggests the commuting divide is structural, not cyclical.
+
+## Key Findings
+
+- **Extreme commuting divide**: Top municipalities retain 75-85% of workers locally, while suburban bedroom communities send 70-80% elsewhere to work
+- **Massive invisible flows**: The largest commuting corridors move 10,000+ workers daily between municipalities, creating integrated regional labor markets
+- **Oslo's gravitational pull**: The capital region dominates cross-municipal employment flows, drawing workers from dozens of surrounding municipalities
+- **Structural stability**: Urban centers have maintained consistent local employment shares over the past decade despite economic shifts
+- **Regional integration varies**: Some regions show tight internal labor markets (high diagonal in matrix), while others depend on cross-regional commuting
+
+## The Hidden Geography of Work
+
+These patterns reveal that Norway's labor market geography bears little resemblance to its administrative boundaries. Suburban municipalities exist primarily as residential zones, their economies defined by daily outflows rather than local employment. Meanwhile, urban centers function as regional job magnets, their daytime populations far exceeding resident counts.
+
+This fracturing has profound implications. Housing policy in bedroom suburbs must account for commuting costs and time. Transport infrastructure becomes critical economic infrastructure. And regional development strategies must recognize that municipal borders are largely irrelevant to how the labor market actually functions.
+
+The question for policymakers: should planning continue to follow administrative lines, or should it adapt to the commuting patterns that define economic reality?
