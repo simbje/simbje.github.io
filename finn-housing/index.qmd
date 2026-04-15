@@ -650,30 +650,6 @@ if (length(unique(psqm_ts$scraped_date)) < 2) {
 
 ---
 
-## Size & Rooms
-
-```{r size-rooms, fig.height=4, fig.width=10}
-sr_df <- classified |>
-  filter(!is.na(rooms), rooms >= 1, rooms <= 8,
-         !is.na(size_sqm), size_sqm > 10, size_sqm < 450)
-
-if (nrow(sr_df) < 10) {
-  cat("> Not enough rooms data yet.\n")
-} else {
-  ggplot(sr_df, aes(x = factor(rooms), y = size_sqm, fill = category)) +
-    geom_boxplot(outlier.alpha = 0.3, linewidth = 0.35, alpha = 0.75) +
-    scale_fill_manual(values = CAT_COLORS, name = "Category") +
-    scale_y_continuous(labels = label_number(suffix = " m²")) +
-    labs(x = "Number of rooms", y = "Size (m²)",
-         title = "Size distribution by number of rooms",
-         subtitle = "Coloured by category") +
-    theme_minimal(base_size = 13) +
-    guides(fill = guide_legend(ncol = 2))
-}
-```
-
----
-
 ## Daily Listing Activity
 
 ```{r daily-activity, fig.height=3.5, fig.width=9}
