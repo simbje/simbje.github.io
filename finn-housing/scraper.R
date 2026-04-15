@@ -266,8 +266,18 @@ scrape_listing_detail <- function(finn_id) {
   title <- if (!is.null(title_node)) trimws(html_text(title_node)) else NA_character_
 
   # ── Price ─────────────────────────────────────────────────────────────────
-  # "Prisantydning" = asking price; avoid "Totalpris" which includes debt
-  price <- parse_number_no(get_fact(c("Prisantydning", "Pris")))
+  # Use "Totalpris" only (total price incl. shared debt / fellesgjeld).
+  # Do NOT mix with "Prisantydning" or "Pris" — they are not comparable.
+  price <- parse_number_no(get_fact(c("Totalpris")))
+
+  # Fallback: dedicated price element by data-testid or class
+  if (is.na(price)) {
+    price_node <- html_element(
+      doc,
+      "[data-testid*='totalpris'], [data-testid*='Totalpris'], [data-testid*='total-price']"
+    )
+    if (!is.null(price_node)) price <- parse_number_no(html_text(price_node))
+  }
 
   # ── Size ──────────────────────────────────────────────────────────────────
   # Prefer interior usable area (BRA-i), fall back to total usable area (BRA)
@@ -444,7 +454,7 @@ message("\nTotal listings in DB: ", total)
 # The search-results page stopped returning metadata (JS rendering), so old
 # listings in the DB have NULL price / size_sqm. Re-fetch their detail pages
 # to fill in the gaps. Cap at 60 per run to stay within CI time limits.
-BACKFILL_BATCH <- 60L
+BACKFILL_BATCH <- 300L
 
 needs_backfill <- dbGetQuery(con, paste0(
   "SELECT finn_id FROM listings
