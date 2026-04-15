@@ -280,6 +280,8 @@ if (nrow(needs_standard) > 0) {
     )
     if (is.null(results)) { Sys.sleep(2); next }
 
+    standard_classified_at <- format(Sys.time(), "%Y-%m-%dT%H:%M:%S")
+
     for (j in seq_len(nrow(batch))) {
       item <- results[[j]]
       if (is.null(item)) next
@@ -298,9 +300,10 @@ if (nrow(needs_standard) > 0) {
 
       dbExecute(con, "
         UPDATE listings
-        SET standard = ?, standard_confidence = ?, standard_reasoning = ?
+        SET standard = ?, standard_confidence = ?, standard_reasoning = ?,
+            standard_classified_at = ?
         WHERE finn_id = ?",
-        params = list(std_val, conf_val, reas_val, batch$finn_id[j])
+        params = list(std_val, conf_val, reas_val, standard_classified_at, batch$finn_id[j])
       )
     }
     Sys.sleep(0.5)

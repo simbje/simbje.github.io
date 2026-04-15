@@ -76,17 +76,19 @@ dbExecute(con, "
     category            TEXT,
     category_confidence TEXT,
     category_reasoning  TEXT,
-    classified_at       TEXT
+    classified_at           TEXT,
+    standard_classified_at  TEXT
   );
 ")
 
 # Migrate existing DBs: add new columns if they don't exist yet
-tryCatch(dbExecute(con, "ALTER TABLE listings ADD COLUMN lat                  REAL"), error = function(e) NULL)
-tryCatch(dbExecute(con, "ALTER TABLE listings ADD COLUMN lon                  REAL"), error = function(e) NULL)
-tryCatch(dbExecute(con, "ALTER TABLE listings ADD COLUMN broker               TEXT"), error = function(e) NULL)
-tryCatch(dbExecute(con, "ALTER TABLE listings ADD COLUMN standard             TEXT"), error = function(e) NULL)
-tryCatch(dbExecute(con, "ALTER TABLE listings ADD COLUMN standard_confidence  TEXT"), error = function(e) NULL)
-tryCatch(dbExecute(con, "ALTER TABLE listings ADD COLUMN standard_reasoning   TEXT"), error = function(e) NULL)
+tryCatch(dbExecute(con, "ALTER TABLE listings ADD COLUMN lat                     REAL"), error = function(e) NULL)
+tryCatch(dbExecute(con, "ALTER TABLE listings ADD COLUMN lon                     REAL"), error = function(e) NULL)
+tryCatch(dbExecute(con, "ALTER TABLE listings ADD COLUMN broker                  TEXT"), error = function(e) NULL)
+tryCatch(dbExecute(con, "ALTER TABLE listings ADD COLUMN standard                TEXT"), error = function(e) NULL)
+tryCatch(dbExecute(con, "ALTER TABLE listings ADD COLUMN standard_confidence     TEXT"), error = function(e) NULL)
+tryCatch(dbExecute(con, "ALTER TABLE listings ADD COLUMN standard_reasoning      TEXT"), error = function(e) NULL)
+tryCatch(dbExecute(con, "ALTER TABLE listings ADD COLUMN standard_classified_at  TEXT"), error = function(e) NULL)
 
 existing_ids <- dbGetQuery(con, "SELECT finn_id FROM listings")$finn_id
 message("Existing listings in DB: ", length(existing_ids))
@@ -348,7 +350,7 @@ scrape_listing_detail <- function(finn_id) {
       # Extract first domain segment, e.g. "dnbeiendom" from "dnbeiendom.no"
       seg <- tolower(str_match(h, "https?://(?:www\\.)?([^\\.]+)")[, 2])
       if (!is.na(seg) && seg %in% names(BROKER_DOMAINS)) {
-        found <- BROKER_DOMAINS[seg]
+        found <- unname(BROKER_DOMAINS[seg])
         break
       }
     }
@@ -471,11 +473,12 @@ if (nrow(needs_backfill) > 0) {
         neighborhood  = COALESCE(neighborhood,  ?),
         property_type = COALESCE(property_type, ?),
         year_built    = COALESCE(year_built,    ?),
+        description   = COALESCE(description,   ?),
         broker        = COALESCE(broker,        ?)
       WHERE finn_id = ?",
       params = list(
         d$title, d$price, d$size_sqm, d$rooms, d$address,
-        d$neighborhood, d$property_type, d$year_built, d$broker,
+        d$neighborhood, d$property_type, d$year_built, d$description, d$broker,
         fid
       )
     )
@@ -491,7 +494,7 @@ snap <- dbGetQuery(con, "
   SELECT finn_id, title, price, size_sqm, rooms, address, neighborhood,
          property_type, year_built, broker, url, scraped_at, lat, lon,
          category, category_confidence, category_reasoning, classified_at,
-         standard, standard_confidence, standard_reasoning
+         standard, standard_confidence, standard_reasoning, standard_classified_at
   FROM listings ORDER BY scraped_at DESC
 ")
 write.csv(snap, CSV_PATH, row.names = FALSE, fileEncoding = "UTF-8")

@@ -182,13 +182,13 @@ if (nrow(pick) == 0) {
           class = "card-title mb-1",
           htmltools::tags$a(
             href = pick$url, target = "_blank", rel = "noopener",
-            coalesce(pick$title, "View listing")
+            if (!is.na(pick$title) && nchar(trimws(pick$title)) > 0) pick$title else "View listing"
           )
         ),
 
         htmltools::tags$p(
           class = "text-muted mb-2", style = "font-size:0.9em",
-          coalesce(pick$address, "Oslo")
+          if (!is.na(pick$address) && nchar(trimws(pick$address)) > 0) pick$address else "Oslo"
         ),
 
         htmltools::tags$div(
