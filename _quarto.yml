@@ -27,10 +27,12 @@ website:
             text: Tennis Match Predictor
           - href: data-projects/tennis-slams.qmd
             text: Grand Slam Point-by-Point
+          - text: "---"
+          - text: "Ad Hoc"
+          - href: finn-housing/index.qmd
+            text: Oslo Housing
       - text: "SSB Daily"
         href: ssb-daily/index.qmd
-      - text: "Oslo Housing"
-        href: finn-housing/index.qmd
       - text: "Risk analysis and Machine Learning"
         href: https://simen-bjerkelund.shinyapps.io/tradingstats_shiny_app/
     right:
