@@ -51,13 +51,22 @@ CAT_COLORS <- c(
 # ── Load & clean data ─────────────────────────────────────────────────────────
 raw <- read.csv(CSV_PATH, stringsAsFactors = FALSE, fileEncoding = "UTF-8")
 
+raw <- raw |>
+  # Add optional columns that may be absent from older CSV exports
+  (\(d) {
+    for (col in c("broker", "standard", "standard_confidence", "standard_reasoning")) {
+      if (!col %in% names(d)) d[[col]] <- NA_character_
+    }
+    d
+  })()
+
 df <- raw |>
   mutate(
     # Cast all optional text columns to character — prevents logical-NA vs character
     # type conflicts in coalesce() when columns are entirely NA in the CSV
-    across(c(title, address, neighborhood, property_type, broker,
-             category, category_confidence, category_reasoning, classified_at,
-             standard, standard_confidence, standard_reasoning, url),
+    across(any_of(c("title", "address", "neighborhood", "property_type", "broker",
+                    "category", "category_confidence", "category_reasoning", "classified_at",
+                    "standard", "standard_confidence", "standard_reasoning", "url")),
            as.character),
     scraped_date = as.Date(substr(scraped_at, 1, 10)),
     price_m      = price / 1e6,
