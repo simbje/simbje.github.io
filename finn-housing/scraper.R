@@ -16,7 +16,18 @@ library(stringr)
 library(lubridate)
 
 # ── Config ────────────────────────────────────────────────────────────────────
-DB_PATH   <- file.path("finn-housing", "data", "finn_housing.db")
+# Resolve paths relative to THIS script's location so the script works
+# regardless of working directory (RStudio, terminal, GitHub Actions).
+.script_dir <- tryCatch({
+  args <- commandArgs(trailingOnly = FALSE)
+  file_arg <- args[grep("--file=", args)]
+  if (length(file_arg) > 0)
+    dirname(normalizePath(sub("--file=", "", file_arg[1])))
+  else
+    normalizePath(getwd())  # interactive / sourced fallback
+}, error = function(e) normalizePath(getwd()))
+
+DB_PATH   <- file.path(.script_dir, "data", "finn_housing.db")
 MAX_PAGES <- 10      # max search-result pages to scrape per run
 PAGE_SLEEP <- 1.5    # seconds between search-result page fetches
 DETAIL_SLEEP <- 1.2  # seconds between individual listing fetches
@@ -251,10 +262,25 @@ scrape_listing_detail <- function(finn_id) {
   dds <- trimws(html_text(html_elements(doc, "dd")))
   facts <- setNames(as.list(dds), dts)
 
-  # Helper: get a fact value case-insensitively
+  # Diagnostic: log what keys are available (helps catch future HTML changes)
+  if (length(facts) == 0) {
+    message("    WARNING: no dt/dd facts found for ", finn_id,
+            " — finn.no HTML may have changed")
+  } else {
+    message("    Facts keys: ", paste(head(names(facts), 15), collapse = ", "))
+  }
+
+  # Helper: get a fact value — tries exact match first, then partial/substring
   get_fact <- function(keys) {
     for (k in keys) {
+      # Exact match (case-insensitive)
       hit <- facts[tolower(names(facts)) == tolower(k)]
+      if (length(hit) > 0 && !is.na(hit[[1]]) && nchar(hit[[1]]) > 0)
+        return(hit[[1]])
+    }
+    # Partial match: fact key *contains* one of the search terms
+    for (k in keys) {
+      hit <- facts[grepl(tolower(k), tolower(names(facts)), fixed = TRUE)]
       if (length(hit) > 0 && !is.na(hit[[1]]) && nchar(hit[[1]]) > 0)
         return(hit[[1]])
     }
@@ -266,11 +292,12 @@ scrape_listing_detail <- function(finn_id) {
   title <- if (!is.null(title_node)) trimws(html_text(title_node)) else NA_character_
 
   # ── Price ─────────────────────────────────────────────────────────────────
-  # Use "Totalpris" only (total price incl. shared debt / fellesgjeld).
-  # Do NOT mix with "Prisantydning" or "Pris" — they are not comparable.
-  price <- parse_number_no(get_fact(c("Totalpris")))
+  # Prefer "Totalpris" (includes shared debt / fellesgjeld for co-ops).
+  # For properties with no shared debt, "Totalpris" is absent and
+  # "Prisantydning" / "Pris" IS the total price — so fall back to those.
+  price <- parse_number_no(get_fact(c("Totalpris", "Prisantydning", "Pris")))
 
-  # Fallback: dedicated price element by data-testid or class
+  # Fallback 1: dedicated price element by data-testid or class
   if (is.na(price)) {
     price_node <- html_element(
       doc,
@@ -278,6 +305,38 @@ scrape_listing_detail <- function(finn_id) {
     )
     if (!is.null(price_node)) price <- parse_number_no(html_text(price_node))
   }
+
+  # Fallback 2: scan inline elements for text containing "kr" + a large number
+  if (is.na(price)) {
+    cands <- html_elements(doc, "span, p, div, strong, b, td, li")
+    for (node in cands) {
+      txt <- trimws(html_text(node))
+      if (nchar(txt) > 50) next   # skip big blocks — price labels are short
+      if (grepl("kr", txt, ignore.case = TRUE) &&
+          grepl("[0-9][\\s\\.][0-9]{3}", txt, perl = TRUE)) {
+        candidate <- parse_number_no(txt)
+        if (!is.na(candidate) && candidate > 500000 && candidate < 200000000) {
+          price <- candidate
+          break
+        }
+      }
+    }
+  }
+
+  # Fallback 3: regex on the raw page body near the word "totalpris"
+  if (is.na(price)) {
+    raw_txt <- tryCatch(html_text(html_element(doc, "body")), error = function(e) NA_character_)
+    if (!is.na(raw_txt)) {
+      m <- str_match(raw_txt,
+                     "(?i)totalpris[^0-9]{0,30}([1-9][0-9 \\.\\u00a0]{4,14})")
+      if (!is.na(m[1, 2])) {
+        candidate <- parse_number_no(m[1, 2])
+        if (!is.na(candidate) && candidate > 500000) price <- candidate
+      }
+    }
+  }
+
+  if (is.na(price)) message("    NOTE: price still NA after all fallbacks for ", finn_id)
 
   # ── Size ──────────────────────────────────────────────────────────────────
   # Prefer interior usable area (BRA-i), fall back to total usable area (BRA)
@@ -313,6 +372,24 @@ scrape_listing_detail <- function(finn_id) {
     bc_node <- html_element(doc, "nav[aria-label*='breadcrumb'] a:last-child,
                                   [class*='breadcrumb'] a:last-child")
     if (!is.null(bc_node)) neighborhood <- trimws(html_text(bc_node))
+  }
+  # Fallback: match known Oslo district names against the address string
+  if (is.na(neighborhood) && !is.na(address) && nchar(address) > 0) {
+    known_oslo <- c(
+      "Frogner", "Grünerløkka", "Majorstuen", "St. Hanshaugen",
+      "Sagene", "Gamle Oslo", "Nordstrand", "Østensjø",
+      "Alna", "Bjerke", "Grorud", "Stovner", "Søndre Nordstrand",
+      "Ullern", "Vestre Aker", "Nordre Aker", "Sentrum", "Marka",
+      "Vålerenga", "Tøyen", "Grønland", "Torshov", "Sinsen",
+      "Grefsen", "Storo", "Nydalen", "Sandaker", "Bislett",
+      "Holmlia", "Lambertseter", "Romsås", "Furuset", "Helsfyr"
+    )
+    for (d in known_oslo) {
+      if (grepl(d, address, ignore.case = TRUE)) {
+        neighborhood <- d
+        break
+      }
+    }
   }
 
   # ── Property type ─────────────────────────────────────────────────────────
@@ -499,7 +576,7 @@ if (nrow(needs_backfill) > 0) {
 
 # ── Export CSV snapshot so the Quarto page can render even before classify.R ──
 # Category columns will be NA until classify.R runs — the dashboard handles this.
-CSV_PATH <- file.path("finn-housing", "data", "listings_export.csv")
+CSV_PATH <- file.path(.script_dir, "data", "listings_export.csv")
 snap <- dbGetQuery(con, "
   SELECT finn_id, title, price, size_sqm, rooms, address, neighborhood,
          property_type, year_built, broker, url, scraped_at, lat, lon,

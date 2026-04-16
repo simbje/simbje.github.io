@@ -16,8 +16,19 @@ library(dplyr)
 library(stringr)
 
 # ── Config ────────────────────────────────────────────────────────────────────
-DB_PATH    <- file.path("finn-housing", "data", "finn_housing.db")
-CSV_PATH   <- file.path("finn-housing", "data", "listings_export.csv")
+# Resolve paths relative to THIS script's location so the script works
+# regardless of working directory (RStudio, terminal, GitHub Actions).
+.script_dir <- tryCatch({
+  args <- commandArgs(trailingOnly = FALSE)
+  file_arg <- args[grep("--file=", args)]
+  if (length(file_arg) > 0)
+    dirname(normalizePath(sub("--file=", "", file_arg[1])))
+  else
+    normalizePath(getwd())  # interactive / sourced fallback
+}, error = function(e) normalizePath(getwd()))
+
+DB_PATH    <- file.path(.script_dir, "data", "finn_housing.db")
+CSV_PATH   <- file.path(.script_dir, "data", "listings_export.csv")
 BATCH_SIZE <- 999999  # classify everything unclassified
 API_BATCH  <- 10L    # listings per Claude API call (batching = fewer, faster calls)
 MODEL      <- "claude-haiku-4-5-20251001"  # cheap + fast; good enough for classification
