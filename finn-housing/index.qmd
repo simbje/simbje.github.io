@@ -920,5 +920,73 @@ if (nrow(broker_std_summary) < 2) {
 }
 ```
 
+---
+
+## Megler: Verdi for Pengene
+
+*Hvilket gjennomsnittlig verdi-score har annonsene til hver megler? Positiv score betyr at meglernes annonser typisk er billigere enn den vektede referansen (nabolag + standard + kategori) — negativ betyr at de typisk er dyrere.*
+
+```{r broker-value, fig.height=5.5, fig.width=10}
+broker_value <- classified |>
+  filter(!is.na(broker), broker != "",
+         !is.na(value_pct),
+         price_sqm > 35000) |>
+  group_by(broker) |>
+  summarise(
+    mean_vpct = mean(value_pct, na.rm = TRUE),
+    se        = sd(value_pct,   na.rm = TRUE) / sqrt(n()),
+    n         = n(),
+    .groups   = "drop"
+  ) |>
+  filter(n >= 3) |>
+  arrange(mean_vpct)
+
+if (nrow(broker_value) < 2) {
+  cat("> Ikke nok meglerdata ennå.\n")
+} else {
+  pct_lbl <- function(x) paste0(ifelse(x >= 0, "+", ""), round(x, 1), "%")
+
+  ggplot(broker_value,
+         aes(x = mean_vpct, y = reorder(broker, mean_vpct))) +
+    geom_vline(xintercept = 0, linetype = "dashed",
+               colour = "grey55", linewidth = 0.7) +
+    geom_errorbarh(
+      aes(xmin = mean_vpct - 1.96 * se,
+          xmax = mean_vpct + 1.96 * se),
+      height = 0.35, linewidth = 0.55, colour = "grey65"
+    ) +
+    geom_point(aes(colour = mean_vpct > 0, size = n)) +
+    geom_text(
+      aes(label = paste0(pct_lbl(mean_vpct), "  (n=", n, ")")),
+      hjust = -0.15, size = 3, colour = "grey30"
+    ) +
+    scale_colour_manual(
+      values = c("TRUE" = "#2A9D8F", "FALSE" = "#C0392B"),
+      labels = c("TRUE" = "Under referanse (god verdi)", "FALSE" = "Over referanse (dyr)"),
+      name   = NULL
+    ) +
+    scale_size_continuous(name = "Annonser", range = c(2.5, 6)) +
+    scale_x_continuous(
+      labels = pct_lbl,
+      expand = expansion(mult = c(0.05, 0.25))
+    ) +
+    labs(
+      x        = "Gj.sn. verdi-score (% vs vektet referanse)",
+      y        = NULL,
+      title    = "Megler: gjennomsnittlig verdi for pengene",
+      subtitle = paste0(
+        "Positiv = annonsene er billigere enn referansen (nabolag + standard + kategori). ",
+        "Feilstenger = 95 % KI. Kun meglere med ≥ 3 annonser."
+      )
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      panel.grid.major.y = element_blank(),
+      legend.position    = "bottom"
+    ) +
+    guides(colour = guide_legend(override.aes = list(size = 3)))
+}
+```
+
 *Data hentet fra [finn.no](https://www.finn.no/realestate/homes/search.html?location=0.20061){target="_blank"} kun til personlig/utdanningsformål.
 Kategorier og verdi-scorer beregnet av Claude AI. Dette er ikke finansiell eller investeringsrådgivning.*
