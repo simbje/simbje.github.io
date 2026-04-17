@@ -155,7 +155,7 @@ Sist oppdatert **`r format(last_scrape, "%d %b %Y")`**
 #  1. Filter to classified listings with full data (price, size, address, url)
 #  2. Require size >= 30 m², valid value_score, scraped within 14 days
 #     (fall back to all-time if too few recent listings)
-#  3. Rank by value_score (higher = cheaper per m² vs category), break ties by size
+#  3. Rank by value_score (higher = cheaper per m² vs weighted reference), break ties by size
 #  4. Pick #1
 
 pick_pool <- classified |>
@@ -254,8 +254,10 @@ if (nrow(pick) == 0) {
           ),
           if (!is.na(pick$value_score))
             htmltools::tags$span(
-              class = "badge bg-success-subtle text-success-emphasis",
-              paste0("+", round(pick$value_pct), "% verdi vs nabolagsmedian")
+              class = if (pick$value_pct >= 0) "badge bg-success-subtle text-success-emphasis"
+                      else "badge bg-warning-subtle text-warning-emphasis",
+              paste0(ifelse(pick$value_pct >= 0, "+", ""),
+                     round(pick$value_pct), "% vs vektet referanse")
             )
         ),
 
