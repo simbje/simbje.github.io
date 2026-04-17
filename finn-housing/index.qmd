@@ -79,34 +79,47 @@ df <- raw |>
 
 classified <- df |> filter(category != "Unclassified")
 
-# ── Value-for-money score (nabolag-justert) ───────────────────────────────────
-# Definition: how much cheaper is this listing per m² vs the median for its
-# neighbourhood (bydel)?  score = neighbourhood_median_price_sqm / listing_price_sqm
-# score > 1  →  cheaper than neighbourhood median  →  good value
-# score < 1  →  more expensive than neighbourhood median  →  premium pricing
+# ── Value-for-money score (vektet: nabolag + standard + kategori) ─────────────
+# ref_psqm = (neighbourhood_median + standard_median + category_median) / 3
+# score = ref_psqm / listing_price_sqm
+# score > 1  →  cheaper than the weighted reference  →  good value
+# score < 1  →  more expensive than the weighted reference  →  premium pricing
 #
-# Falls back to the city-wide median when a neighbourhood has fewer than 3
-# classified listings in the valid price range.
-hood_med_lookup <- classified |>
-  filter(!is.na(neighborhood), neighborhood != "",
-         !is.na(price_sqm), price_sqm > 10000, price_sqm < 250000) |>
-  group_by(neighborhood) |>
-  summarise(
-    hood_med_psqm = median(price_sqm, na.rm = TRUE),
-    n_hood        = n(),
-    .groups       = "drop"
-  ) |>
-  filter(n_hood >= 3)
+# City-wide median is used as fallback for any component where data is thin.
 
 city_med_psqm <- median(
   classified$price_sqm[classified$price_sqm > 10000 & classified$price_sqm < 250000],
   na.rm = TRUE
 )
 
+hood_med_lookup <- classified |>
+  filter(!is.na(neighborhood), neighborhood != "",
+         !is.na(price_sqm), price_sqm > 10000, price_sqm < 250000) |>
+  group_by(neighborhood) |>
+  summarise(hood_med_psqm = median(price_sqm, na.rm = TRUE),
+            n_hood = n(), .groups = "drop") |>
+  filter(n_hood >= 3)
+
+cat_med_lookup <- classified |>
+  filter(!is.na(price_sqm), price_sqm > 10000, price_sqm < 250000) |>
+  group_by(category) |>
+  summarise(cat_med_psqm = median(price_sqm, na.rm = TRUE), .groups = "drop")
+
+std_med_lookup <- classified |>
+  filter(!is.na(standard), standard != "",
+         !is.na(price_sqm), price_sqm > 10000, price_sqm < 250000) |>
+  group_by(standard) |>
+  summarise(std_med_psqm = median(price_sqm, na.rm = TRUE), .groups = "drop")
+
 classified <- classified |>
   left_join(hood_med_lookup, by = "neighborhood") |>
+  left_join(cat_med_lookup,  by = "category") |>
+  left_join(std_med_lookup,  by = "standard") |>
   mutate(
-    ref_psqm    = if_else(!is.na(hood_med_psqm), hood_med_psqm, city_med_psqm),
+    hood_ref    = if_else(!is.na(hood_med_psqm), hood_med_psqm, city_med_psqm),
+    cat_ref     = if_else(!is.na(cat_med_psqm),  cat_med_psqm,  city_med_psqm),
+    std_ref     = if_else(!is.na(std_med_psqm),  std_med_psqm,  city_med_psqm),
+    ref_psqm    = (hood_ref + cat_ref + std_ref) / 3,
     value_score = if_else(!is.na(price_sqm) & price_sqm > 0,
                           ref_psqm / price_sqm, NA_real_),
     value_pct   = round((value_score - 1) * 100, 1)
@@ -167,14 +180,11 @@ if (nrow(pick) == 0) {
     "Med ", format(round(pick$price_sqm), big.mark = "\u00a0"), "\u00a0NOK/m\u00b2 er den ",
     abs(round(pick$value_pct)), "\u00a0% ",
     if (pick$value_pct >= 0) "under" else "over",
-    " nabolagsmedianen",
-    if (!is.na(pick$neighborhood) && pick$neighborhood != "")
-      paste0(" (", pick$neighborhood, ")")
-    else "",
+    " den vektede referansen",
     if (!is.na(pick$ref_psqm))
-      paste0(" — referanse: ", format(round(pick$ref_psqm), big.mark = "\u00a0"), "\u00a0NOK/m\u00b2")
+      paste0(" (", format(round(pick$ref_psqm), big.mark = "\u00a0"), "\u00a0NOK/m\u00b2)")
     else "",
-    ". Verdi-score rangerer annonser etter hvor mye billigere de er per m\u00b2 sammenlignet med nabolagsmedianen (faller tilbake til bymedian der nabolagsdata mangler)."
+    ". Referansen er gjennomsnittet av nabolagsmedian, standardmedian og kategorimedian for denne boligen."
   )
 
   cat(htmltools::doRenderTags(
@@ -503,14 +513,16 @@ ggplot(violin_df |> filter(category %in% enough),
 ::: {.callout-tip appearance="simple"}
 **Hvordan defineres «verdi for pengene» her?**
 
-For hver annonse beregner vi en **verdi-score**:
+For hver annonse beregner vi en **verdi-score** basert på et vektet gjennomsnitt av tre referanser:
 
-$$\text{Verdi-score} = \frac{\text{Nabolagsmedian pris/m}^2}{\text{Annonsepris/m}^2}$$
+$$\text{Referansepris/m}^2 = \frac{\text{Nabolagsmedian} + \text{Standardmedian} + \text{Kategorimedian}}{3}$$
 
-En score på **1,0** betyr at annonsen er priset nøyaktig på medianen per m² for sitt nabolag (bydel).
-En score på **1,30** betyr at du betaler **30 % mindre per m²** enn en typisk bolig i nabolaget — ekte verdi.
-Scorer **under 1,0** indikerer premiumprising over nabolagsnivå.
-Der et nabolag har færre enn 3 klassifiserte annonser i gyldig prisrange, brukes byens medianpris/m² som referanse.
+$$\text{Verdi-score} = \frac{\text{Referansepris/m}^2}{\text{Annonsepris/m}^2}$$
+
+En score på **1,0** betyr at annonsen er priset nøyaktig på referansen.
+En score på **1,30** betyr at du betaler **30 % mindre per m²** enn referansen — ekte verdi.
+Scorer **under 1,0** indikerer premiumprising.
+Byens medianpris/m² brukes som fallback der nabolag eller standard mangler data.
 :::
 
 ```{r value-scatter, fig.height=11, fig.width=11}
@@ -531,7 +543,7 @@ ggplot(val_df, aes(x = size_sqm, y = value_score)) +
   facet_wrap(~category, scales = "free", ncol = 3) +
   labs(x = "Størrelse (m²)", y = "Verdi-score",
        title = "Verdi for pengene vs størrelse per kategori",
-       subtitle = "Stiplet linje = nabolagsmedian (score 1,0). Punktstørrelse = pris i M NOK.") +
+       subtitle = "Stiplet linje = vektet referanse (score 1,0). Punktstørrelse = pris i M NOK.") +
   theme_minimal(base_size = 12) +
   theme(strip.text = element_text(face = "bold", size = 10)) +
   guides(size = guide_legend(override.aes = list(alpha = 0.7)))
