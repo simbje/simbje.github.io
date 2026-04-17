@@ -160,8 +160,12 @@ Sist oppdatert **`r format(last_scrape, "%d %b %Y")`**
 
 pick_pool <- classified |>
   filter(!is.na(price), !is.na(size_sqm), !is.na(url),
-         !is.na(value_score), price_sqm > 10000,
-         size_sqm >= 30, category != "Unclassified") |>
+         !is.na(value_score),
+         price_sqm > 35000,          # excludes renovation/distressed properties
+         size_sqm >= 30,
+         category != "Unclassified",
+         category != "Renovation",
+         coalesce(standard, "") != "Renovation project") |>
   arrange(desc(value_score), desc(size_sqm))
 
 # Prefer recent listings
