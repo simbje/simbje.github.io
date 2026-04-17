@@ -402,6 +402,27 @@ ggplot(cat_counts, aes(x = n, y = fct_rev(category), fill = category)) +
         axis.text.y = element_text(size = 11))
 ```
 
+::: {.callout-note appearance="minimal" collapse="true"}
+#### Slik klassifiseres annonsene
+
+Hver annonse klassifiseres automatisk av Claude AI (Haiku) basert på tittel, pris, størrelse, adresse, nabolag, boligtype, byggeår og beskrivelsestekst. Modellen tildeler én av disse 10 kategoriene:
+
+| Kategori | Kriterier |
+|---|---|
+| **Luxury** | Eksklusiv eiendom, premium materialer, pris > 8 M NOK, eller prestisjefylt adresse (Frogner, Aker Brygge, Tjuvholmen, Oslofjord) |
+| **Family home** | 3+ rom, egnet for familier, gjerne i utkanten med uteområde eller garasje |
+| **Starter / budget** | Liten eller rimelig førstegangskjøper-bolig, pris < 3,5 M NOK, 1–2 rom |
+| **Investment** | Sterkt utleiepotensial, nær universiteter/studentområder (Blindern, Grünerløkka, Sagene, Torshov), eller flerenhetsoppsett |
+| **Student / young professional** | Liten (1–2 rom), sentral beliggenhet, god kollektivdekning, pris 2–5 M NOK |
+| **New development** | Bygget 2018 eller senere, eller «nybygg», «prosjekt», «nøkkelferdig» i tittel/beskrivelse |
+| **Renovation** | Trenger åpenbart arbeid: «oppussingsobjekt», «selges som den er», lav pris/m² (< 40 000 NOK/m²) |
+| **Central urban** | Mellomklasse byleilighet i sentrale Oslo-bydeler (St. Hanshaugen, Grünerløkka, Majorstuen, Bislett, Sentrum) — ikke luksus |
+| **Suburban** | I ytre Oslo-bydeler (Nordstrand, Østensjø, Røa, Holmlia, Bøler, Groruddalen, Ullern, Vestre Aker) |
+| **Waterfront / premium location** | Ved eller nær vann (fjord, elv, innsjø), utsikt, eller premium naturomgivelser |
+
+Prioriteringsregler: *New development* og *Renovation* går foran plasseringskategorier når bevis er klare. *Luxury* og *Waterfront* går foran *Central urban* og *Suburban*. Klassifiseringen gjøres i batches og oppdateres ved hver hentekjøring.
+:::
+
 ---
 
 ## Boligstandard
