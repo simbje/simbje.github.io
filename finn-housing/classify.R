@@ -48,8 +48,8 @@ with_retry <- function(fn, max_attempts = 3L, base_wait = 2) {
     last_error <- result$error
     if (attempt < max_attempts) {
       wait <- base_wait * 2^(attempt - 1L)
-      message("  Attempt ", attempt, " failed: ", conditionMessage(last_error),
-              " — retrying in ", wait, "s...")
+      message("  Forsøk ", attempt, " mislyktes: ", conditionMessage(last_error),
+              " — prøver igjen om ", wait, "s...")
       Sys.sleep(wait)
     }
   }
@@ -153,7 +153,7 @@ unclassified <- dbGetQuery(con, paste0(
    LIMIT ", BATCH_SIZE
 ))
 
-message("Unclassified listings to process: ", nrow(unclassified))
+message("Uklassifiserte annonser å behandle: ", nrow(unclassified))
 
 valid_cats <- c("Luxury", "Family home", "Starter / budget", "Investment",
                 "Student / young professional", "New development",
@@ -161,12 +161,12 @@ valid_cats <- c("Luxury", "Family home", "Starter / budget", "Investment",
                 "Waterfront / premium location")
 
 if (nrow(unclassified) == 0) {
-  message("Nothing to classify.")
+  message("Ingenting å klassifisere.")
 } else {
   for (batch_start in seq(1, nrow(unclassified), by = API_BATCH)) {
     idx   <- batch_start:min(batch_start + API_BATCH - 1L, nrow(unclassified))
     batch <- unclassified[idx, ]
-    message("  Category batch [", batch_start, "–", max(idx),
+    message("  Kategoribatch [", batch_start, "–", max(idx),
             " / ", nrow(unclassified), "]")
 
     prompts <- lapply(seq_len(nrow(batch)), function(i) {
@@ -174,7 +174,7 @@ if (nrow(unclassified) == 0) {
       desc_short <- if (!is.na(row$description) && nchar(row$description) > 300)
         paste0(substr(row$description, 1, 297), "...") else row$description
       price_fmt  <- if (!is.na(row$price))
-        paste0(formatC(row$price, format = "d", big.mark = " "), " NOK") else "ukjent pris"
+        paste0(formatC(row$price, format = "d", big.mark = " "), " NOK") else "ukjent"
       paste0(
         "Title: ",        if (!is.na(row$title))         row$title         else "N/A", "\n",
         "Price: ",        price_fmt, "\n",
@@ -190,7 +190,7 @@ if (nrow(unclassified) == 0) {
 
     results <- tryCatch(
       call_claude_batch(SYSTEM_PROMPT, prompts),
-      error = function(e) { message("    Batch failed: ", e$message); NULL }
+      error = function(e) { message("    Batch mislyktes: ", e$message); NULL }
     )
     if (is.null(results)) { Sys.sleep(2); next }
 
@@ -209,7 +209,7 @@ if (nrow(unclassified) == 0) {
         scores  <- vapply(valid_cats, function(v)
           adist(tolower(cat_val), tolower(v)), numeric(1))
         cat_val <- valid_cats[which.min(scores)]
-        message("    Fuzzy-matched '", item$category, "' → '", cat_val, "'")
+        message("    Fuzzy-matchet '", item$category, "' → '", cat_val, "'")
       }
 
       dbExecute(con, "
@@ -258,13 +258,13 @@ needs_standard <- dbGetQuery(con, paste0(
    LIMIT ", BATCH_SIZE
 ))
 
-message("\nListings needing standard classification: ", nrow(needs_standard))
+message("\nAnnonser som trenger standardklassifisering: ", nrow(needs_standard))
 
 if (nrow(needs_standard) > 0) {
   for (batch_start in seq(1, nrow(needs_standard), by = API_BATCH)) {
     idx   <- batch_start:min(batch_start + API_BATCH - 1L, nrow(needs_standard))
     batch <- needs_standard[idx, ]
-    message("  Standard batch [", batch_start, "–", max(idx),
+    message("  Standardbatch [", batch_start, "–", max(idx),
             " / ", nrow(needs_standard), "]")
 
     prompts <- lapply(seq_len(nrow(batch)), function(i) {
@@ -287,7 +287,7 @@ if (nrow(needs_standard) > 0) {
 
     results <- tryCatch(
       call_claude_batch(STANDARD_PROMPT, prompts, max_tokens_each = 160L),
-      error = function(e) { message("    Batch failed: ", e$message); NULL }
+      error = function(e) { message("    Batch mislyktes: ", e$message); NULL }
     )
     if (is.null(results)) { Sys.sleep(2); next }
 
@@ -306,7 +306,7 @@ if (nrow(needs_standard) > 0) {
         scores  <- vapply(VALID_STANDARDS, function(v)
           adist(tolower(std_val), tolower(v)), numeric(1))
         std_val <- VALID_STANDARDS[which.min(scores)]
-        message("    Fuzzy-matched '", item$standard, "' → '", std_val, "'")
+        message("    Fuzzy-matchet '", item$standard, "' → '", std_val, "'")
       }
 
       dbExecute(con, "
@@ -348,7 +348,7 @@ ungeocoded <- dbGetQuery(con, paste0(
 ))
 
 if (nrow(ungeocoded) > 0) {
-  message("\nGeocoding ", nrow(ungeocoded), " listings via Nominatim...")
+  message("\nGeokoder ", nrow(ungeocoded), " annonser via Nominatim...")
   geocoded_n <- 0L
   for (i in seq_len(nrow(ungeocoded))) {
     row <- ungeocoded[i, ]
@@ -362,11 +362,11 @@ if (nrow(ungeocoded) > 0) {
     }
     Sys.sleep(1.1)  # Nominatim rate limit: max 1 req/sec
   }
-  message("  Geocoded ", geocoded_n, "/", nrow(ungeocoded), " listings.")
+  message("  Geokodde ", geocoded_n, "/", nrow(ungeocoded), " annonser.")
 }
 
 # ── Export CSV snapshot for Quarto rendering ──────────────────────────────────
-message("\nExporting CSV snapshot to: ", CSV_PATH)
+message("\nEksporterer CSV-øyeblikksbilde til: ", CSV_PATH)
 
 all_listings <- dbGetQuery(con, "
   SELECT finn_id, title, price, size_sqm, rooms, address, neighborhood,
@@ -382,6 +382,6 @@ write.csv(all_listings, CSV_PATH, row.names = FALSE, fileEncoding = "UTF-8")
 
 total       <- nrow(all_listings)
 classified  <- sum(!is.na(all_listings$category))
-message("CSV written: ", total, " total listings, ", classified, " classified.")
+message("CSV skrevet: ", total, " totale annonser, ", classified, " klassifisert.")
 
 dbDisconnect(con)

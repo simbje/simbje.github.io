@@ -56,8 +56,8 @@ with_retry <- function(fn, max_attempts = 3L, base_wait = 2) {
     last_error <- result$error
     if (attempt < max_attempts) {
       wait <- base_wait * 2^(attempt - 1L)
-      message("  Attempt ", attempt, " failed: ", conditionMessage(last_error),
-              " — retrying in ", wait, "s...")
+      message("  Forsøk ", attempt, " mislyktes: ", conditionMessage(last_error),
+              " — prøver igjen om ", wait, "s...")
       Sys.sleep(wait)
     }
   }
@@ -102,7 +102,7 @@ tryCatch(dbExecute(con, "ALTER TABLE listings ADD COLUMN standard_reasoning     
 tryCatch(dbExecute(con, "ALTER TABLE listings ADD COLUMN standard_classified_at  TEXT"), error = function(e) NULL)
 
 existing_ids <- dbGetQuery(con, "SELECT finn_id FROM listings")$finn_id
-message("Existing listings in DB: ", length(existing_ids))
+message("Eksisterende annonser i DB: ", length(existing_ids))
 
 # ── HTML fetch helper ─────────────────────────────────────────────────────────
 fetch_html <- function(url) {
@@ -138,10 +138,10 @@ extract_finn_id <- function(href) {
 #       stable than class names.
 scrape_search_page <- function(page_num) {
   url <- paste0(BASE_SEARCH_URL, "&page=", page_num)
-  message("  Fetching search page ", page_num, ": ", url)
+  message("  Henter søkeside ", page_num, ": ", url)
 
   doc <- tryCatch(fetch_html(url), error = function(e) {
-    message("  Failed to fetch page ", page_num, ": ", e$message)
+    message("  Klarte ikke hente side ", page_num, ": ", e$message)
     NULL
   })
   if (is.null(doc)) return(NULL)
@@ -153,11 +153,11 @@ scrape_search_page <- function(page_num) {
 
   if (length(cards) == 0) {
     # Fallback: any link pointing to a realestate ad
-    warning("No <article> cards found on page ", page_num,
-            " — finn.no HTML may have changed. Falling back to link-only extraction.")
+    warning("Ingen <article>-kort funnet på side ", page_num,
+            " — finn.no HTML kan ha endret seg. Faller tilbake til ren lenke-uthenting.")
     links <- html_elements(doc, "a[href*='finnkode']")
     if (length(links) == 0) {
-      message("  No listing cards found on page ", page_num, " — stopping pagination.")
+      message("  Ingen annonsekort funnet på side ", page_num, " — stopper paginering.")
       return(NULL)
     }
     hrefs <- html_attr(links, "href")
@@ -246,7 +246,7 @@ scrape_listing_detail <- function(finn_id) {
   url <- paste0("https://www.finn.no/realestate/homes/ad.html?finnkode=", finn_id)
 
   doc <- tryCatch(fetch_html(url), error = function(e) {
-    message("    Detail fetch failed for ", finn_id, ": ", e$message)
+    message("    Detaljhenting mislyktes for ", finn_id, ": ", e$message)
     NULL
   })
   if (is.null(doc)) {
@@ -264,10 +264,10 @@ scrape_listing_detail <- function(finn_id) {
 
   # Diagnostic: log what keys are available (helps catch future HTML changes)
   if (length(facts) == 0) {
-    message("    WARNING: no dt/dd facts found for ", finn_id,
-            " — finn.no HTML may have changed")
+    message("    ADVARSEL: ingen dt/dd-fakta funnet for ", finn_id,
+            " — finn.no HTML kan ha endret seg")
   } else {
-    message("    Facts keys: ", paste(head(names(facts), 15), collapse = ", "))
+    message("    Faktanøkler: ", paste(head(names(facts), 15), collapse = ", "))
   }
 
   # Helper: get a fact value — tries exact match first, then partial/substring
@@ -336,7 +336,7 @@ scrape_listing_detail <- function(finn_id) {
     }
   }
 
-  if (is.na(price)) message("    NOTE: price still NA after all fallbacks for ", finn_id)
+  if (is.na(price)) message("    MERK: pris fortsatt NA etter alle fallbacks for ", finn_id)
 
   # ── Size ──────────────────────────────────────────────────────────────────
   # Prefer interior usable area (BRA-i), fall back to total usable area (BRA)
@@ -457,7 +457,7 @@ scrape_listing_detail <- function(finn_id) {
 }
 
 # ── Main scrape loop ───────────────────────────────────────────────────────────
-message("Starting finn.no scrape — ", Sys.time())
+message("Starter finn.no-henting — ", Sys.time())
 
 new_rows   <- list()
 stop_early <- FALSE
@@ -467,16 +467,16 @@ for (pg in seq_len(MAX_PAGES)) {
 
   page_df <- scrape_search_page(pg)
   if (is.null(page_df) || nrow(page_df) == 0) {
-    message("  No results on page ", pg, " — stopping.")
+    message("  Ingen resultater på side ", pg, " — stopper.")
     break
   }
 
   novel <- page_df[!page_df$finn_id %in% existing_ids, ]
-  message("  Page ", pg, ": ", nrow(page_df), " listings, ",
-          nrow(novel), " new (not yet in DB)")
+  message("  Side ", pg, ": ", nrow(page_df), " annonser, ",
+          nrow(novel), " nye (ikke i DB ennå)")
 
   if (nrow(novel) == 0) {
-    message("  All listings already seen — stopping pagination.")
+    message("  Alle annonser allerede sett — stopper paginering.")
     stop_early <- TRUE
   } else {
     new_rows <- c(new_rows, list(novel))
@@ -487,7 +487,7 @@ for (pg in seq_len(MAX_PAGES)) {
 
 if (length(new_rows) > 0) {
   search_results <- bind_rows(new_rows)
-  message("\nFetching details for ", nrow(search_results), " new listings...")
+  message("\nHenter detaljer for ", nrow(search_results), " nye annonser...")
 
   scraped_at <- format(Sys.time(), "%Y-%m-%dT%H:%M:%S")
 
@@ -521,11 +521,11 @@ if (length(new_rows) > 0) {
   )
   }  # end new-listings loop
 } else {
-  message("No new listings found.")
+  message("Ingen nye annonser funnet.")
 }
 
 total <- dbGetQuery(con, "SELECT COUNT(*) AS n FROM listings")$n
-message("\nTotal listings in DB: ", total)
+message("\nTotalt annonser i DB: ", total)
 
 # ── Backfill existing listings that are missing core data ─────────────────────
 # The search-results page stopped returning metadata (JS rendering), so old
@@ -542,11 +542,11 @@ needs_backfill <- dbGetQuery(con, paste0(
 ))
 
 if (nrow(needs_backfill) > 0) {
-  message("\nBackfilling ", nrow(needs_backfill),
-          " existing listings missing price/size...")
+  message("\nEtterlyser ", nrow(needs_backfill),
+          " eksisterende annonser som mangler pris/størrelse...")
   for (i in seq_len(nrow(needs_backfill))) {
     fid <- needs_backfill$finn_id[i]
-    message("  [", i, "/", nrow(needs_backfill), "] backfill finn_id=", fid)
+    message("  [", i, "/", nrow(needs_backfill), "] etterlys finn_id=", fid)
     d <- tryCatch(scrape_listing_detail(fid), error = function(e) NULL)
     if (is.null(d)) { Sys.sleep(DETAIL_SLEEP); next }
 
@@ -571,7 +571,7 @@ if (nrow(needs_backfill) > 0) {
     )
     Sys.sleep(DETAIL_SLEEP)
   }
-  message("  Backfill done.")
+  message("  Etterlysing ferdig.")
 }
 
 # ── Export CSV snapshot so the Quarto page can render even before classify.R ──
@@ -585,6 +585,6 @@ snap <- dbGetQuery(con, "
   FROM listings ORDER BY scraped_at DESC
 ")
 write.csv(snap, CSV_PATH, row.names = FALSE, fileEncoding = "UTF-8")
-message("CSV snapshot written: ", CSV_PATH)
+message("CSV-øyeblikksbilde skrevet: ", CSV_PATH)
 
 dbDisconnect(con)
