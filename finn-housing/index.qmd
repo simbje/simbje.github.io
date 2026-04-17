@@ -148,7 +148,7 @@ Sist oppdatert **`r format(last_scrape, "%d %b %Y")`**
 
 ---
 
-## Ukens Bolig :trophy:
+## Ukens Bolig
 
 ```{r pick-of-week}
 # Algorithm:
@@ -197,8 +197,7 @@ if (nrow(pick) == 0) {
       style = "max-width:680px; border-width:2px;",
 
       htmltools::tags$div(
-        class = "card-header bg-success text-white d-flex align-items-center gap-2",
-        htmltools::tags$span("\U0001F3C6", style = "font-size:1.3em"),
+        class = "card-header bg-success text-white",
         htmltools::tags$strong("Ukens Bolig")
       ),
 
