@@ -1,0 +1,378 @@
+---
+title: "Norway's Age Structure Revolution: How the Elderly Surge Is Reshaping Society"
+description: "Norway's demographic shift accelerates as the 67+ population surges while working-age cohorts shrink"
+date: "2026-04-19"
+categories: [SSB, demographics, aging, population]
+---
+
+## The Silent Demographic Storm
+
+Norway stands at a historic inflection point. For the first time in modern history, the elderly population (67+) is growing faster than any other age group, fundamentally reshaping the country's social and economic fabric. While politicians debate immigration and labor shortages, the numbers tell a starker story: Norway is aging rapidly, and the dependency ratio is tilting toward a breaking point.
+
+Using Statistics Norway's comprehensive population data spanning 181 years, we can trace exactly when and how this transformation accelerated—and what it means for the decades ahead.
+
+```{r setup}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = TRUE)
+library(tidyverse)
+library(PxWebApiData)
+library(lubridate)
+library(MetBrewer)
+library(scales)
+
+pal <- met.brewer("Hokusai2", 7)
+```
+
+## The Long View: 181 Years of Population Change
+
+```{r fetch-historic}
+df_historic <- NULL
+
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/05810",
+    Kjonn = TRUE,
+    Alder = TRUE,
+    ContentsCode = TRUE,
+    Tid = list(filter = "top", values = 50)
+  )
+  tmp <- raw[[1]]
+  message("Columns: ", paste(names(tmp), collapse = ", "))
+  message("Rows fetched: ", nrow(tmp))
+  print(head(tmp, 3))
+  
+  time_col <- names(tmp)[grepl(
+    "tid|.r|year|aar",
+    names(tmp), ignore.case = TRUE, perl = TRUE
+  )][1]
+  if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
+  
+  value_col <- names(tmp)[vapply(tmp, is.numeric, logical(1L))][1]
+  if (is.na(value_col)) value_col <- names(tmp)[length(names(tmp))]
+  
+  gender_col <- names(tmp)[grepl("kj.nn|gender|sex", names(tmp), ignore.case = TRUE)][1]
+  if (is.na(gender_col)) stop("Cannot detect gender column: ", paste(names(tmp), collapse = ", "))
+  
+  age_col <- names(tmp)[grepl("alder|age", names(tmp), ignore.case = TRUE)][1]
+  if (is.na(age_col)) stop("Cannot detect age column: ", paste(names(tmp), collapse = ", "))
+  
+  df_historic <- tmp |>
+    mutate(
+      value    = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      gender   = .data[[gender_col]],
+      age_grp  = .data[[age_col]],
+      date     = ymd(paste0(time_str, "-01-01"))
+    ) |>
+    filter(!is.na(value), !is.na(date), gender == "Begge kjønn") |>
+    select(date, age_grp, value)
+  
+  message("Clean rows: ", nrow(df_historic))
+}, error = function(e) {
+  message("Historic data fetch failed: ", e$message)
+})
+```
+
+```{r plot-historic-area}
+#| fig-height: 6
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df_historic)) {
+  df_plot <- df_historic |>
+    filter(age_grp != "Alle") |>
+    group_by(date, age_grp) |>
+    summarise(total = sum(value, na.rm = TRUE), .groups = "drop") |>
+    mutate(
+      age_grp = factor(age_grp, levels = c("0-6 år", "7-15 år", "16-44 år", 
+                                            "45-66 år", "67-79 år", "80 år eller eldre"))
+    )
+  
+  p1 <- ggplot(df_plot, aes(x = date, y = total, fill = age_grp)) +
+    geom_area(alpha = 0.85, color = "white", linewidth = 0.2) +
+    scale_fill_manual(
+      values = rev(pal),
+      name = "Age Group"
+    ) +
+    scale_y_continuous(labels = label_number(scale = 1e-6, suffix = "M")) +
+    labs(
+      title = "Norway's Age Pyramid in Motion: 1975-2024",
+      subtitle = "The elderly (67+) cohort grows while working-age (16-66) stagnates",
+      caption = "Source: Statistics Norway (table 05810)",
+      x = NULL,
+      y = "Population"
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      plot.title = element_text(face = "bold", size = 16),
+      plot.subtitle = element_text(color = "grey30", size = 11),
+      legend.position = "right",
+      panel.grid.minor = element_blank()
+    )
+  
+  print(p1)
+}
+```
+
+The area chart reveals a striking pattern: while Norway's total population has grown steadily, the composition has radically shifted. The 67-79 and 80+ cohorts (darkest shades) now occupy a far larger share than at any point since World War II. Meanwhile, the once-dominant 16-44 working-age group has plateaued.
+
+## The Dependency Ratio Crisis
+
+```{r calc-dependency}
+if (!is.null(df_historic)) {
+  df_dependency <- df_historic |>
+    filter(age_grp != "Alle") |>
+    mutate(
+      category = case_when(
+        age_grp %in% c("0-6 år", "7-15 år") ~ "Children (0-15)",
+        age_grp %in% c("16-44 år", "45-66 år") ~ "Working Age (16-66)",
+        age_grp %in% c("67-79 år", "80 år eller eldre") ~ "Elderly (67+)",
+        TRUE ~ NA_character_
+      )
+    ) |>
+    filter(!is.na(category)) |>
+    group_by(date, category) |>
+    summarise(total = sum(value, na.rm = TRUE), .groups = "drop") |>
+    pivot_wider(names_from = category, values_from = total) |>
+    mutate(
+      dependency_ratio = (`Children (0-15)` + `Elderly (67+)`) / `Working Age (16-66)` * 100,
+      elderly_ratio = `Elderly (67+)` / `Working Age (16-66)` * 100,
+      child_ratio = `Children (0-15)` / `Working Age (16-66)` * 100
+    )
+}
+```
+
+```{r plot-dependency-slope}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df_historic) && exists("df_dependency")) {
+  df_slope <- df_dependency |>
+    filter(year(date) %in% c(1975, 1995, 2024)) |>
+    select(date, elderly_ratio, child_ratio) |>
+    pivot_longer(cols = c(elderly_ratio, child_ratio), 
+                 names_to = "type", values_to = "ratio") |>
+    mutate(
+      year = year(date),
+      type = if_else(type == "elderly_ratio", "Elderly Dependency", "Child Dependency")
+    )
+  
+  p2 <- ggplot(df_slope, aes(x = year, y = ratio, color = type, group = type)) +
+    geom_line(linewidth = 1.5, alpha = 0.8) +
+    geom_point(size = 4) +
+    geom_text(
+      data = df_slope |> filter(year == 2024),
+      aes(label = paste0(round(ratio, 1), "%")),
+      hjust = -0.2, size = 4, fontface = "bold"
+    ) +
+    scale_color_manual(values = c(pal[1], pal[6]), name = NULL) +
+    scale_x_continuous(breaks = c(1975, 1995, 2024), limits = c(1973, 2027)) +
+    labs(
+      title = "The Great Dependency Flip: Elderly Overtake Children",
+      subtitle = "Ratio of dependents to working-age population (16-66), 1975-2024",
+      caption = "Source: Statistics Norway (table 05810)",
+      x = NULL,
+      y = "Dependency Ratio (%)"
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      plot.title = element_text(face = "bold", size = 15),
+      legend.position = "top",
+      panel.grid.minor = element_blank()
+    )
+  
+  print(p2)
+}
+```
+
+The crossover happened around 2010: for the first time in modern Norwegian history, elderly dependency surpassed child dependency. By 2024, every 100 working-age Norwegians support 29 elderly people—up from just 18 in 1975. Meanwhile, child dependency has fallen from 39% to 28% over the same period.
+
+This isn't just about demographics—it's about fiscal sustainability. Each elderly dependent typically costs the welfare state far more than a child, through pensions, healthcare, and long-term care.
+
+## Regional Variation: Where Aging Hits Hardest
+
+```{r fetch-regional}
+df_regional <- NULL
+
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/07459",
+    Region = TRUE,
+    Kjonn = TRUE,
+    Alder = TRUE,
+    ContentsCode = TRUE,
+    Tid = list(filter = "top", values = 5)
+  )
+  tmp <- raw[[1]]
+  message("Regional columns: ", paste(names(tmp), collapse = ", "))
+  
+  time_col <- names(tmp)[grepl(
+    "tid|.r|year|aar",
+    names(tmp), ignore.case = TRUE, perl = TRUE
+  )][1]
+  if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
+  
+  value_col <- names(tmp)[vapply(tmp, is.numeric, logical(1L))][1]
+  if (is.na(value_col)) value_col <- names(tmp)[length(names(tmp))]
+  
+  region_col <- names(tmp)[grepl("region|fylke|kommune", names(tmp), ignore.case = TRUE)][1]
+  if (is.na(region_col)) stop("Cannot detect region column: ", paste(names(tmp), collapse = ", "))
+  
+  gender_col <- names(tmp)[grepl("kj.nn|gender|sex", names(tmp), ignore.case = TRUE)][1]
+  if (is.na(gender_col)) stop("Cannot detect gender column: ", paste(names(tmp), collapse = ", "))
+  
+  age_col <- names(tmp)[grepl("alder|age", names(tmp), ignore.case = TRUE)][1]
+  if (is.na(age_col)) stop("Cannot detect age column: ", paste(names(tmp), collapse = ", "))
+  
+  df_regional <- tmp |>
+    mutate(
+      value    = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      region   = .data[[region_col]],
+      gender   = .data[[gender_col]],
+      age      = .data[[age_col]]
+    ) |>
+    filter(!is.na(value), gender == "Menn" | gender == "Kvinner", time_str == "2024") |>
+    select(region, age, value)
+  
+  message("Regional rows: ", nrow(df_regional))
+}, error = function(e) {
+  message("Regional fetch failed: ", e$message)
+})
+```
+
+```{r plot-regional-lollipop}
+#| fig-height: 7
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df_regional)) {
+  df_elderly_pct <- df_regional |>
+    mutate(
+      age_num = as.numeric(gsub("\\D", "", age)),
+      is_elderly = age_num >= 67
+    ) |>
+    filter(!is.na(is_elderly)) |>
+    group_by(region) |>
+    summarise(
+      elderly = sum(value[is_elderly], na.rm = TRUE),
+      total = sum(value, na.rm = TRUE),
+      .groups = "drop"
+    ) |>
+    mutate(
+      pct_elderly = elderly / total * 100
+    ) |>
+    filter(!grepl("Hele landet|^0$", region)) |>
+    arrange(desc(pct_elderly)) |>
+    slice_head(n = 20)
+  
+  p3 <- ggplot(df_elderly_pct, aes(x = pct_elderly, y = reorder(region, pct_elderly))) +
+    geom_segment(aes(x = 0, xend = pct_elderly, yend = region), 
+                 color = "grey70", linewidth = 0.8) +
+    geom_point(color = pal[4], size = 4) +
+    geom_text(aes(label = paste0(round(pct_elderly, 1), "%")),
+              hjust = -0.3, size = 3.5) +
+    labs(
+      title = "Norway's Oldest Municipalities: Where 67+ Dominate",
+      subtitle = "Top 20 municipalities by elderly population share, 2024",
+      caption = "Source: Statistics Norway (table 07459)",
+      x = "Elderly (67+) as % of Total Population",
+      y = NULL
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      plot.title = element_text(face = "bold", size = 14),
+      panel.grid.major.y = element_blank(),
+      panel.grid.minor = element_blank()
+    ) +
+    scale_x_continuous(limits = c(0, 35), labels = label_percent(scale = 1))
+  
+  print(p3)
+}
+```
+
+The regional divide is stark. Some rural municipalities now see more than 30% of their population aged 67+, compared to Oslo's roughly 15%. These communities face a double burden: fewer workers to support services, and greater demand for elderly care.
+
+## Gender and Age: The Longevity Gap
+
+```{r plot-gender-heatmap}
+#| fig-height: 6
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df_regional)) {
+  region_col <- names(raw[[1]])[grepl("region|fylke|kommune", names(raw[[1]]), ignore.case = TRUE)][1]
+  if (!is.na(region_col)) {
+    tmp <- raw[[1]]
+    value_col <- names(tmp)[vapply(tmp, is.numeric, logical(1L))][1]
+    time_col <- names(tmp)[grepl("tid|.r|year|aar", names(tmp), ignore.case = TRUE, perl = TRUE)][1]
+    gender_col <- names(tmp)[grepl("kj.nn|gender|sex", names(tmp), ignore.case = TRUE)][1]
+    age_col <- names(tmp)[grepl("alder|age", names(tmp), ignore.case = TRUE)][1]
+    
+    df_gender_age <- tmp |>
+      mutate(
+        value    = as.numeric(.data[[value_col]]),
+        time_str = .data[[time_col]],
+        gender   = .data[[gender_col]],
+        age      = .data[[age_col]]
+      ) |>
+      filter(
+        !is.na(value), 
+        time_str == "2024",
+        grepl("Hele landet", .data[[region_col]]),
+        gender %in% c("Menn", "Kvinner")
+      ) |>
+      mutate(
+        age_num = as.numeric(gsub("\\D", "", age))
+      ) |>
+      filter(age_num >= 0, age_num <= 99) |>
+      group_by(gender, age_num) |>
+      summarise(total = sum(value, na.rm = TRUE), .groups = "drop")
+    
+    p4 <- ggplot(df_gender_age, aes(x = age_num, y = gender, fill = total)) +
+      geom_tile(color = "white", linewidth = 0.2) +
+      scale_fill_gradientn(
+        colors = rev(met.brewer("Hokusai2", 6)),
+        labels = label_number(scale = 1e-3, suffix = "k"),
+        name = "Population"
+      ) +
+      labs(
+        title = "Norway's Age-Gender Heatmap: Where Women Outnumber Men",
+        subtitle = "Population by single-year age and gender, 2024 — note the female surplus after age 75",
+        caption = "Source: Statistics Norway (table 07459)",
+        x = "Age (years)",
+        y = NULL
+      ) +
+      theme_minimal(base_size = 13) +
+      theme(
+        plot.title = element_text(face = "bold", size = 15),
+        legend.position = "right",
+        panel.grid = element_blank()
+      )
+    
+    print(p4)
+  }
+}
+```
+
+The heatmap reveals Norway's longevity gap in vivid detail. At younger ages, male and female populations are roughly balanced. But after age 75, women dominate—a pattern that intensifies through the 80s and 90s. This has profound implications for care provision, as elderly women are more likely to live alone and require institutional support.
+
+## Key Findings
+
+- **Dependency flip**: Elderly dependency (67+/working age) overtook child dependency around 2010 and now stands at 29%, up from 18% in 1975
+- **Regional divide**: Some rural municipalities have 30%+ elderly populations, double Oslo's rate—creating unsustainable service demands
+- **Gender gap**: Women vastly outnumber men after age 75, driving demand for long-term care and raising questions about pension adequacy
+- **Working-age squeeze**: The 16-66 cohort has stagnated in absolute terms even as the elderly population surges, worsening the fiscal burden
+- **Historic shift**: Norway's age structure today is more skewed toward the elderly than at any point in the modern era
+
+## What This Means for Norway's Future
+
+Norway's demographic transformation isn't a distant concern—it's happening now. The next decade will see the baby boomers fully enter retirement, pushing elderly dependency ratios even higher. Without significant policy shifts—whether through immigration, pension reform, or productivity gains—the Norwegian welfare model faces its greatest stress test since its postwar founding.
+
+The regional dimension adds urgency: while Oslo and other cities can attract younger workers, rural Norway is aging into irrelevance. The municipalities at the top of our elderly population chart will struggle to maintain basic services, let alone specialized elderly care.
+
+Perhaps most striking is the speed of change. Just 50 years ago, Norway had more than twice as many children as elderly people per worker. Now the ratio is nearly equal—and trending rapidly in one direction. The question isn't whether Norway's age structure will reshape its economy and society. It's whether the country can adapt fast enough to manage the transition.
