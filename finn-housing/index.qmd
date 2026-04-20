@@ -148,157 +148,6 @@ Sist oppdatert **`r format(last_scrape, "%d %b %Y")`**
 
 ---
 
-## Ukens Bolig
-
-```{r pick-of-week}
-# Algorithm:
-#  1. Filter to classified listings with full data (price, size, address, url)
-#  2. Require size >= 30 m², valid value_score, scraped within 14 days
-#     (fall back to all-time if too few recent listings)
-#  3. Rank by value_score (higher = cheaper per m² vs weighted reference), break ties by size
-#  4. Pick #1
-
-pick_pool <- classified |>
-  filter(!is.na(price), !is.na(size_sqm), !is.na(url),
-         !is.na(value_score),
-         price_sqm > 35000,          # excludes renovation/distressed properties
-         size_sqm >= 30,
-         category != "Unclassified",
-         category != "Renovation",
-         coalesce(standard, "") != "Renovation project") |>
-  arrange(desc(value_score), desc(size_sqm))
-
-# Prefer recent listings
-recent_pool <- pick_pool |> filter(scraped_date >= Sys.Date() - 14)
-if (nrow(recent_pool) >= 1) pick_pool <- recent_pool
-
-pick <- pick_pool |> slice_head(n = 1)
-
-if (nrow(pick) == 0) {
-  cat("> Ikke nok klassifiserte annonser til å gi en anbefaling ennå.\n")
-} else {
-  # Build the "why chosen" explanation
-  why_text <- paste0(
-    "Valgt blant ", nrow(pick_pool), " kandidat",
-    if (nrow(pick_pool) != 1) "er" else "", " som beste verdi for pengene i sitt segment. ",
-    "Med ", format(round(pick$price_sqm), big.mark = "\u00a0"), "\u00a0NOK/m\u00b2 er den ",
-    abs(round(pick$value_pct)), "\u00a0% ",
-    if (pick$value_pct >= 0) "under" else "over",
-    " den vektede referansen",
-    if (!is.na(pick$ref_psqm))
-      paste0(" (", format(round(pick$ref_psqm), big.mark = "\u00a0"), "\u00a0NOK/m\u00b2)")
-    else "",
-    ". Referansen er gjennomsnittet av nabolagsmedian, standardmedian og kategorimedian for denne boligen."
-  )
-
-  cat(htmltools::doRenderTags(
-    htmltools::tags$div(
-      class = "card border-success mb-4",
-      style = "max-width:680px; border-width:2px;",
-
-      htmltools::tags$div(
-        class = "card-header bg-success text-white",
-        htmltools::tags$strong("Ukens Bolig")
-      ),
-
-      htmltools::tags$div(
-        class = "card-body",
-
-        htmltools::tags$h5(
-          class = "card-title mb-1",
-          htmltools::tags$a(
-            href = pick$url, target = "_blank", rel = "noopener",
-            if (!is.na(pick$title) && nchar(trimws(pick$title)) > 0) pick$title else "Vis annonse"
-          )
-        ),
-
-        htmltools::tags$p(
-          class = "text-muted mb-2", style = "font-size:0.9em",
-          if (!is.na(pick$address) && nchar(trimws(pick$address)) > 0) pick$address else "Oslo"
-        ),
-
-        htmltools::tags$div(
-          class = "d-flex flex-wrap gap-3 mb-3",
-
-          htmltools::tags$div(
-            htmltools::tags$div(class = "text-muted", style = "font-size:0.75em", "PRIS"),
-            htmltools::tags$strong(
-              if (!is.na(pick$price)) paste0(format(pick$price, big.mark = " "), " NOK") else "—"
-            )
-          ),
-          htmltools::tags$div(
-            htmltools::tags$div(class = "text-muted", style = "font-size:0.75em", "STØRRELSE"),
-            htmltools::tags$strong(
-              if (!is.na(pick$size_sqm)) paste0(pick$size_sqm, " m²") else "—"
-            )
-          ),
-          htmltools::tags$div(
-            htmltools::tags$div(class = "text-muted", style = "font-size:0.75em", "ROM"),
-            htmltools::tags$strong(
-              if (!is.na(pick$rooms)) as.character(pick$rooms) else "—"
-            )
-          ),
-          htmltools::tags$div(
-            htmltools::tags$div(class = "text-muted", style = "font-size:0.75em", "PRIS / m²"),
-            htmltools::tags$strong(
-              if (!is.na(pick$price_sqm))
-                paste0(format(round(pick$price_sqm), big.mark = " "), " NOK")
-              else "—"
-            )
-          )
-        ),
-
-        # Category badge + value badge
-        htmltools::tags$p(
-          htmltools::tags$span(
-            class = "badge rounded-pill text-white me-2",
-            style = paste0("background-color:", CAT_COLORS[pick$category]),
-            pick$category
-          ),
-          if (!is.na(pick$value_score))
-            htmltools::tags$span(
-              class = if (pick$value_pct >= 0) "badge bg-success-subtle text-success-emphasis"
-                      else "badge bg-warning-subtle text-warning-emphasis",
-              paste0(ifelse(pick$value_pct >= 0, "+", ""),
-                     round(pick$value_pct), "% vs vektet referanse")
-            )
-        ),
-
-        # Why chosen
-        htmltools::tags$p(
-          class = "card-text mb-2",
-          style = "font-size:0.88em; border-left:3px solid #198754; padding-left:8px; color:#155724",
-          htmltools::tags$strong("Hvorfor valgt: "),
-          why_text
-        ),
-
-        # AI category reasoning
-        if (!is.na(pick$category_reasoning) && nchar(pick$category_reasoning) > 5)
-          htmltools::tags$p(
-            class = "card-text fst-italic text-muted",
-            style = "font-size:0.88em; border-left:3px solid #ccc; padding-left:8px",
-            paste0("\u201C", pick$category_reasoning, "\u201D")
-          ),
-
-        htmltools::tags$a(
-          href = pick$url, target = "_blank", rel = "noopener",
-          class = "btn btn-outline-success btn-sm",
-          "Se på finn.no \u2192"
-        )
-      ),
-
-      htmltools::tags$div(
-        class = "card-footer text-muted",
-        style = "font-size:0.8em",
-        paste0("Valgt av verdi-score algoritme · Hentet ", format(pick$scraped_date, "%d %b %Y"))
-      )
-    )
-  ))
-}
-```
-
----
-
 ## Oslo på Kartet
 
 *Boblestørrelse = prisantydning. Farge = kategori. Klikk en boble for å åpne annonsen.*
@@ -987,6 +836,159 @@ if (nrow(broker_value) < 2) {
     guides(colour = guide_legend(override.aes = list(size = 3)))
 }
 ```
+
+---
+
+## Ukens Bolig
+
+```{r pick-of-week}
+# Algorithm:
+#  1. Filter to classified listings with full data (price, size, address, url)
+#  2. Require size >= 30 m², valid value_score, scraped within 14 days
+#     (fall back to all-time if too few recent listings)
+#  3. Rank by value_score (higher = cheaper per m² vs weighted reference), break ties by size
+#  4. Pick #1
+
+pick_pool <- classified |>
+  filter(!is.na(price), !is.na(size_sqm), !is.na(url),
+         !is.na(value_score),
+         price_sqm > 35000,          # excludes renovation/distressed properties
+         size_sqm >= 30,
+         category != "Unclassified",
+         category != "Renovation",
+         coalesce(standard, "") != "Renovation project") |>
+  arrange(desc(value_score), desc(size_sqm))
+
+# Prefer recent listings
+recent_pool <- pick_pool |> filter(scraped_date >= Sys.Date() - 14)
+if (nrow(recent_pool) >= 1) pick_pool <- recent_pool
+
+pick <- pick_pool |> slice_head(n = 1)
+
+if (nrow(pick) == 0) {
+  cat("> Ikke nok klassifiserte annonser til å gi en anbefaling ennå.\n")
+} else {
+  # Build the "why chosen" explanation
+  why_text <- paste0(
+    "Valgt blant ", nrow(pick_pool), " kandidat",
+    if (nrow(pick_pool) != 1) "er" else "", " som beste verdi for pengene i sitt segment. ",
+    "Med ", format(round(pick$price_sqm), big.mark = "\u00a0"), "\u00a0NOK/m\u00b2 er den ",
+    abs(round(pick$value_pct)), "\u00a0% ",
+    if (pick$value_pct >= 0) "under" else "over",
+    " den vektede referansen",
+    if (!is.na(pick$ref_psqm))
+      paste0(" (", format(round(pick$ref_psqm), big.mark = "\u00a0"), "\u00a0NOK/m\u00b2)")
+    else "",
+    ". Referansen er gjennomsnittet av nabolagsmedian, standardmedian og kategorimedian for denne boligen."
+  )
+
+  cat(htmltools::doRenderTags(
+    htmltools::tags$div(
+      class = "card border-success mb-4",
+      style = "max-width:680px; border-width:2px;",
+
+      htmltools::tags$div(
+        class = "card-header bg-success text-white",
+        htmltools::tags$strong("Ukens Bolig")
+      ),
+
+      htmltools::tags$div(
+        class = "card-body",
+
+        htmltools::tags$h5(
+          class = "card-title mb-1",
+          htmltools::tags$a(
+            href = pick$url, target = "_blank", rel = "noopener",
+            if (!is.na(pick$title) && nchar(trimws(pick$title)) > 0) pick$title else "Vis annonse"
+          )
+        ),
+
+        htmltools::tags$p(
+          class = "text-muted mb-2", style = "font-size:0.9em",
+          if (!is.na(pick$address) && nchar(trimws(pick$address)) > 0) pick$address else "Oslo"
+        ),
+
+        htmltools::tags$div(
+          class = "d-flex flex-wrap gap-3 mb-3",
+
+          htmltools::tags$div(
+            htmltools::tags$div(class = "text-muted", style = "font-size:0.75em", "PRIS"),
+            htmltools::tags$strong(
+              if (!is.na(pick$price)) paste0(format(pick$price, big.mark = " "), " NOK") else "—"
+            )
+          ),
+          htmltools::tags$div(
+            htmltools::tags$div(class = "text-muted", style = "font-size:0.75em", "STØRRELSE"),
+            htmltools::tags$strong(
+              if (!is.na(pick$size_sqm)) paste0(pick$size_sqm, " m²") else "—"
+            )
+          ),
+          htmltools::tags$div(
+            htmltools::tags$div(class = "text-muted", style = "font-size:0.75em", "ROM"),
+            htmltools::tags$strong(
+              if (!is.na(pick$rooms)) as.character(pick$rooms) else "—"
+            )
+          ),
+          htmltools::tags$div(
+            htmltools::tags$div(class = "text-muted", style = "font-size:0.75em", "PRIS / m²"),
+            htmltools::tags$strong(
+              if (!is.na(pick$price_sqm))
+                paste0(format(round(pick$price_sqm), big.mark = " "), " NOK")
+              else "—"
+            )
+          )
+        ),
+
+        # Category badge + value badge
+        htmltools::tags$p(
+          htmltools::tags$span(
+            class = "badge rounded-pill text-white me-2",
+            style = paste0("background-color:", CAT_COLORS[pick$category]),
+            pick$category
+          ),
+          if (!is.na(pick$value_score))
+            htmltools::tags$span(
+              class = if (pick$value_pct >= 0) "badge bg-success-subtle text-success-emphasis"
+                      else "badge bg-warning-subtle text-warning-emphasis",
+              paste0(ifelse(pick$value_pct >= 0, "+", ""),
+                     round(pick$value_pct), "% vs vektet referanse")
+            )
+        ),
+
+        # Why chosen
+        htmltools::tags$p(
+          class = "card-text mb-2",
+          style = "font-size:0.88em; border-left:3px solid #198754; padding-left:8px; color:#155724",
+          htmltools::tags$strong("Hvorfor valgt: "),
+          why_text
+        ),
+
+        # AI category reasoning
+        if (!is.na(pick$category_reasoning) && nchar(pick$category_reasoning) > 5)
+          htmltools::tags$p(
+            class = "card-text fst-italic text-muted",
+            style = "font-size:0.88em; border-left:3px solid #ccc; padding-left:8px",
+            paste0("\u201C", pick$category_reasoning, "\u201D")
+          ),
+
+        htmltools::tags$a(
+          href = pick$url, target = "_blank", rel = "noopener",
+          class = "btn btn-outline-success btn-sm",
+          "Se på finn.no \u2192"
+        )
+      ),
+
+      htmltools::tags$div(
+        class = "card-footer text-muted",
+        style = "font-size:0.8em",
+        paste0("Valgt av verdi-score algoritme · Hentet ", format(pick$scraped_date, "%d %b %Y"))
+      )
+    )
+  ))
+}
+```
+
+---
 
 *Data hentet fra [finn.no](https://www.finn.no/realestate/homes/search.html?location=0.20061){target="_blank"} kun til personlig/utdanningsformål.
 Kategorier og verdi-scorer beregnet av Claude AI. Dette er ikke finansiell eller investeringsrådgivning.*
