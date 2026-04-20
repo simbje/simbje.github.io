@@ -372,15 +372,15 @@ a specific string will be present.
 Pattern to follow for every filtered subset:
   ```r
   df_sub <- df |> filter(grepl("keyword", .data[[comp_col]], ignore.case = TRUE))
-  if (nrow(df_sub) == 0) {
+  if (nrow(df_sub) == 0) {{
     message("Filter returned 0 rows. Available values in ", comp_col, ": ",
             paste(head(unique(df[[comp_col]]), 15), collapse = ", "))
     df_sub <- NULL
-  }
-  if (!is.null(df_sub)) {
+  }}
+  if (!is.null(df_sub)) {{
     p <- ggplot(df_sub, ...) + ...
     print(p)
-  }
+  }}
   ```
 This applies even for "obviously present" values like "Innenlandsk bruk totalt" or "Totalt" —
 the exact label may differ, be abbreviated, or be in English depending on the API endpoint.
