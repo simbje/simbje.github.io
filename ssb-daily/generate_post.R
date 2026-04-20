@@ -301,7 +301,6 @@ tryCatch({{
     Tid = list(filter = "top", values = 40)
   )
   tmp <- raw[[1]]
-  print(names(tmp))
 
   # Detect time column (SSB uses Norwegian names: "år", "kvartal", "måned")
   time_col <- names(tmp)[grepl(
@@ -456,9 +455,6 @@ tryCatch({{
     Tid = list(filter="top", values=40)
   )
   tmp <- raw[[1]]
-  message("Columns: ", paste(names(tmp), collapse=", "))
-  message("Rows fetched: ", nrow(tmp))
-  print(head(tmp))
 
   time_col <- names(tmp)[grepl(
     "tid|\u00e5r|kvartal|m\u00e5ned|aar|maaned|year|month|quarter",
@@ -482,12 +478,8 @@ tryCatch({{
     ) |>
     filter(!is.na(value), !is.na(date))
 
-  message("Clean rows after filter: ", nrow(df))
   if (nrow(df) == 0) stop("Data frame is empty after cleaning — check parameter names")
-}}, error = function(e) {{
-  message("DATA FETCH FAILED: ", e$message)
-  message("df will be NULL — no plots will render")
-}})
+}}, error = function(e) message("Fetch failed: ", e$message))
 ```
 
 STEP 3 — Plot chunk (guard + explicit print):
