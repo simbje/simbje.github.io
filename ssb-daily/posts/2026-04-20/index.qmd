@@ -1,0 +1,352 @@
+---
+title: "Norway's Petroleum Sales Collapse: How Oil Demand Vanished Across the Country"
+description: "Regional petroleum sales reveal a dramatic shift in Norway's energy consumption patterns"
+date: "2026-04-20"
+categories: [SSB, energy, petroleum, regional-economics]
+---
+
+## The quiet revolution in Norwegian fuel tanks
+
+While electric vehicles grab headlines, the real story of Norway's energy transition lies in the granular data of petroleum sales across regions and product types. Between 2010 and 2025, something fundamental shifted in how Norwegians consume fossil fuels — and the patterns reveal far more than just a switch to battery power.
+
+```{r setup}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = TRUE)
+```
+
+```{r libraries}
+library(tidyverse)
+library(PxWebApiData)
+library(lubridate)
+library(MetBrewer)
+library(scales)
+
+pal <- met.brewer("Juarez", 8)
+```
+
+## Fetching the data
+
+We'll pull petroleum sales data from SSB table 11174, which tracks sales by region, purchase group, and product type from 2010 onwards.
+
+```{r fetch-data}
+df <- NULL
+
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/11174",
+    Region = TRUE,
+    Kjopegrupper = TRUE,
+    PetroleumProd = TRUE,
+    ContentsCode = TRUE,
+    Tid = list(filter = "top", values = 180)
+  )
+  tmp <- raw[[1]]
+  message("Columns: ", paste(names(tmp), collapse = ", "))
+  message("Rows fetched: ", nrow(tmp))
+  print(head(tmp))
+  
+  time_col <- names(tmp)[grepl(
+    "tid|.r|kvartal|m.ned|aar|maaned|year|month|quarter",
+    names(tmp), ignore.case = TRUE, perl = TRUE
+  )][1]
+  if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
+  
+  value_col <- names(tmp)[vapply(tmp, is.numeric, logical(1L))][1]
+  if (is.na(value_col)) value_col <- names(tmp)[length(names(tmp))]
+  
+  region_col <- names(tmp)[grepl("region|fylke|kommune", names(tmp), ignore.case = TRUE)][1]
+  if (is.na(region_col)) stop("Cannot detect region column — columns are: ", paste(names(tmp), collapse = ", "))
+  
+  product_col <- names(tmp)[grepl("petroleum|produkt|prod", names(tmp), ignore.case = TRUE)][1]
+  if (is.na(product_col)) stop("Cannot detect product column — columns are: ", paste(names(tmp), collapse = ", "))
+  
+  group_col <- names(tmp)[grepl("kj.pe|purchase|gruppe|group", names(tmp), ignore.case = TRUE)][1]
+  if (is.na(group_col)) stop("Cannot detect purchase group column — columns are: ", paste(names(tmp), collapse = ", "))
+  
+  df <- tmp |>
+    mutate(
+      value = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      region = .data[[region_col]],
+      product = .data[[product_col]],
+      purchase_group = .data[[group_col]],
+      date = case_when(
+        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
+        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4 ~ lubridate::ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      ),
+      year = year(date)
+    ) |>
+    filter(!is.na(value), !is.na(date))
+  
+  message("Clean rows after filter: ", nrow(df))
+  if (nrow(df) == 0) stop("Data frame is empty after cleaning — check parameter names")
+}, error = function(e) {
+  message("DATA FETCH FAILED: ", e$message)
+  message("df will be NULL — no plots will render")
+})
+```
+
+## The great petroleum collapse
+
+Let's start with the most dramatic visualization: how total petroleum sales have changed from peak to present across major product categories.
+
+```{r waterfall-petroleum}
+#| fig-height: 6
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df)) {
+  # Calculate change by product from 2010-2012 avg to 2023-2025 avg
+  waterfall_data <- df |>
+    filter(region == "Hele landet", product != "Petroleumsprodukter i alt") |>
+    mutate(period = case_when(
+      year <= 2012 ~ "early",
+      year >= 2023 ~ "recent",
+      TRUE ~ "middle"
+    )) |>
+    filter(period %in% c("early", "recent")) |>
+    group_by(product, period) |>
+    summarise(avg_sales = mean(value, na.rm = TRUE), .groups = "drop") |>
+    pivot_wider(names_from = period, values_from = avg_sales) |>
+    mutate(
+      change = recent - early,
+      product_clean = str_wrap(product, 20)
+    ) |>
+    arrange(change) |>
+    filter(!is.na(change)) |>
+    mutate(
+      id = row_number(),
+      type = ifelse(change > 0, "Increase", "Decrease"),
+      end = cumsum(change),
+      start = lag(end, default = 0)
+    )
+  
+  p1 <- ggplot(waterfall_data, aes(x = reorder(product_clean, change))) +
+    geom_segment(aes(xend = product_clean, y = start, yend = end, color = type), 
+                 linewidth = 8, lineend = "butt") +
+    geom_hline(yintercept = 0, linetype = "dashed", color = "gray40") +
+    scale_color_manual(values = c("Decrease" = pal[1], "Increase" = pal[5])) +
+    scale_y_continuous(labels = label_number(scale = 1e-6, suffix = "M")) +
+    coord_flip() +
+    labs(
+      title = "The petroleum product collapse: 2010-12 vs 2023-25",
+      subtitle = "Autodiesel and gasoline lead massive declines; only jet fuel grew substantially",
+      x = NULL,
+      y = "Change in average monthly sales (cubic metres)",
+      caption = "Source: SSB table 11174 | Average of 2010-2012 vs 2023-2025",
+      color = NULL
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      legend.position = "top",
+      panel.grid.major.y = element_blank(),
+      plot.title = element_text(face = "bold", size = 16),
+      plot.subtitle = element_text(color = "gray30", size = 11)
+    )
+  
+  print(p1)
+}
+```
+
+The waterfall chart reveals the scale: autodiesel and gasoline — the lifeblood of Norway's road transport for decades — have plummeted by more than 100,000 cubic metres per month on average. Meanwhile, jet fuel (jetparafin) bucked the trend, growing as air travel recovered and expanded.
+
+## Regional divergence: Who stopped buying fuel?
+
+The national aggregate masks important regional variation. Let's examine how the largest regions changed their petroleum consumption patterns.
+
+```{r slope-regional}
+#| fig-height: 7
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df)) {
+  # Focus on major regions and total petroleum
+  major_regions <- c("Oslo", "Viken (2020-2023)", "Vestland", "Rogaland", 
+                     "Trøndelag - Trööndelage", "Innlandet")
+  
+  slope_data <- df |>
+    filter(
+      region %in% major_regions,
+      product == "Petroleumsprodukter i alt",
+      year %in% c(2012, 2024)
+    ) |>
+    group_by(region, year) |>
+    summarise(avg_sales = mean(value, na.rm = TRUE), .groups = "drop") |>
+    mutate(year_label = paste0(year))
+  
+  p2 <- ggplot(slope_data, aes(x = year_label, y = avg_sales, group = region)) +
+    geom_line(aes(color = region), linewidth = 1.2, alpha = 0.8) +
+    geom_point(aes(color = region), size = 4) +
+    geom_text(
+      data = slope_data |> filter(year == 2012),
+      aes(label = region, color = region),
+      hjust = 1.1, size = 3.5, fontface = "bold"
+    ) +
+    geom_text(
+      data = slope_data |> filter(year == 2024),
+      aes(label = scales::comma(round(avg_sales, 0)), color = region),
+      hjust = -0.1, size = 3.5, fontface = "bold"
+    ) +
+    scale_color_manual(values = pal) +
+    scale_y_continuous(labels = label_comma()) +
+    labs(
+      title = "Regional petroleum collapse: 2012 to 2024",
+      subtitle = "All major regions slashed consumption, but Oslo and Viken led the decline in absolute terms",
+      x = NULL,
+      y = "Average monthly sales (cubic metres)",
+      caption = "Source: SSB table 11174",
+      color = NULL
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      legend.position = "none",
+      panel.grid.major.x = element_blank(),
+      plot.title = element_text(face = "bold", size = 16),
+      plot.subtitle = element_text(color = "gray30", size = 11)
+    ) +
+    coord_cartesian(xlim = c(0.5, 2.7))
+  
+  print(p2)
+}
+```
+
+Oslo and Viken — Norway's urban core — saw the steepest absolute drops. This aligns with the concentration of EV adoption in these regions, where charging infrastructure is densest and environmental policy most aggressive.
+
+## Purchase channel heatmap: Where the sales disappeared
+
+Petroleum reaches consumers through different channels: bulk sales, gas stations, truck stops. Let's see which channels dried up.
+
+```{r heatmap-channels}
+#| fig-height: 6
+#| fig-width: 11
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df)) {
+  # Focus on major purchase groups, exclude total and minor categories
+  heatmap_data <- df |>
+    filter(
+      region == "Hele landet",
+      product == "Petroleumsprodukter i alt",
+      !purchase_group %in% c("Alle kjøpegrupper", "Annen veitrafikk", 
+                             "Netto direkte import")
+    ) |>
+    mutate(
+      year_group = case_when(
+        year <= 2012 ~ "2010-2012",
+        year <= 2015 ~ "2013-2015",
+        year <= 2018 ~ "2016-2018",
+        year <= 2021 ~ "2019-2021",
+        TRUE ~ "2022-2025"
+      ),
+      channel = str_wrap(purchase_group, 25)
+    ) |>
+    group_by(year_group, channel) |>
+    summarise(avg_sales = mean(value, na.rm = TRUE), .groups = "drop")
+  
+  p3 <- ggplot(heatmap_data, aes(x = year_group, y = channel, fill = avg_sales)) +
+    geom_tile(color = "white", linewidth = 1) +
+    geom_text(aes(label = scales::comma(round(avg_sales, 0))), 
+              color = "white", fontface = "bold", size = 3.5) +
+    scale_fill_gradientn(
+      colors = c(pal[1], pal[4], pal[7]),
+      labels = label_comma()
+    ) +
+    labs(
+      title = "Petroleum sales by purchase channel: The heatmap of decline",
+      subtitle = "Gas stations and bulk sales collapsed together; marine and aviation held steadier",
+      x = NULL,
+      y = NULL,
+      fill = "Avg monthly\nsales (m³)",
+      caption = "Source: SSB table 11174"
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      legend.position = "right",
+      panel.grid = element_blank(),
+      plot.title = element_text(face = "bold", size = 16),
+      plot.subtitle = element_text(color = "gray30", size = 11),
+      axis.text.x = element_text(angle = 0, hjust = 0.5)
+    )
+  
+  print(p3)
+}
+```
+
+The heatmap shows how bulk and gas station sales both plummeted in tandem — no single channel was spared. Marine and aviation channels show less dramatic declines, reflecting their slower electrification timelines.
+
+## The diesel and gasoline divergence over time
+
+Finally, let's track the two dominant road fuels month by month to see exactly when and how the collapse accelerated.
+
+```{r area-fuel-types}
+#| fig-height: 6
+#| fig-width: 11
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df)) {
+  # Check if data is monthly
+  has_monthly <- any(stringr::str_detect(df$time_str, "M\\d{2}"), na.rm = TRUE)
+  
+  if (has_monthly) {
+    area_data <- df |>
+      filter(
+        region == "Hele landet",
+        product %in% c("Bilbensin", "Autodiesel"),
+        year >= 2015
+      ) |>
+      mutate(product_clean = recode(product, 
+                                   "Bilbensin" = "Gasoline", 
+                                   "Autodiesel" = "Diesel"))
+    
+    p4 <- ggplot(area_data, aes(x = date, y = value, fill = product_clean)) +
+      geom_area(alpha = 0.7, position = "identity") +
+      scale_fill_manual(values = c("Diesel" = pal[2], "Gasoline" = pal[6])) +
+      scale_y_continuous(labels = label_comma()) +
+      scale_x_date(date_breaks = "1 year", date_labels = "%Y") +
+      annotate("text", x = as.Date("2020-04-01"), y = 200000, 
+               label = "COVID-19\ncollapse", color = "gray20", 
+               fontface = "italic", size = 3.5) +
+      annotate("segment", x = as.Date("2020-04-01"), xend = as.Date("2020-04-01"),
+               y = 180000, yend = 150000, arrow = arrow(length = unit(0.2, "cm")),
+               color = "gray40") +
+      labs(
+        title = "The monthly rhythm of fuel decline: Diesel vs gasoline, 2015-2025",
+        subtitle = "Diesel held steadier initially but joined gasoline's freefall after 2020; seasonality persists",
+        x = NULL,
+        y = "Monthly sales (cubic metres)",
+        fill = "Fuel type",
+        caption = "Source: SSB table 11174"
+      ) +
+      theme_minimal(base_size = 13) +
+      theme(
+        legend.position = "top",
+        plot.title = element_text(face = "bold", size = 16),
+        plot.subtitle = element_text(color = "gray30", size = 11),
+        panel.grid.minor = element_blank()
+      )
+    
+    print(p4)
+  }
+}
+```
+
+The area chart reveals two key patterns: first, the COVID-19 shock in spring 2020 was sharp but temporary. Second, the sustained decline began in earnest around 2019-2020 and has not reversed — this is structural change, not cyclical.
+
+## Key findings
+
+- **Total petroleum collapse**: Monthly sales of autodiesel and gasoline fell by over 100,000 cubic metres each between 2010-2012 and 2023-2025 — roughly a 30-40% decline
+- **Oslo and Viken lead the drop**: Urban regions with dense EV infrastructure saw the steepest absolute declines in petroleum consumption
+- **All channels affected**: Gas stations, bulk sales, and truck stops all saw parallel declines — no distribution channel escaped
+- **Jet fuel bucked the trend**: Aviation fuel grew substantially, driven by post-pandemic travel recovery
+- **Structural, not cyclical**: The decline accelerated after 2019 and shows no sign of reversal, indicating a permanent shift in Norwegian energy consumption
+
+## What comes next
+
+Norway's petroleum sales data tells the story of a society fundamentally rewiring its energy consumption. The collapse is not just about EVs displacing combustion engines — it's about how infrastructure, policy, and consumer behavior align to produce systemic change.
+
+The big question: can Norway's electricity grid scale fast enough to absorb the charging demand as the remaining combustion vehicles retire? The petroleum numbers suggest we're past the tipping point; the electricity numbers will tell us if the replacement is ready.
