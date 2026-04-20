@@ -359,6 +359,31 @@ tryCatch({{
   if (is.na(sector_col)) stop("Cannot detect sector column — columns are: ", paste(names(tmp), collapse=", "))
   ```
 - Then use `.data[[sector_col]]` in mutate/filter, never the bare string
+- After detecting any categorical column, print its available values to aid debugging:
+  ```r
+  message("Available ", sector_col, " values: ", paste(head(unique(tmp[[sector_col]]), 15), collapse=", "))
+  ```
+
+## Post-filter guard (CRITICAL — for every filter that selects a metric subset)
+After ANY filter() that narrows to specific category labels or metric names, you MUST guard
+against empty results. SSB label wording changes across tables and over time — never assume
+a specific string will be present.
+
+Pattern to follow for every filtered subset:
+  ```r
+  df_sub <- df |> filter(grepl("keyword", .data[[comp_col]], ignore.case = TRUE))
+  if (nrow(df_sub) == 0) {
+    message("Filter returned 0 rows. Available values in ", comp_col, ": ",
+            paste(head(unique(df[[comp_col]]), 15), collapse = ", "))
+    df_sub <- NULL
+  }
+  if (!is.null(df_sub)) {
+    p <- ggplot(df_sub, ...) + ...
+    print(p)
+  }
+  ```
+This applies even for "obviously present" values like "Innenlandsk bruk totalt" or "Totalt" —
+the exact label may differ, be abbreviated, or be in English depending on the API endpoint.
 
 ## Plotting rules (CRITICAL)
 - ALWAYS: assign plot to variable, then call print() explicitly
@@ -507,7 +532,7 @@ response <- with_retry(function() {
       "content-type"      = "application/json"
     ) |>
     req_body_json(list(
-      model      = "claude-sonnet-4-5-20250929",
+      model      = "claude-sonnet-4-6",
       max_tokens = 16000,
       system     = SYSTEM_PROMPT,
       messages   = list(
@@ -646,7 +671,9 @@ Fix ONLY the specific bugs listed below. Do not refactor, rename, or rewrite any
 
 BUG 1 — HARDCODED SSB PARAMETER CODES
   Wrong: ContentsCode = "Lonn"  or  NACE = c("nr23_6", "pub2X06")  or  Kjonn = "1"
-  Fix:   Replace with TRUE for every dimension parameter except Tid.
+         Also wrong: FunksjonKOSTRA = c("120", "201", "211")  — any character vector of codes
+  Fix:   Replace with TRUE for every dimension parameter except Tid, including parameters
+         that currently pass a character vector of specific codes.
   Rule:  Tid = list(filter="top", values=N) is always correct — never change it.
   Rule:  Only fix parameters inside ApiData() calls — do not touch filter() or mutate().
 
@@ -691,6 +718,18 @@ BUG 6 — COLUMN DETECTION PATTERN MISSING NORWEGIAN CHARACTERS OR MISSING NA GU
      before the column is used in mutate() or filter():
        if (is.na(sector_col)) stop("Cannot detect sector column: ", paste(names(tmp), collapse=", "))
      If the guard is missing, add it.
+
+BUG 7 — FILTER WITHOUT POST-FILTER NROW GUARD
+  Wrong: df_sub <- df |> filter(grepl("metric_name", col))
+         followed directly by ggplot(df_sub, ...) or if (!is.null(df_sub)) without an nrow check.
+  Fix:   After EVERY filter() that selects a category subset, add an nrow guard:
+           if (nrow(df_sub) == 0) {
+             message("Filter empty. Available in col: ",
+                     paste(head(unique(df[[col]]), 15), collapse = ", "))
+             df_sub <- NULL
+           }
+         Then guard the plot: if (!is.null(df_sub)) { p <- ggplot(df_sub, ...); print(p) }
+  Apply to every filtered subset variable used in a plot, not just the main df.
 
 OUTPUT FORMAT (required — no preamble, nothing else):
 Line 1:  ISSUES: <comma-separated bug types fixed, e.g. "BUG1,BUG3", or "none">
@@ -783,6 +822,10 @@ validate_qmd <- function(content) {
   }
   if (!grepl("print\\(", content)) {
     issues <- c(issues, "No print() call found — plots may not render")
+  }
+  filter_locs <- gregexpr("filter\\(grepl\\(", content)[[1]]
+  if (!identical(filter_locs, -1L) && !grepl("nrow\\(", content)) {
+    issues <- c(issues, "filter(grepl()) found but no nrow() guard — filtered plots may silently show nothing")
   }
   issues
 }
