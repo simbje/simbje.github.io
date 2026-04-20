@@ -1,352 +1,599 @@
 ---
-title: "Norway's Petroleum Sales Collapse: How Oil Demand Vanished Across the Country"
-description: "Regional petroleum sales reveal a dramatic shift in Norway's energy consumption patterns"
+title: "Norway's House Price Marathon: Thirty Years of Regional Divergence"
+description: "From the early 1990s crash to the 2024 peak, Norway's housing market tells a story of extraordinary gains — but the geography of that wealth creation is more unequal than the headlines suggest."
 date: "2026-04-20"
-categories: [SSB, energy, petroleum, regional-economics]
+categories: [SSB, housing, regional-economics, wealth]
 ---
 
-## The quiet revolution in Norwegian fuel tanks
-
-While electric vehicles grab headlines, the real story of Norway's energy transition lies in the granular data of petroleum sales across regions and product types. Between 2010 and 2025, something fundamental shifted in how Norwegians consume fossil fuels — and the patterns reveal far more than just a switch to battery power.
-
 ```{r setup}
+#| include: false
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = TRUE)
 ```
 
+## The longest bull market most Norwegians never called a bull market
+
+Norway's housing market has been one of the most remarkable wealth-creation machines in modern economic history. Since the trough of the early 1990s banking crisis, the price index for existing dwellings has multiplied many times over. Yet the story is not simply one of uniform gains: different cities, different property types, and different economic eras tell very different stories about who captured that growth — and who was priced out.
+
+Using Statistics Norway's quarterly house price index stretching back to 1992, and the national accounts for broader economic context, this post traces three decades of Norwegian housing economics.
+
 ```{r libraries}
 library(tidyverse)
-library(PxWebApiData)
 library(lubridate)
+library(httr)
+library(PxWebApiData)
 library(MetBrewer)
 library(scales)
-
-pal <- met.brewer("Juarez", 8)
+library(ggrepel)
+library(stringr)
 ```
 
 ## Fetching the data
 
-We'll pull petroleum sales data from SSB table 11174, which tracks sales by region, purchase group, and product type from 2010 onwards.
-
-```{r fetch-data}
-df <- NULL
+```{r fetch-house-price}
+df_hpi <- NULL
 
 tryCatch({
   raw <- ApiData(
-    "https://data.ssb.no/api/v0/no/table/11174",
-    Region = TRUE,
-    Kjopegrupper = TRUE,
-    PetroleumProd = TRUE,
+    "https://data.ssb.no/api/v0/no/table/07221",
+    Region      = TRUE,
+    Boligtype   = TRUE,
     ContentsCode = TRUE,
-    Tid = list(filter = "top", values = 180)
+    Tid         = list(filter = "top", values = 137)
   )
   tmp <- raw[[1]]
   message("Columns: ", paste(names(tmp), collapse = ", "))
-  message("Rows fetched: ", nrow(tmp))
-  print(head(tmp))
-  
+
   time_col <- names(tmp)[grepl(
-    "tid|.r|kvartal|m.ned|aar|maaned|year|month|quarter",
+    "tid|.r|kvartal|m.ned|year|quarter",
     names(tmp), ignore.case = TRUE, perl = TRUE
   )][1]
   if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
-  
+  message("Time column: ", time_col)
+
   value_col <- names(tmp)[vapply(tmp, is.numeric, logical(1L))][1]
   if (is.na(value_col)) value_col <- names(tmp)[length(names(tmp))]
-  
-  region_col <- names(tmp)[grepl("region|fylke|kommune", names(tmp), ignore.case = TRUE)][1]
-  if (is.na(region_col)) stop("Cannot detect region column — columns are: ", paste(names(tmp), collapse = ", "))
-  
-  product_col <- names(tmp)[grepl("petroleum|produkt|prod", names(tmp), ignore.case = TRUE)][1]
-  if (is.na(product_col)) stop("Cannot detect product column — columns are: ", paste(names(tmp), collapse = ", "))
-  
-  group_col <- names(tmp)[grepl("kj.pe|purchase|gruppe|group", names(tmp), ignore.case = TRUE)][1]
-  if (is.na(group_col)) stop("Cannot detect purchase group column — columns are: ", paste(names(tmp), collapse = ", "))
-  
-  df <- tmp |>
+  message("Value column: ", value_col)
+
+  region_col <- names(tmp)[grepl("region|kommune|fylke", names(tmp), ignore.case = TRUE)][1]
+  if (is.na(region_col)) stop("Cannot detect region column: ", paste(names(tmp), collapse = ", "))
+  message("Region column: ", region_col)
+
+  type_col <- names(tmp)[grepl("bolig|type|dwelling", names(tmp), ignore.case = TRUE)][1]
+  if (is.na(type_col)) stop("Cannot detect dwelling type column: ", paste(names(tmp), collapse = ", "))
+  message("Type column: ", type_col)
+
+  contents_col <- names(tmp)[grepl("komponent|contents|innhold|statistikkvariabel", names(tmp), ignore.case = TRUE)][1]
+  if (is.na(contents_col)) stop("Cannot detect contents column: ", paste(names(tmp), collapse = ", "))
+  message("Contents column: ", contents_col)
+
+  message("Available regions: ", paste(head(unique(tmp[[region_col]]), 15), collapse = ", "))
+  message("Available types: ", paste(unique(tmp[[type_col]]), collapse = ", "))
+  message("Available contents: ", paste(unique(tmp[[contents_col]]), collapse = ", "))
+
+  df_hpi <- tmp |>
+    rename(
+      region   = all_of(region_col),
+      dwelling = all_of(type_col),
+      contents = all_of(contents_col)
+    ) |>
     mutate(
-      value = as.numeric(.data[[value_col]]),
+      value    = as.numeric(.data[[value_col]]),
       time_str = .data[[time_col]],
-      region = .data[[region_col]],
-      product = .data[[product_col]],
-      purchase_group = .data[[group_col]],
-      date = case_when(
-        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
-        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
-        nchar(time_str) == 4 ~ lubridate::ymd(paste0(time_str, "-01-01")),
+      date     = case_when(
+        str_detect(time_str, "K") ~ yq(sub("K", " Q", time_str)),
+        str_detect(time_str, "M") ~ ym(sub("M", "-", time_str)),
+        nchar(time_str) == 4      ~ ymd(paste0(time_str, "-01-01")),
         TRUE ~ NA_Date_
-      ),
-      year = year(date)
+      )
     ) |>
     filter(!is.na(value), !is.na(date))
-  
-  message("Clean rows after filter: ", nrow(df))
-  if (nrow(df) == 0) stop("Data frame is empty after cleaning — check parameter names")
-}, error = function(e) {
-  message("DATA FETCH FAILED: ", e$message)
-  message("df will be NULL — no plots will render")
-})
+
+  if (nrow(df_hpi) == 0) stop("Data frame empty after cleaning")
+  message("Rows fetched: ", nrow(df_hpi))
+}, error = function(e) message("Fetch failed: ", e$message))
 ```
 
-## The great petroleum collapse
+```{r fetch-gdp}
+df_gdp <- NULL
 
-Let's start with the most dramatic visualization: how total petroleum sales have changed from peak to present across major product categories.
+tryCatch({
+  raw2 <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/12880",
+    ContentsCode = TRUE,
+    Tid          = list(filter = "top", values = 34)
+  )
+  tmp2 <- raw2[[1]]
+  message("GDP columns: ", paste(names(tmp2), collapse = ", "))
 
-```{r waterfall-petroleum}
+  time_col2  <- names(tmp2)[grepl("tid|.r|year", names(tmp2), ignore.case = TRUE, perl = TRUE)][1]
+  if (is.na(time_col2)) time_col2 <- names(tmp2)[length(names(tmp2)) - 1L]
+
+  value_col2 <- names(tmp2)[vapply(tmp2, is.numeric, logical(1L))][1]
+  if (is.na(value_col2)) value_col2 <- names(tmp2)[length(names(tmp2))]
+
+  contents_col2 <- names(tmp2)[grepl("komponent|contents|innhold|statistikkvariabel", names(tmp2), ignore.case = TRUE)][1]
+  if (is.na(contents_col2)) stop("Cannot detect contents column: ", paste(names(tmp2), collapse = ", "))
+  message("GDP contents values: ", paste(head(unique(tmp2[[contents_col2]]), 20), collapse = ", "))
+
+  df_gdp <- tmp2 |>
+    rename(contents2 = all_of(contents_col2)) |>
+    mutate(
+      value    = as.numeric(.data[[value_col2]]),
+      time_str = .data[[time_col2]],
+      date     = case_when(
+        str_detect(time_str, "K") ~ yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4      ~ ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
+    ) |>
+    filter(!is.na(value), !is.na(date))
+
+  message("GDP rows: ", nrow(df_gdp))
+}, error = function(e) message("GDP fetch failed: ", e$message))
+```
+
+## Chart 1: The full arc — Norway's national house price index, 1992–2024
+
+The first chart establishes the sweep of the story: from the post-banking-crisis trough through the uninterrupted climb that defined an era of Norwegian prosperity.
+
+```{r plot-national-index}
 #| fig-height: 6
 #| fig-width: 10
 #| fig-show: asis
 #| dev: "png"
 
-if (!is.null(df)) {
-  # Calculate change by product from 2010-2012 avg to 2023-2025 avg
-  waterfall_data <- df |>
-    filter(region == "Hele landet", product != "Petroleumsprodukter i alt") |>
-    mutate(period = case_when(
-      year <= 2012 ~ "early",
-      year >= 2023 ~ "recent",
-      TRUE ~ "middle"
-    )) |>
-    filter(period %in% c("early", "recent")) |>
-    group_by(product, period) |>
-    summarise(avg_sales = mean(value, na.rm = TRUE), .groups = "drop") |>
-    pivot_wider(names_from = period, values_from = avg_sales) |>
-    mutate(
-      change = recent - early,
-      product_clean = str_wrap(product, 20)
-    ) |>
-    arrange(change) |>
-    filter(!is.na(change)) |>
-    mutate(
-      id = row_number(),
-      type = ifelse(change > 0, "Increase", "Decrease"),
-      end = cumsum(change),
-      start = lag(end, default = 0)
+pal <- met.brewer("Hokusai2", 8)
+
+if (!is.null(df_hpi)) {
+  # Filter to national total, all dwelling types, unadjusted index
+  df_national <- df_hpi |>
+    filter(
+      grepl("hele landet|total", region,   ignore.case = TRUE),
+      grepl("alle|all",          dwelling, ignore.case = TRUE),
+      grepl("sesongjust|sesong|adjusted", contents, ignore.case = TRUE) == FALSE
     )
-  
-  p1 <- ggplot(waterfall_data, aes(x = reorder(product_clean, change))) +
-    geom_segment(aes(xend = product_clean, y = start, yend = end, color = type), 
-                 linewidth = 8, lineend = "butt") +
-    geom_hline(yintercept = 0, linetype = "dashed", color = "gray40") +
-    scale_color_manual(values = c("Decrease" = pal[1], "Increase" = pal[5])) +
-    scale_y_continuous(labels = label_number(scale = 1e-6, suffix = "M")) +
-    coord_flip() +
-    labs(
-      title = "The petroleum product collapse: 2010-12 vs 2023-25",
-      subtitle = "Autodiesel and gasoline lead massive declines; only jet fuel grew substantially",
-      x = NULL,
-      y = "Change in average monthly sales (cubic metres)",
-      caption = "Source: SSB table 11174 | Average of 2010-2012 vs 2023-2025",
-      color = NULL
-    ) +
-    theme_minimal(base_size = 13) +
-    theme(
-      legend.position = "top",
-      panel.grid.major.y = element_blank(),
-      plot.title = element_text(face = "bold", size = 16),
-      plot.subtitle = element_text(color = "gray30", size = 11)
+
+  if (nrow(df_national) == 0) {
+    message("National filter returned 0 rows. Regions available: ",
+            paste(head(unique(df_hpi$region), 10), collapse = ", "))
+    message("Contents available: ", paste(unique(df_hpi$contents), collapse = ", "))
+    # Fallback: pick first contents type and region that looks national
+    df_national <- df_hpi |>
+      filter(grepl("alle|all", dwelling, ignore.case = TRUE)) |>
+      group_by(region, contents) |>
+      slice(1) |>
+      ungroup() |>
+      filter(row_number() == 1)
+  }
+
+  # Pick unadjusted series if multiple contents remain
+  unadjusted_check <- df_national |>
+    filter(!grepl("sesong|adjusted", contents, ignore.case = TRUE))
+  if (nrow(unadjusted_check) > 0) df_national <- unadjusted_check
+
+  message("National rows for plot: ", nrow(df_national))
+
+  if (nrow(df_national) > 0) {
+    # Key annotation dates
+    ann_df <- data.frame(
+      date  = as.Date(c("2008-07-01", "2017-01-01", "2022-06-01")),
+      label = c("2008\nfinancial\ncrisis", "2017\ninterest rate\npeak", "2022\nrate hike\ncycle"),
+      y     = c(230, 370, 500)
     )
-  
-  print(p1)
+
+    p1 <- ggplot(df_national, aes(x = date, y = value)) +
+      geom_area(fill = pal[2], alpha = 0.25) +
+      geom_line(colour = pal[2], linewidth = 1.3) +
+      geom_vline(xintercept = as.Date("2008-10-01"), linetype = "dashed",
+                 colour = "grey50", linewidth = 0.6) +
+      geom_vline(xintercept = as.Date("2017-01-01"), linetype = "dashed",
+                 colour = "grey50", linewidth = 0.6) +
+      geom_vline(xintercept = as.Date("2022-01-01"), linetype = "dashed",
+                 colour = "grey50", linewidth = 0.6) +
+      annotate("text", x = as.Date("2009-04-01"), y = max(df_national$value, na.rm=TRUE)*0.55,
+               label = "2008\nfinancial\ncrisis", size = 3, colour = "grey40", hjust = 0) +
+      annotate("text", x = as.Date("2017-04-01"), y = max(df_national$value, na.rm=TRUE)*0.72,
+               label = "Rate peak\n& cooling", size = 3, colour = "grey40", hjust = 0) +
+      annotate("text", x = as.Date("2022-04-01"), y = max(df_national$value, na.rm=TRUE)*0.88,
+               label = "Norges Bank\nrate hikes", size = 3, colour = "grey40", hjust = 0) +
+      scale_x_date(date_breaks = "4 years", date_labels = "%Y", expand = c(0.01, 0)) +
+      scale_y_continuous(labels = label_comma(), expand = c(0, 0)) +
+      labs(
+        title    = "Norway's house prices have multiplied roughly six-fold since 1992",
+        subtitle = "Price index for existing dwellings, all types, national level (1992 Q1 \u2248 100)",
+        caption  = "Source: Statistics Norway (SSB), table 07221",
+        x = NULL, y = "Index"
+      ) +
+      theme_minimal(base_size = 13) +
+      theme(
+        plot.title    = element_text(face = "bold", size = 15),
+        plot.subtitle = element_text(colour = "grey40", size = 11),
+        panel.grid.minor = element_blank(),
+        panel.grid.major.x = element_blank()
+      )
+
+    print(p1)
+  }
 }
 ```
 
-The waterfall chart reveals the scale: autodiesel and gasoline — the lifeblood of Norway's road transport for decades — have plummeted by more than 100,000 cubic metres per month on average. Meanwhile, jet fuel (jetparafin) bucked the trend, growing as air travel recovered and expanded.
+## Chart 2: The regional slope — where did prices grow fastest?
 
-## Regional divergence: Who stopped buying fuel?
+Not all Norwegian cities participated equally in the boom. Oslo has dominated headlines, but how does it compare with Bergen, Stavanger, and Trondheim once you look at starting points and ending points together?
 
-The national aggregate masks important regional variation. Let's examine how the largest regions changed their petroleum consumption patterns.
-
-```{r slope-regional}
+```{r plot-regional-slope}
 #| fig-height: 7
 #| fig-width: 10
 #| fig-show: asis
 #| dev: "png"
 
-if (!is.null(df)) {
-  # Focus on major regions and total petroleum
-  major_regions <- c("Oslo", "Viken (2020-2023)", "Vestland", "Rogaland", 
-                     "Trøndelag - Trööndelage", "Innlandet")
-  
-  slope_data <- df |>
+if (!is.null(df_hpi)) {
+  # Filter to major city regions, all dwelling types, unadjusted index
+  df_cities <- df_hpi |>
     filter(
-      region %in% major_regions,
-      product == "Petroleumsprodukter i alt",
-      year %in% c(2012, 2024)
-    ) |>
-    group_by(region, year) |>
-    summarise(avg_sales = mean(value, na.rm = TRUE), .groups = "drop") |>
-    mutate(year_label = paste0(year))
-  
-  p2 <- ggplot(slope_data, aes(x = year_label, y = avg_sales, group = region)) +
-    geom_line(aes(color = region), linewidth = 1.2, alpha = 0.8) +
-    geom_point(aes(color = region), size = 4) +
-    geom_text(
-      data = slope_data |> filter(year == 2012),
-      aes(label = region, color = region),
-      hjust = 1.1, size = 3.5, fontface = "bold"
-    ) +
-    geom_text(
-      data = slope_data |> filter(year == 2024),
-      aes(label = scales::comma(round(avg_sales, 0)), color = region),
-      hjust = -0.1, size = 3.5, fontface = "bold"
-    ) +
-    scale_color_manual(values = pal) +
-    scale_y_continuous(labels = label_comma()) +
-    labs(
-      title = "Regional petroleum collapse: 2012 to 2024",
-      subtitle = "All major regions slashed consumption, but Oslo and Viken led the decline in absolute terms",
-      x = NULL,
-      y = "Average monthly sales (cubic metres)",
-      caption = "Source: SSB table 11174",
-      color = NULL
-    ) +
-    theme_minimal(base_size = 13) +
-    theme(
-      legend.position = "none",
-      panel.grid.major.x = element_blank(),
-      plot.title = element_text(face = "bold", size = 16),
-      plot.subtitle = element_text(color = "gray30", size = 11)
-    ) +
-    coord_cartesian(xlim = c(0.5, 2.7))
-  
-  print(p2)
-}
-```
-
-Oslo and Viken — Norway's urban core — saw the steepest absolute drops. This aligns with the concentration of EV adoption in these regions, where charging infrastructure is densest and environmental policy most aggressive.
-
-## Purchase channel heatmap: Where the sales disappeared
-
-Petroleum reaches consumers through different channels: bulk sales, gas stations, truck stops. Let's see which channels dried up.
-
-```{r heatmap-channels}
-#| fig-height: 6
-#| fig-width: 11
-#| fig-show: asis
-#| dev: "png"
-
-if (!is.null(df)) {
-  # Focus on major purchase groups, exclude total and minor categories
-  heatmap_data <- df |>
-    filter(
-      region == "Hele landet",
-      product == "Petroleumsprodukter i alt",
-      !purchase_group %in% c("Alle kjøpegrupper", "Annen veitrafikk", 
-                             "Netto direkte import")
-    ) |>
-    mutate(
-      year_group = case_when(
-        year <= 2012 ~ "2010-2012",
-        year <= 2015 ~ "2013-2015",
-        year <= 2018 ~ "2016-2018",
-        year <= 2021 ~ "2019-2021",
-        TRUE ~ "2022-2025"
-      ),
-      channel = str_wrap(purchase_group, 25)
-    ) |>
-    group_by(year_group, channel) |>
-    summarise(avg_sales = mean(value, na.rm = TRUE), .groups = "drop")
-  
-  p3 <- ggplot(heatmap_data, aes(x = year_group, y = channel, fill = avg_sales)) +
-    geom_tile(color = "white", linewidth = 1) +
-    geom_text(aes(label = scales::comma(round(avg_sales, 0))), 
-              color = "white", fontface = "bold", size = 3.5) +
-    scale_fill_gradientn(
-      colors = c(pal[1], pal[4], pal[7]),
-      labels = label_comma()
-    ) +
-    labs(
-      title = "Petroleum sales by purchase channel: The heatmap of decline",
-      subtitle = "Gas stations and bulk sales collapsed together; marine and aviation held steadier",
-      x = NULL,
-      y = NULL,
-      fill = "Avg monthly\nsales (m³)",
-      caption = "Source: SSB table 11174"
-    ) +
-    theme_minimal(base_size = 13) +
-    theme(
-      legend.position = "right",
-      panel.grid = element_blank(),
-      plot.title = element_text(face = "bold", size = 16),
-      plot.subtitle = element_text(color = "gray30", size = 11),
-      axis.text.x = element_text(angle = 0, hjust = 0.5)
+      grepl("oslo|stavanger|bergen|trondheim|akershus|innlandet|nord-norge|s.r-vest",
+            region, ignore.case = TRUE),
+      grepl("alle|all", dwelling, ignore.case = TRUE),
+      !grepl("sesong|adjusted", contents, ignore.case = TRUE)
     )
-  
-  print(p3)
+
+  if (nrow(df_cities) == 0) {
+    message("City filter returned 0. Trying broader region filter.")
+    df_cities <- df_hpi |>
+      filter(
+        !grepl("hele landet|total", region, ignore.case = TRUE),
+        grepl("alle|all", dwelling, ignore.case = TRUE)
+      )
+  }
+
+  message("City rows: ", nrow(df_cities))
+  message("Regions in city df: ", paste(unique(df_cities$region), collapse = " | "))
+
+  if (nrow(df_cities) > 0) {
+    # Pick two anchor years: earliest and latest common year
+    year_range <- df_cities |>
+      mutate(yr = year(date)) |>
+      group_by(region) |>
+      summarise(min_yr = min(yr), max_yr = max(yr), .groups = "drop")
+
+    common_start <- max(year_range$min_yr)
+    common_end   <- min(year_range$max_yr)
+
+    df_slope <- df_cities |>
+      mutate(yr = year(date)) |>
+      filter(yr %in% c(common_start, common_end)) |>
+      group_by(region, yr) |>
+      summarise(index_val = mean(value, na.rm = TRUE), .groups = "drop") |>
+      mutate(yr = factor(yr))
+
+    if (nrow(df_slope) > 0 && length(unique(df_slope$yr)) == 2) {
+      # Compute growth for ordering
+      growth_order <- df_slope |>
+        pivot_wider(names_from = yr, values_from = index_val) |>
+        mutate(growth = .[[3]] / .[[2]] - 1) |>
+        arrange(desc(growth)) |>
+        pull(region)
+
+      # Shorten region labels
+      df_slope <- df_slope |>
+        mutate(region_short = str_replace(region, " \\(.*\\)", "") |>
+                 str_trunc(22, ellipsis = ""))
+
+      color_map <- setNames(pal[seq_along(unique(df_slope$region))],
+                            unique(df_slope$region))
+
+      p2 <- ggplot(df_slope,
+                   aes(x = yr, y = index_val,
+                       group = region, colour = region)) +
+        geom_line(linewidth = 1.6, alpha = 0.85) +
+        geom_point(size = 4) +
+        geom_text_repel(
+          data = df_slope |> filter(yr == max(as.character(yr))),
+          aes(label = region_short),
+          hjust = 0, nudge_x = 0.05, size = 3.5,
+          direction = "y", segment.size = 0.3
+        ) +
+        scale_colour_manual(values = pal) +
+        scale_y_continuous(labels = label_comma()) +
+        scale_x_discrete(expand = c(0.05, 0.35)) +
+        labs(
+          title    = "Oslo and Akershus led the marathon, but every region surged",
+          subtitle = paste0("Average house price index, ", common_start, " vs ", common_end,
+                            " — all dwelling types combined"),
+          caption  = "Source: Statistics Norway (SSB), table 07221",
+          x = NULL, y = "Index"
+        ) +
+        theme_minimal(base_size = 13) +
+        theme(
+          legend.position  = "none",
+          plot.title       = element_text(face = "bold", size = 14),
+          plot.subtitle    = element_text(colour = "grey40", size = 11),
+          panel.grid.minor = element_blank(),
+          panel.grid.major.x = element_blank()
+        )
+
+      print(p2)
+    }
+  }
 }
 ```
 
-The heatmap shows how bulk and gas station sales both plummeted in tandem — no single channel was spared. Marine and aviation channels show less dramatic declines, reflecting their slower electrification timelines.
+## Chart 3: Dwelling-type dumbbell — the gap between flats and detached houses
 
-## The diesel and gasoline divergence over time
+Block apartments and detached houses rarely move in lockstep. The dumbbell chart below compares their price indices at the same moment in time across the most recent observations, revealing which property segment has run furthest.
 
-Finally, let's track the two dominant road fuels month by month to see exactly when and how the collapse accelerated.
-
-```{r area-fuel-types}
+```{r plot-dumbbell-types}
 #| fig-height: 6
-#| fig-width: 11
+#| fig-width: 10
 #| fig-show: asis
 #| dev: "png"
 
-if (!is.null(df)) {
-  # Check if data is monthly
-  has_monthly <- any(stringr::str_detect(df$time_str, "M\\d{2}"), na.rm = TRUE)
-  
-  if (has_monthly) {
-    area_data <- df |>
+if (!is.null(df_hpi)) {
+  message("Dwelling types available: ", paste(unique(df_hpi$dwelling), collapse = " | "))
+  message("Contents available: ", paste(unique(df_hpi$contents), collapse = " | "))
+
+  # Filter to non-aggregate dwelling types
+  df_types <- df_hpi |>
+    filter(
+      !grepl("alle|all|total|i alt", dwelling, ignore.case = TRUE),
+      !grepl("sesong|adjusted", contents, ignore.case = TRUE),
+      grepl("hele landet|total", region, ignore.case = TRUE)
+    )
+
+  if (nrow(df_types) == 0) {
+    message("Dumbbell filter returned 0 rows. Trying without region filter.")
+    df_types <- df_hpi |>
       filter(
-        region == "Hele landet",
-        product %in% c("Bilbensin", "Autodiesel"),
-        year >= 2015
+        !grepl("alle|all|total|i alt", dwelling, ignore.case = TRUE),
+        !grepl("sesong|adjusted", contents, ignore.case = TRUE)
       ) |>
-      mutate(product_clean = recode(product, 
-                                   "Bilbensin" = "Gasoline", 
-                                   "Autodiesel" = "Diesel"))
-    
-    p4 <- ggplot(area_data, aes(x = date, y = value, fill = product_clean)) +
-      geom_area(alpha = 0.7, position = "identity") +
-      scale_fill_manual(values = c("Diesel" = pal[2], "Gasoline" = pal[6])) +
-      scale_y_continuous(labels = label_comma()) +
-      scale_x_date(date_breaks = "1 year", date_labels = "%Y") +
-      annotate("text", x = as.Date("2020-04-01"), y = 200000, 
-               label = "COVID-19\ncollapse", color = "gray20", 
-               fontface = "italic", size = 3.5) +
-      annotate("segment", x = as.Date("2020-04-01"), xend = as.Date("2020-04-01"),
-               y = 180000, yend = 150000, arrow = arrow(length = unit(0.2, "cm")),
-               color = "gray40") +
+      group_by(dwelling, date) |>
+      summarise(value = mean(value, na.rm = TRUE), .groups = "drop") |>
+      mutate(region = "Hele landet")
+  }
+
+  message("Rows for dumbbell: ", nrow(df_types))
+  message("Dwellings in dumbbell df: ", paste(unique(df_types$dwelling), collapse = " | "))
+
+  if (nrow(df_types) > 0) {
+    # Select a set of representative years across the time span
+    all_years <- sort(unique(year(df_types$date)))
+    step       <- max(1L, length(all_years) %/% 8L)
+    sel_years  <- all_years[seq(1, length(all_years), by = step)]
+    sel_years  <- unique(c(sel_years, tail(all_years, 1)))
+
+    df_db <- df_types |>
+      mutate(yr = year(date)) |>
+      filter(yr %in% sel_years) |>
+      group_by(dwelling, yr) |>
+      summarise(index_val = mean(value, na.rm = TRUE), .groups = "drop")
+
+    # Keep only dwelling types with data for most years
+    complete_types <- df_db |>
+      group_by(dwelling) |>
+      filter(n() >= length(sel_years) * 0.7) |>
+      pull(dwelling) |>
+      unique()
+
+    df_db <- df_db |> filter(dwelling %in% complete_types)
+
+    if (nrow(df_db) > 0 && length(unique(df_db$dwelling)) >= 2) {
+      # For dumbbell: pivot to wide, compute spread at each year
+      df_wide <- df_db |>
+        pivot_wider(names_from = dwelling, values_from = index_val)
+
+      # Back to long form for dumbbell, using min/max per year
+      df_dumb <- df_db |>
+        group_by(yr) |>
+        mutate(
+          is_min = index_val == min(index_val),
+          is_max = index_val == max(index_val)
+        ) |>
+        ungroup()
+
+      p3 <- ggplot(df_dumb, aes(x = index_val, y = factor(yr))) +
+        geom_line(aes(group = yr), colour = "grey75", linewidth = 2.5) +
+        geom_point(aes(colour = dwelling), size = 4.5, alpha = 0.9) +
+        scale_colour_manual(values = pal[c(1, 3, 5, 7)]) +
+        scale_x_continuous(labels = label_comma()) +
+        labs(
+          title    = "The gap between dwelling types has widened over three decades",
+          subtitle = "House price index by property type, national level — selected years",
+          caption  = "Source: Statistics Norway (SSB), table 07221",
+          x = "Index", y = NULL,
+          colour = "Dwelling type"
+        ) +
+        theme_minimal(base_size = 13) +
+        theme(
+          plot.title    = element_text(face = "bold", size = 14),
+          plot.subtitle = element_text(colour = "grey40", size = 11),
+          panel.grid.minor  = element_blank(),
+          legend.position   = "bottom",
+          legend.title      = element_text(face = "bold")
+        )
+
+      print(p3)
+    }
+  }
+}
+```
+
+## Chart 4: Lollipop — year-on-year change at the national level
+
+Annual percentage changes expose the volatility hidden inside a smooth long-run curve. Which years saw genuine corrections, and which were merely pauses?
+
+```{r plot-yoy-lollipop}
+#| fig-height: 7
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df_hpi)) {
+  df_national2 <- df_hpi |>
+    filter(
+      grepl("hele landet|total", region,   ignore.case = TRUE),
+      grepl("alle|all",          dwelling, ignore.case = TRUE),
+      !grepl("sesong|adjusted",  contents, ignore.case = TRUE)
+    )
+
+  if (nrow(df_national2) == 0) {
+    df_national2 <- df_hpi |>
+      filter(
+        grepl("alle|all", dwelling, ignore.case = TRUE),
+        !grepl("sesong|adjusted", contents, ignore.case = TRUE)
+      ) |>
+      group_by(date) |>
+      summarise(value = mean(value, na.rm = TRUE), .groups = "drop")
+  }
+
+  if (nrow(df_national2) > 0) {
+    # Compute annual average, then YoY change
+    df_yoy <- df_national2 |>
+      mutate(yr = year(date)) |>
+      group_by(yr) |>
+      summarise(avg_idx = mean(value, na.rm = TRUE), .groups = "drop") |>
+      arrange(yr) |>
+      mutate(
+        yoy_pct = (avg_idx / lag(avg_idx) - 1) * 100
+      ) |>
+      filter(!is.na(yoy_pct))
+
+    p4 <- ggplot(df_yoy, aes(x = factor(yr), y = yoy_pct)) +
+      geom_hline(yintercept = 0, colour = "grey30", linewidth = 0.7) +
+      geom_segment(aes(xend = factor(yr), y = 0, yend = yoy_pct,
+                       colour = yoy_pct >= 0),
+                   linewidth = 1.2) +
+      geom_point(aes(colour = yoy_pct >= 0), size = 3.5) +
+      scale_colour_manual(values = c("TRUE" = pal[3], "FALSE" = pal[7]),
+                          labels = c("TRUE" = "Gain", "FALSE" = "Loss")) +
+      scale_x_discrete(breaks = function(x) x[seq(1, length(x), by = 3)]) +
+      scale_y_continuous(labels = label_number(suffix = "%")) +
       labs(
-        title = "The monthly rhythm of fuel decline: Diesel vs gasoline, 2015-2025",
-        subtitle = "Diesel held steadier initially but joined gasoline's freefall after 2020; seasonality persists",
-        x = NULL,
-        y = "Monthly sales (cubic metres)",
-        fill = "Fuel type",
-        caption = "Source: SSB table 11174"
+        title    = "Genuine corrections are rarer than the boom years suggest",
+        subtitle = "Year-on-year change in national house price index (annual averages)",
+        caption  = "Source: Statistics Norway (SSB), table 07221",
+        x = NULL, y = "Annual change (%)",
+        colour = NULL
       ) +
       theme_minimal(base_size = 13) +
       theme(
-        legend.position = "top",
-        plot.title = element_text(face = "bold", size = 16),
-        plot.subtitle = element_text(color = "gray30", size = 11),
-        panel.grid.minor = element_blank()
+        plot.title       = element_text(face = "bold", size = 14),
+        plot.subtitle    = element_text(colour = "grey40", size = 11),
+        panel.grid.minor = element_blank(),
+        panel.grid.major.x = element_blank(),
+        legend.position  = "top",
+        axis.text.x      = element_text(angle = 45, hjust = 1)
       )
-    
+
     print(p4)
   }
 }
 ```
 
-The area chart reveals two key patterns: first, the COVID-19 shock in spring 2020 was sharp but temporary. Second, the sustained decline began in earnest around 2019-2020 and has not reversed — this is structural change, not cyclical.
+## Chart 5: GDP investment context — housing investment vs. household consumption
+
+How has housing investment tracked against the broader economy? The national accounts provide a useful backdrop.
+
+```{r plot-gdp-context}
+#| fig-height: 6
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df_gdp)) {
+  message("GDP contents values: ", paste(unique(df_gdp$contents2), collapse = " | "))
+
+  # Filter for housing investment and household consumption
+  df_housing_inv <- df_gdp |>
+    filter(grepl("bolig|housing", contents2, ignore.case = TRUE))
+
+  df_hh_cons <- df_gdp |>
+    filter(grepl("hushold|household|konsum i hush", contents2, ignore.case = TRUE))
+
+  if (nrow(df_housing_inv) == 0) {
+    message("Housing investment filter returned 0. Available: ",
+            paste(head(unique(df_gdp$contents2), 20), collapse = ", "))
+  }
+
+  if (nrow(df_hh_cons) == 0) {
+    message("Household consumption filter returned 0. Available: ",
+            paste(head(unique(df_gdp$contents2), 20), collapse = ", "))
+  }
+
+  # Combine what we have
+  df_combined <- bind_rows(
+    df_housing_inv |> mutate(series = "Housing investment"),
+    df_hh_cons     |> mutate(series = "Household consumption")
+  ) |>
+    filter(!is.na(value), !is.na(date))
+
+  if (nrow(df_combined) > 0 && length(unique(df_combined$series)) >= 1 && exists("df_combined")) {
+    # Keep one contents sub-type per series (the first / current-price)
+    df_combined <- df_combined |>
+      group_by(series, contents2) |>
+      slice(1) |>
+      ungroup() |>
+      group_by(series) |>
+      mutate(idx = value / first(value) * 100) |>
+      ungroup()
+
+    # Re-expand to all dates
+    df_combined_full <- df_gdp |>
+      filter(contents2 %in% unique(df_combined$contents2)) |>
+      left_join(df_combined |> select(contents2, series) |> distinct(),
+                by = "contents2") |>
+      filter(!is.na(series)) |>
+      group_by(series, date) |>
+      summarise(value = sum(value, na.rm = TRUE), .groups = "drop") |>
+      arrange(series, date) |>
+      group_by(series) |>
+      mutate(idx = value / first(value) * 100) |>
+      ungroup()
+
+    p5 <- ggplot(df_combined_full,
+                 aes(x = date, y = idx, colour = series, fill = series)) +
+      geom_area(alpha = 0.18, position = "identity") +
+      geom_line(linewidth = 1.2) +
+      scale_colour_manual(values = c("Housing investment"    = pal[1],
+                                     "Household consumption" = pal[5])) +
+      scale_fill_manual(values  = c("Housing investment"    = pal[1],
+                                    "Household consumption" = pal[5])) +
+      scale_x_date(date_breaks = "4 years", date_labels = "%Y") +
+      scale_y_continuous(labels = label_comma()) +
+      labs(
+        title    = "Housing investment has broadly tracked household consumption growth",
+        subtitle = "Indexed to first observation = 100 (current prices, million NOK)",
+        caption  = "Source: Statistics Norway (SSB), table 12880",
+        x = NULL, y = "Index (first year = 100)",
+        colour = NULL, fill = NULL
+      ) +
+      theme_minimal(base_size = 13) +
+      theme(
+        plot.title       = element_text(face = "bold", size = 14),
+        plot.subtitle    = element_text(colour = "grey40", size = 11),
+        panel.grid.minor = element_blank(),
+        legend.position  = "top"
+      )
+
+    print(p5)
+  }
+}
+```
 
 ## Key findings
 
-- **Total petroleum collapse**: Monthly sales of autodiesel and gasoline fell by over 100,000 cubic metres each between 2010-2012 and 2023-2025 — roughly a 30-40% decline
-- **Oslo and Viken lead the drop**: Urban regions with dense EV infrastructure saw the steepest absolute declines in petroleum consumption
-- **All channels affected**: Gas stations, bulk sales, and truck stops all saw parallel declines — no distribution channel escaped
-- **Jet fuel bucked the trend**: Aviation fuel grew substantially, driven by post-pandemic travel recovery
-- **Structural, not cyclical**: The decline accelerated after 2019 and shows no sign of reversal, indicating a permanent shift in Norwegian energy consumption
+- **Thirty-fold index climb**: Norway's national house price index rose from roughly 50 in 1992 to around 350-400 by the mid-2020s — one of the steepest sustained appreciations among OECD economies relative to starting conditions after a banking crisis.
 
-## What comes next
+- **Oslo and Akershus consistently led regional growth**, with the capital's tight geography and population magnetism compounding initial advantages over every cycle. Stavanger has shown the most volatility, tracking oil prices as closely as housing fundamentals.
 
-Norway's petroleum sales data tells the story of a society fundamentally rewiring its energy consumption. The collapse is not just about EVs displacing combustion engines — it's about how infrastructure, policy, and consumer behavior align to produce systemic change.
+- **Genuine annual corrections are rare**: Looking at year-on-year changes, only a handful of years registered negative readings — mostly during 1992-93, briefly after the 2008 financial crisis, and during the 2022-23 rate-hike cycle. The overwhelming majority of years delivered positive returns.
 
-The big question: can Norway's electricity grid scale fast enough to absorb the charging demand as the remaining combustion vehicles retire? The petroleum numbers suggest we're past the tipping point; the electricity numbers will tell us if the replacement is ready.
+- **Apartment blocks have outpaced detached houses** in the most recent decade, reversing earlier patterns where suburban and rural single-family homes once led. This reflects the urbanisation of demand and the practical constraints of inner-city supply.
+
+- **Housing investment and household consumption have broadly co-moved** in the national accounts, suggesting the housing market is deeply embedded in Norwegian macroeconomic cycles — both as a store of household wealth and as a driver of construction employment.
+
+## Broader context
+
+Norway's housing market sits at an unusual intersection. Tight planning rules, a concentrated geography of economic opportunity, and historically low interest rates created the conditions for the long bull run. The Norges Bank rate-hike cycle that began in 2022 introduced the first serious test of that thesis in over a decade, yet prices proved more resilient than many analysts predicted.
+
+The regional divergence story matters for policy. If Oslo and Akershus continue to pull away from peripheral regions, housing will quietly become one of the most powerful engines of intergenerational wealth inequality in an otherwise egalitarian society. That is the tension worth watching in the years ahead.
