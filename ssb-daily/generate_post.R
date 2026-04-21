@@ -1,15 +1,14 @@
 #!/usr/bin/env Rscript
 # =============================================================================
 # generate_post.R
-# Calls the Anthropic API to generate a new daily SSB analysis post.
-# Claude picks the topic, writes the R code, and creates the .qmd file.
+# Phase 1: Discovery agent browses SSB via tool_use to find + verify datasets.
+# Phase 2: Generator writes the QMD using the agent's confirmed spec.
 # Run by GitHub Actions every morning at 07:00 CET.
 # =============================================================================
 
 library(httr2)
 library(jsonlite)
 library(lubridate)
-library(glue)
 library(PxWebApiData)
 
 # ── Config ────────────────────────────────────────────────────────────────────
@@ -18,7 +17,6 @@ TODAY             <- Sys.Date()
 POST_SLUG         <- format(TODAY, "%Y-%m-%d")
 POST_DIR          <- file.path("ssb-daily", "posts", POST_SLUG)
 POST_FILE         <- file.path(POST_DIR, "index.qmd")
-SEED              <- as.integer(format(TODAY, "%Y%m%d"))  # stable, explicit
 
 if (nchar(ANTHROPIC_API_KEY) == 0) stop("ANTHROPIC_API_KEY not set")
 if (dir.exists(POST_DIR)) {
@@ -46,162 +44,7 @@ with_retry <- function(fn, max_attempts = 3L, base_wait = 2) {
   stop(last_error)
 }
 
-# ── SSB Table list ─────────────────────────────────────────────────────────────
-SSB_TABLE_LIST <- list(
-  # Economy
-  c("14700", "Consumer Price Index (new series from 2026, replaces 03013)"),
-  c("03013", "Consumer Price Index by consumption group, monthly (2015=100)"),
-  c("03014", "Consumer Price Index 12-month rate, by consumption group, monthly"),
-  c("09170", "GDP and related measures, quarterly"),
-  c("09174", "Wages, employment and productivity by industry, annual"),
-  c("09189", "National accounts, quarterly main figures"),
-  c("09190", "GDP by industry, quarterly"),
-  c("11174", "Household final consumption expenditure"),
-  c("10948", "General government revenue and expenditure, annual"),
-  c("12880", "National accounts, annual main figures"),
-  # Labour
-  c("05111", "Population by labour force status, age and sex, annual (AKU)"),
-  c("05110", "Population by labour force status, age and sex, quarterly (AKU)"),
-  c("13760", "Labour force, employment, unemployment, seasonally adjusted, monthly"),
-  c("11350", "Average monthly earnings by industry and sector"),
-  c("08536", "Registered unemployed by age and county, monthly"),
-  c("07984", "R&D personnel in business enterprise sector"),
-  c("08771", "Job vacancies by major industry division"),
-  c("03629", "Work stoppages and working days lost"),
-  c("12549", "Sickness absence by industry"),
-  # Housing
-  c("07221", "House price index, existing dwellings"),
-  c("06265", "Building activity, dwellings started and completed"),
-  c("05889", "New dwellings completed by county"),
-  # Demographics
-  c("07459", "Population by region, sex, age and year"),
-  c("05810", "Population by age, sex and year"),
-  c("04861", "Area and population of urban settlements"),
-  c("05803", "Births by mothers age"),
-  c("09817", "Immigration and emigration by citizenship"),
-  c("05196", "Fertility rates"),
-  c("10634", "Marriages and divorces"),
-  c("09481", "Population changes, quarterly"),
-  # Energy & Environment
-  c("08307", "Electricity balance, monthly"),
-  c("13931", "First-time registered vehicles by fuel type and county"),
-  c("09288", "Energy balance for Norway by energy product"),
-  c("03321", "Greenhouse gas emissions by source"),
-  # Education
-  c("09429", "Students in higher education by field of study"),
-  c("08956", "Upper secondary completion rates"),
-  c("07184", "Kindergartens, children and staff"),
-  # Health
-  c("06913", "Activities in somatic hospitals"),
-  # Business & Industry
-  c("07196", "Enterprises by industry and organisational form"),
-  c("10582", "Bankruptcies opened by industry, quarterly"),
-  c("08419", "Retail trade index, monthly"),
-  c("08800", "Overnight stays by nationality and accommodation type"),
-  # Crime
-  c("08484", "Offences reported to police by type"),
-  # Trade
-  c("08807", "External trade in goods, imports and exports"),
-  # KOSTRA (municipality-level, annual)
-  c("12362", "KOSTRA: Kindergarten key figures by municipality"),
-  c("12215", "KOSTRA: Primary school key figures by municipality"),
-  c("12006", "KOSTRA: Elderly care key figures by municipality"),
-  c("12163", "KOSTRA: Municipal financial key figures"),
-  c("12559", "KOSTRA: Water and sewage key figures by municipality")
-)
-
-# ── Pre-fetch real metadata from SSB ──────────────────────────────────────────
-MAX_TABLES <- 15
-
-message("Pre-fetching SSB metadata to validate tables and discover real parameters...")
-
-fetch_table_meta <- function(table_id, description) {
-  url <- paste0("https://data.ssb.no/api/v0/no/table/", table_id)
-  for (attempt in 1:3) {
-    result <- tryCatch({
-      meta <- PxWebApiData::ApiData(url, returnMetaFrames = TRUE)
-      # Validate: must be a named list of data frames
-      if (!is.list(meta) || is.null(names(meta)) ||
-          !all(vapply(meta, is.data.frame, logical(1L)))) {
-        stop("metadata is not a named list of data frames")
-      }
-      list(id = table_id, description = description, meta = meta, ok = TRUE)
-    }, error = function(e) {
-      list(id = table_id, description = description, meta = NULL, ok = FALSE,
-           err = conditionMessage(e))
-    })
-    if (result$ok) return(result)
-    if (attempt < 3) {
-      message("  Retry ", attempt, " for ", table_id, ": ", result$err)
-      Sys.sleep(2^attempt)
-    }
-  }
-  message("  SKIP ", table_id, ": ", result$err)
-  result
-}
-
-set.seed(SEED)
-shuffled <- SSB_TABLE_LIST[sample(length(SSB_TABLE_LIST))]
-
-table_results <- list()
-valid_count   <- 0L
-for (tbl in shuffled) {
-  res <- fetch_table_meta(tbl[[1]], tbl[[2]])
-  table_results[[length(table_results) + 1L]] <- res
-  if (res$ok) {
-    valid_count <- valid_count + 1L
-    message("  OK  ", tbl[[1]], " — ", tbl[[2]])
-    if (valid_count >= MAX_TABLES) break
-  }
-  Sys.sleep(0.2)
-}
-
-valid_tables <- Filter(function(r) r$ok, table_results)
-message("Validated ", length(valid_tables), " tables.")
-
-if (length(valid_tables) == 0L) stop("No SSB tables could be reached. Check network/API.")
-
-# ── Build dynamic catalogue string from real metadata ─────────────────────────
-format_param <- function(frame, max_values = 8L) {
-  if (is.null(frame) || !is.data.frame(frame) || nrow(frame) == 0L) return(NA_character_)
-  code_col  <- names(frame)[1]
-  label_col <- if (ncol(frame) >= 2L) names(frame)[2L] else code_col
-  top  <- head(frame, max_values)
-  vals <- if (code_col == label_col) {
-    paste0('"', top[[code_col]], '"')
-  } else {
-    paste0('"', top[[code_col]], '" (', top[[label_col]], ')')
-  }
-  suffix <- if (nrow(frame) > max_values) paste0(" ... ", nrow(frame), " total") else ""
-  paste0(paste(vals, collapse = ", "), suffix)
-}
-
-build_catalogue <- function(valid_tables) {
-  sections <- lapply(valid_tables, function(res) {
-    param_lines <- lapply(names(res$meta), function(p) {
-      formatted <- format_param(res$meta[[p]])
-      if (is.na(formatted) || nchar(formatted) == 0L) return(NULL)
-      paste0("  - **", p, "**: ", formatted)
-    })
-    param_lines <- Filter(Negate(is.null), param_lines)
-    paste0(
-      "### ", res$id, " — ", res$description, "\n",
-      paste(unlist(param_lines), collapse = "\n")
-    )
-  })
-  paste0(
-    "## Verified SSB datasets with EXACT parameter names\n\n",
-    "CRITICAL: The parameter names and values below come directly from the SSB API.\n",
-    "Use them EXACTLY as written. Do NOT invent or modify parameter names.\n",
-    "For dimension parameters, pass TRUE to get all values, or a character vector of specific codes.\n",
-    "For Tid use list(filter='top', values=N) to get the last N periods.\n\n",
-    paste(unlist(sections), collapse = "\n\n")
-  )
-}
-
-SSB_CATALOGUE <- build_catalogue(valid_tables)
-
-# ── Previous posts (topic diversity) ─────────────────────────────────────────
+# ── Topic index helpers ────────────────────────────────────────────────────────
 TOPIC_INDEX_FILE <- file.path("ssb-daily", "posts", "_topic_index.csv")
 
 read_topic_index <- function(path) {
@@ -210,7 +53,7 @@ read_topic_index <- function(path) {
 }
 
 append_topic_index <- function(path, date, title, datasets, chart_types) {
-  existing     <- read_topic_index(path)
+  existing      <- read_topic_index(path)
   expected_cols <- c("date", "title", "datasets", "chart_types")
   new_row <- data.frame(
     date        = as.character(date),
@@ -219,7 +62,6 @@ append_topic_index <- function(path, date, title, datasets, chart_types) {
     chart_types = substr(chart_types, 1, 60),
     stringsAsFactors = FALSE
   )
-  # Normalize existing schema to avoid rbind() errors on column drift
   if (nrow(existing) > 0) {
     for (col in expected_cols) {
       if (!col %in% names(existing)) existing[[col]] <- NA_character_
@@ -231,7 +73,7 @@ append_topic_index <- function(path, date, title, datasets, chart_types) {
   write.csv(updated, path, row.names = FALSE)
 }
 
-topic_index <- read_topic_index(TOPIC_INDEX_FILE)
+topic_index        <- read_topic_index(TOPIC_INDEX_FILE)
 recent_topics_note <- if (nrow(topic_index) > 0) {
   recent <- tail(topic_index, 60)
   rows <- paste0(
@@ -239,77 +81,389 @@ recent_topics_note <- if (nrow(topic_index) > 0) {
     recent$datasets, " | charts: ", recent$chart_types,
     collapse = "\n"
   )
-  paste0(
-    "\n## Recent posts (last ", nrow(recent), " — avoid repeating same angle or dataset combo):\n",
-    rows
-  )
+  paste0("Recent posts (avoid repeating same angle or dataset):\n", rows)
 } else {
-  "\n## No previous posts yet — this is the first one!"
+  "No previous posts yet."
 }
 
-# ── System prompt ─────────────────────────────────────────────────────────────
-SYSTEM_PROMPT <- glue('
-You are a world-class data journalist and R programmer specializing in Norwegian economics and statistics.
-Your job is to write a complete, self-contained Quarto (.qmd) blog post that performs a fresh, insightful
-analysis of Statistics Norway (SSB) data using R.
+# ── SSB seed table list ────────────────────────────────────────────────────────
+SSB_SEED_TABLES <- paste(c(
+  "14700 - Consumer Price Index (new series 2026)",
+  "03013 - Consumer Price Index by consumption group, monthly",
+  "09170 - GDP and related measures, quarterly",
+  "09189 - National accounts, quarterly main figures",
+  "09190 - GDP by industry, quarterly",
+  "11174 - Household final consumption expenditure",
+  "05111 - Labour force status by age and sex, annual",
+  "05110 - Labour force status by age and sex, quarterly",
+  "13760 - Labour force and unemployment, seasonally adjusted, monthly",
+  "11350 - Average monthly earnings by industry and sector",
+  "08536 - Registered unemployed by age and county, monthly",
+  "08771 - Job vacancies by industry",
+  "12549 - Sickness absence by industry",
+  "07221 - House price index, existing dwellings",
+  "06265 - Building activity, dwellings started and completed",
+  "07459 - Population by region, sex, age and year",
+  "05803 - Births by mothers age",
+  "09817 - Immigration and emigration by citizenship",
+  "05196 - Fertility rates",
+  "10634 - Marriages and divorces",
+  "09481 - Population changes, quarterly",
+  "08307 - Electricity balance, monthly",
+  "13931 - First-time registered vehicles by fuel type and county",
+  "03321 - Greenhouse gas emissions by source",
+  "09429 - Students in higher education by field of study",
+  "07184 - Kindergartens, children and staff",
+  "07196 - Enterprises by industry and organisational form",
+  "10582 - Bankruptcies by industry, quarterly",
+  "08419 - Retail trade index, monthly",
+  "08800 - Overnight stays by nationality and accommodation type",
+  "08484 - Offences reported to police by type",
+  "08807 - External trade in goods"
+), collapse = "\n")
+
+# ── Agent tool definitions ─────────────────────────────────────────────────────
+AGENT_TOOLS <- list(
+  list(
+    name        = "get_ssb_metadata",
+    description = paste0(
+      "Fetch parameter names and allowed values for an SSB table. ",
+      "Returns the exact parameter names to pass to ApiData(). ",
+      "Call this first to understand what dimensions a table has."
+    ),
+    input_schema = list(
+      type       = "object",
+      properties = list(
+        table_id = list(type = "string", description = "SSB table ID, e.g. '07221'")
+      ),
+      required = list("table_id")
+    )
+  ),
+  list(
+    name        = "fetch_ssb_sample",
+    description = paste0(
+      "Fetch a small sample of real data from an SSB table using all dimension parameters set to TRUE. ",
+      "Returns exact column names and sample category values. ",
+      "Use this to confirm a table works and to record the actual column names the post code must use."
+    ),
+    input_schema = list(
+      type       = "object",
+      properties = list(
+        table_id  = list(type = "string"),
+        n_periods = list(
+          type        = "integer",
+          description = "Number of most recent periods to fetch (default 5)"
+        )
+      ),
+      required = list("table_id")
+    )
+  ),
+  list(
+    name        = "finalize_topic",
+    description = paste0(
+      "Call this once you have verified 1-3 working datasets. ",
+      "Provide the complete spec — it will be passed directly to the post generator."
+    ),
+    input_schema = list(
+      type       = "object",
+      properties = list(
+        datasets = list(
+          type  = "array",
+          items = list(
+            type       = "object",
+            properties = list(
+              table_id     = list(type = "string"),
+              description  = list(type = "string"),
+              param_names  = list(
+                type        = "array",
+                items       = list(type = "string"),
+                description = "Exact ApiData() parameter names (all except Tid)"
+              ),
+              column_names = list(
+                type        = "array",
+                items       = list(type = "string"),
+                description = "Actual column names in raw[[1]] from a confirmed fetch"
+              ),
+              sample_values = list(
+                type                 = "object",
+                description          = "For each categorical column: sample values seen in the data",
+                additionalProperties = list(
+                  type  = "array",
+                  items = list(type = "string")
+                )
+              )
+            ),
+            required = list("table_id", "param_names", "column_names")
+          )
+        ),
+        story_angle = list(
+          type        = "string",
+          description = "The journalistic angle for today's post"
+        )
+      ),
+      required = list("datasets", "story_angle")
+    )
+  )
+)
+
+# ── Tool dispatch ─────────────────────────────────────────────────────────────
+dispatch_ssb_tool <- function(tool_name, input) {
+  if (tool_name == "get_ssb_metadata") {
+    table_id <- as.character(input$table_id)
+    url      <- paste0("https://data.ssb.no/api/v0/no/table/", table_id)
+    tryCatch({
+      meta <- PxWebApiData::ApiData(url, returnMetaFrames = TRUE)
+      if (!is.list(meta) || length(meta) == 0L)
+        return(paste0("Table ", table_id, ": no metadata returned"))
+      lines <- vapply(names(meta), function(p) {
+        frame  <- meta[[p]]
+        if (!is.data.frame(frame) || nrow(frame) == 0L) return(paste0(p, ": (empty)"))
+        vals   <- head(as.character(frame[[1]]), 10L)
+        suffix <- if (nrow(frame) > 10L) paste0(" ... (", nrow(frame), " total)") else ""
+        paste0(p, ": [", paste(vals, collapse = ", "), suffix, "]")
+      }, character(1L))
+      paste0("Table ", table_id, " parameters:\n", paste(lines, collapse = "\n"))
+    }, error = function(e) paste0("ERROR for ", table_id, ": ", e$message))
+
+  } else if (tool_name == "fetch_ssb_sample") {
+    table_id <- as.character(input$table_id)
+    n        <- if (!is.null(input$n_periods)) as.integer(input$n_periods) else 5L
+    url      <- paste0("https://data.ssb.no/api/v0/no/table/", table_id)
+    tryCatch({
+      meta        <- PxWebApiData::ApiData(url, returnMetaFrames = TRUE)
+      param_names <- names(meta)
+      call_args   <- c(
+        list(url),
+        setNames(
+          lapply(param_names, function(p) {
+            if (p == "Tid") list(filter = "top", values = n) else TRUE
+          }),
+          param_names
+        )
+      )
+      raw <- do.call(PxWebApiData::ApiData, call_args)
+      tmp <- raw[[1]]
+
+      cat_cols <- names(tmp)[!vapply(tmp, is.numeric, logical(1L))]
+      num_cols <- names(tmp)[vapply(tmp, is.numeric, logical(1L))]
+
+      cat_summary <- vapply(cat_cols, function(col) {
+        vals <- head(unique(as.character(tmp[[col]])), 10L)
+        paste0("  ", col, ": [", paste(vals, collapse = ", "), "]")
+      }, character(1L))
+
+      paste0(
+        "Table ", table_id, " — ", nrow(tmp), " rows fetched\n",
+        "ALL columns: ", paste(names(tmp), collapse = ", "), "\n",
+        "Categorical:\n", paste(cat_summary, collapse = "\n"), "\n",
+        "Numeric: ", paste(num_cols, collapse = ", ")
+      )
+    }, error = function(e) paste0("ERROR fetching ", table_id, ": ", e$message))
+
+  } else {
+    paste0("Unknown tool: ", tool_name)
+  }
+}
+
+# ── Discovery agent ────────────────────────────────────────────────────────────
+MAX_AGENT_TURNS <- 14L
+
+run_discovery_agent <- function() {
+  agent_system <- paste0(
+    "You are a data journalist discovering SSB (Statistics Norway) datasets for today's blog post.\n\n",
+    "Workflow:\n",
+    "1. Pick 2-4 promising tables from the seed list\n",
+    "2. Call get_ssb_metadata() to learn exact parameter names for each\n",
+    "3. Call fetch_ssb_sample() on the best 1-2 tables to confirm they work and record actual column names\n",
+    "4. Call finalize_topic() with the verified spec\n\n",
+    "Tips:\n",
+    "- Prefer tables with rich categorical dimensions (more story angles)\n",
+    "- Avoid tables that return errors\n",
+    "- In sample_values, copy the exact string values you see in each categorical column\n",
+    "  (the generator uses these to build correct filter() calls)\n",
+    "- Be efficient: aim to finalize in 6-8 tool calls total"
+  )
+
+  agent_user <- paste0(
+    "Today: ", format(TODAY, "%A, %d %B %Y"), "\n\n",
+    "Seed tables:\n", SSB_SEED_TABLES, "\n\n",
+    recent_topics_note, "\n\n",
+    "Discover and verify 1-3 interesting datasets, then call finalize_topic()."
+  )
+
+  messages  <- list(list(role = "user", content = agent_user))
+  finalized <- NULL
+
+  for (turn in seq_len(MAX_AGENT_TURNS)) {
+    message("  Agent turn ", turn, "...")
+
+    resp <- tryCatch(
+      with_retry(function() {
+        request("https://api.anthropic.com/v1/messages") |>
+          req_headers(
+            "x-api-key"         = ANTHROPIC_API_KEY,
+            "anthropic-version" = "2023-06-01",
+            "content-type"      = "application/json"
+          ) |>
+          req_body_json(list(
+            model      = "claude-haiku-4-5-20251001",
+            max_tokens = 4000L,
+            system     = agent_system,
+            tools      = AGENT_TOOLS,
+            messages   = messages
+          )) |>
+          req_timeout(120) |>
+          req_perform()
+      }, max_attempts = 2L, base_wait = 3),
+      error = function(e) { message("  Agent API error: ", e$message); NULL }
+    )
+
+    if (is.null(resp)) break
+
+    r        <- resp_body_json(resp)
+    messages <- c(messages, list(list(role = "assistant", content = r$content)))
+
+    if (!identical(r$stop_reason, "tool_use")) {
+      message("  Agent stopped (", r$stop_reason, ")")
+      break
+    }
+
+    tool_results <- list()
+    for (block in r$content) {
+      if (!identical(block$type, "tool_use")) next
+
+      if (identical(block$name, "finalize_topic")) {
+        finalized    <- block$input
+        tool_results <- c(tool_results, list(list(
+          type        = "tool_result",
+          tool_use_id = block$id,
+          content     = "Topic finalized."
+        )))
+        break
+      }
+
+      message("    Tool: ", block$name, " — table ", block$input$table_id)
+      result       <- dispatch_ssb_tool(block$name, block$input)
+      tool_results <- c(tool_results, list(list(
+        type        = "tool_result",
+        tool_use_id = block$id,
+        content     = result
+      )))
+      Sys.sleep(0.3)
+    }
+
+    messages <- c(messages, list(list(role = "user", content = tool_results)))
+
+    if (!is.null(finalized)) {
+      message("  Agent finalized: ", finalized$story_angle)
+      return(finalized)
+    }
+  }
+
+  message("Discovery agent did not finalize a topic.")
+  NULL
+}
+
+# ── Build verified spec string for the generation prompt ──────────────────────
+build_verified_spec <- function(agent_result) {
+  sections <- lapply(agent_result$datasets, function(d) {
+    param_names  <- as.character(unlist(d$param_names))
+    column_names <- as.character(unlist(d$column_names))
+    description  <- if (!is.null(d$description)) as.character(d$description) else as.character(d$table_id)
+
+    param_str <- paste(
+      paste0("    ", param_names, " = TRUE"),
+      collapse = ",\n"
+    )
+
+    sv     <- d$sample_values
+    sv_str <- if (!is.null(sv) && length(sv) > 0L) {
+      sv_lines <- vapply(names(sv), function(col) {
+        vals <- as.character(unlist(sv[[col]]))
+        paste0("  ", col, ": [", paste(vals, collapse = ", "), "]")
+      }, character(1L))
+      paste0("Categorical values (use for grepl filters):\n", paste(sv_lines, collapse = "\n"))
+    } else ""
+
+    paste0(
+      "### ", d$table_id, " — ", description, "\n",
+      "ApiData() call:\n",
+      '  ApiData("https://data.ssb.no/api/v0/no/table/', d$table_id, '",\n',
+      param_str, ',\n',
+      '    Tid = list(filter = "top", values = 40)\n',
+      "  )\n",
+      "Confirmed columns in raw[[1]]: ", paste(column_names, collapse = ", "), "\n",
+      sv_str
+    )
+  })
+
+  paste0(
+    "## VERIFIED DATASETS — confirmed by discovery agent\n\n",
+    "Use ONLY these table IDs. All parameters and column names are from real API calls.\n",
+    "Do NOT invent table IDs or parameter names.\n\n",
+    paste(unlist(sections), collapse = "\n\n"),
+    "\n\nStory angle: ", as.character(agent_result$story_angle)
+  )
+}
+
+# ── Run discovery agent ────────────────────────────────────────────────────────
+message("Phase 1: Running discovery agent...")
+agent_result <- run_discovery_agent()
+if (is.null(agent_result)) stop("Discovery agent failed to finalize a topic. Check SSB API connectivity.")
+
+VERIFIED_SPEC <- build_verified_spec(agent_result)
+valid_ids     <- vapply(agent_result$datasets, function(d) as.character(d$table_id), character(1L))
+message("Verified tables: ", paste(valid_ids, collapse = ", "))
+
+# ── System prompt (plain string — no glue, no brace escaping needed) ──────────
+SYSTEM_PROMPT <- 'You are a world-class data journalist and R programmer specializing in Norwegian economics and statistics.
+Your job is to write a complete, self-contained Quarto (.qmd) blog post analyzing Statistics Norway (SSB) data.
 
 ## Tone & Style
 - Curious, journalistic, data-driven
-- Accessible to an educated general audience (not just economists)
+- Accessible to an educated general audience
 - Find the story in the numbers — surprises, trends, Norway-specific angles
-- Write like a TidyTuesday post: show your work, explain your choices
-- NO emojis, emoticons or decorative symbols anywhere in the post
+- NO emojis, emoticons or decorative symbols
 - Professional and clean throughout
 
 ## Visualization requirements
-- Create 3-5 ggplot2 charts per post
-- Rotate through styles across posts: lollipop, slope, ridgeline (ggridges),
-  dumbbell, area with annotations, small multiples/facets, bump, heatmap,
-  alluvial (ggalluvial), waffle, beeswarm (ggbeeswarm), waterfall, polar,
-  and classic line/bar/scatter combinations
-- Available color packages: MetBrewer, nord, wesanderson, viridis — pick one cohesive palette
-- Every chart must have: clear title, subtitle with insight, caption citing SSB, clean theme
+- Create 3-5 ggplot2 charts
+- Rotate styles: lollipop, slope, ridgeline (ggridges), dumbbell, area with annotations,
+  small multiples/facets, heatmap, alluvial (ggalluvial), beeswarm (ggbeeswarm), waterfall,
+  polar, and classic line/bar/scatter combinations
+- Color packages: MetBrewer, nord, wesanderson, or viridis — one cohesive palette per post
+- Every chart: clear title, subtitle with insight, SSB caption, clean theme
 - Use theme_minimal() or theme_void() as base, then customize
 - Add annotations, reference lines, and direct labels where helpful
-- Always assign every ggplot to a variable then call print() explicitly
+- Always assign ggplot to a variable then call print() explicitly
 
-## Table and parameter usage (CRITICAL — read carefully)
-The catalogue in the user prompt lists the ONLY table IDs you are allowed to use.
-DO NOT invent or use any table ID that is not explicitly listed in the catalogue.
-Using a table ID outside the catalogue will cause data fetch failure and no plots will appear.
-
-For dimension parameters (everything except Tid):
-- Pass TRUE to get ALL values — NEVER hardcode specific codes like "nr23_6" or "Lonn"
-- Filter down to the categories you want AFTER fetching, in R, using grep/filter on the actual column values
-- Hardcoded codes almost always fail because SSB code values differ across tables
-
-Use Tid = list(filter="top", values=N) to get the last N time periods.
-
-## Avoiding seasonal analysis on annual data (CRITICAL)
-Before doing any monthly/seasonal chart, check whether the data is actually monthly:
-  has_monthly <- any(stringr::str_detect(df$time_str, "M\\d{{2}}"), na.rm = TRUE)
-Only attempt seasonal/monthly charts if has_monthly is TRUE.
-For annual data (4-digit year codes), skip seasonal analysis and use year-over-year trends instead.
+## Using the verified dataset spec (CRITICAL)
+The user prompt contains a VERIFIED SPEC with confirmed table IDs, exact parameter names,
+and actual column names from real API calls.
+- Use ONLY the table IDs listed in the spec
+- Copy the ApiData() call exactly as shown — do not change parameter names
+- "Confirmed columns in raw[[1]]" shows the actual column names the data frame will have
+- "Categorical values" shows real string values — use these to build accurate grepl() filters
+- Do NOT use ApiData(returnMetaFrames = TRUE) in the post code
 
 ## Data fetching pattern
-```{{r fetch-data}}
+```{r fetch-data}
 df <- NULL
-tryCatch({{
+tryCatch({
   raw <- ApiData(
     "https://data.ssb.no/api/v0/no/table/TABLE_ID",
-    EXACT_PARAM_FROM_CATALOGUE = TRUE,
+    PARAM1 = TRUE,
+    PARAM2 = TRUE,
     Tid = list(filter = "top", values = 40)
   )
   tmp <- raw[[1]]
 
-  # Detect time column (SSB uses Norwegian names: "år", "kvartal", "måned")
   time_col <- names(tmp)[grepl(
     "tid|\u00e5r|kvartal|m\u00e5ned|aar|maaned|year|month|quarter",
     names(tmp), ignore.case = TRUE, perl = TRUE
   )][1]
   if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
 
-  # Detect numeric value column (SSB columns vary — never assume "value")
   value_col <- names(tmp)[vapply(tmp, is.numeric, logical(1L))][1]
   if (is.na(value_col)) value_col <- names(tmp)[length(names(tmp))]
 
@@ -325,204 +479,98 @@ tryCatch({{
       )
     ) |>
     filter(!is.na(value), !is.na(date))
-}}, error = function(e) message("Fetch failed: ", e$message))
+
+  if (nrow(df) == 0) stop("Empty after cleaning")
+}, error = function(e) message("Fetch failed: ", e$message))
 ```
 
-## Column handling (CRITICAL)
-- NEVER use hardcoded Norwegian column names in rename() or filter()
-- Norwegian special characters MUST use regex dot (.) in grepl patterns — never the raw character:
-    æ (U+00E6) → .   e.g. næring → "n.ring",  næringer → "n.ringer"
-    ø (U+00F8) → .   e.g. kjønn  → "kj.nn",   størrelse → "st.rrelse", lønn → "l.nn"
-    å (U+00E5) → .   e.g. år     → ".r",       måned → "m.ned"  (or use \\u00e5r / m\\u00e5ned)
-- Canonical detection patterns for the most common SSB column types:
-  ```r
-  # Sector / industry  (næring)
+## Column handling
+Since the spec provides confirmed column names, you can reference them directly.
+For additional columns not listed, use grepl detection with Norwegian-safe patterns (. for \u00f8/\u00e6/\u00e5):
   sector_col <- names(tmp)[grepl("n.ring|nace|industry|sektor|branch", names(tmp), ignore.case=TRUE)][1]
-
-  # Gas / component / statistics variable  (komponent, statistikkvariabel)
-  comp_col   <- names(tmp)[grepl("komponent|contents|innhold|statistikkvariabel|variable|type", names(tmp), ignore.case=TRUE)][1]
-
-  # Gender  (kjønn)
+  comp_col   <- names(tmp)[grepl("komponent|contents|statistikkvariabel|variable|type", names(tmp), ignore.case=TRUE)][1]
   gender_col <- names(tmp)[grepl("kj.nn|gender|sex|kjonn", names(tmp), ignore.case=TRUE)][1]
-
-  # Age  (alder)
   age_col    <- names(tmp)[grepl("alder|age|aldersgruppe", names(tmp), ignore.case=TRUE)][1]
-
-  # Region / municipality  (fylke, kommune)
   region_col <- names(tmp)[grepl("region|kommune|fylke", names(tmp), ignore.case=TRUE)][1]
 
-  # Wage / benefit  (lønn, stønad)
-  wage_col   <- names(tmp)[grepl("l.nn|wage|salary|earnings", names(tmp), ignore.case=TRUE)][1]
-  ```
-- ALWAYS add an NA guard right after each detection before the column is used in mutate/filter:
-  ```r
-  if (is.na(sector_col)) stop("Cannot detect sector column — columns are: ", paste(names(tmp), collapse=", "))
-  ```
-- Then use `.data[[sector_col]]` in mutate/filter, never the bare string
-- After detecting any categorical column, print its available values to aid debugging:
-  ```r
-  message("Available ", sector_col, " values: ", paste(head(unique(tmp[[sector_col]]), 15), collapse=", "))
-  ```
+ALWAYS add NA guard after every detection:
+  if (is.na(comp_col)) stop("Cannot detect column: ", paste(names(tmp), collapse=", "))
+Use .data[[col]] in mutate/filter, never bare strings.
 
-## Post-filter guard (CRITICAL — for every filter that selects a metric subset)
-After ANY filter() that narrows to specific category labels or metric names, you MUST guard
-against empty results. SSB label wording changes across tables and over time — never assume
-a specific string will be present.
-
-Pattern to follow for every filtered subset:
-  ```r
+## Post-filter guard (CRITICAL — every filter selecting a category subset)
+After ANY filter() that narrows to specific category labels:
   df_sub <- df |> filter(grepl("keyword", .data[[comp_col]], ignore.case = TRUE))
-  if (nrow(df_sub) == 0) {{
-    message("Filter returned 0 rows. Available values in ", comp_col, ": ",
-            paste(head(unique(df[[comp_col]]), 15), collapse = ", "))
+  if (nrow(df_sub) == 0) {
+    message("Filter empty. Values: ", paste(head(unique(df[[comp_col]]), 15), collapse = ", "))
     df_sub <- NULL
-  }}
-  if (!is.null(df_sub)) {{
+  }
+  if (!is.null(df_sub)) {
     p <- ggplot(df_sub, ...) + ...
     print(p)
-  }}
-  ```
-This applies even for "obviously present" values like "Innenlandsk bruk totalt" or "Totalt" —
-the exact label may differ, be abbreviated, or be in English depending on the API endpoint.
+  }
+Use the categorical values from the spec to pick accurate keywords.
+
+## Seasonal analysis guard
+Before any monthly/seasonal chart:
+  has_monthly <- any(stringr::str_detect(df$time_str, "M\\d{2}"), na.rm = TRUE)
+Only do seasonal charts if has_monthly is TRUE.
 
 ## Plotting rules (CRITICAL)
-- ALWAYS: assign plot to variable, then call print() explicitly
-- ALWAYS: guard with if (!is.null(df)) {{ ... }}
+- ALWAYS: p <- ggplot(...) + ...; print(p)
+- ALWAYS: guard with if (!is.null(df)) { ... }
 - NEVER rely on implicit printing
-- Every plot chunk must use chunk options:
-  ```{{r plot-name}}
-  #| fig-height: 5
-  #| fig-width: 9
-  #| fig-show: asis
-  #| dev: "png"
-  ```
-
-Correct:
-  p <- ggplot(df, aes(x, y)) + geom_line()
-  print(p)
-
-Wrong:
-  ggplot(df, aes(x, y)) + geom_line()   # no print — may not show
+- Every plot chunk must have:
+```{r plot-name}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+```
 
 ## R code requirements
-- Set error=TRUE in knitr opts so one chunk failure does not kill the whole post
-- Use tidyverse throughout; include all library() calls at the top
-- Code must be fully reproducible
-- Use echo: true
+- First chunk: knitr::opts_chunk$set(echo=TRUE, warning=FALSE, message=FALSE, error=TRUE)
+- Include all library() calls at the top
+- Use tidyverse throughout
+- echo: true
 
 ## Post structure
 1. Brief intro (2-3 sentences) — the hook, why this matters
-2. Data section — fetch + wrangle with exact parameter names, print column names
-3. Analysis sections — 2-3 distinct angles with charts
+2. Data section — fetch + wrangle
+3. 2-3 analysis sections with charts
 4. Key findings — 3-5 bullet points with numbers
-5. Closing reflection — broader context or what to watch next
+5. Closing reflection — broader context
 
 ## YAML front matter
-```
 ---
 title: "COMPELLING TITLE"
 description: "ONE SENTENCE SUMMARY"
 date: "DATE_TODAY"
 categories: [SSB, category1, category2]
 ---
-```
 
-## Output format (REQUIRED — exactly this structure, nothing else)
-Your entire response must consist of exactly two parts with no preamble:
+## Output format (REQUIRED — exactly this, nothing else)
+PART 1: METADATA: title="..." datasets="..." chart_types="..."
+PART 2: Raw .qmd starting with ---
+No preamble, no markdown fences around the output, no explanation.'
 
-PART 1 — one line of metadata:
-METADATA: title="<post title>" datasets="<table IDs, comma separated>" chart_types="<styles used, comma separated>"
-
-PART 2 — the raw .qmd file starting immediately with --- (YAML front matter).
-No markdown fences, no explanation, no text before or after these two parts.
-
-Example:
-METADATA: title="Norwegian wage growth" datasets="11350,05111" chart_types="lollipop,ridgeline,area"
----
-title: "Norwegian wage growth"
-...
-')
-
-# ── User prompt ───────────────────────────────────────────────────────────────
-USER_PROMPT <- glue('
-Today is {format(TODAY, "%A, %d %B %Y")}.
-Random seed for topic selection: {SEED}
-
-{SSB_CATALOGUE}
-
-{recent_topics_note}
-
-Please write a complete Quarto blog post for today.
-
-Guidelines:
-- Pick 1-3 SSB datasets that tell an interesting story together, or go deep on one
-- The topic should feel timely, relevant, or surprising
-- Include at least one angle that connects to broader Norwegian society or economy
-- Use at least 3 different chart types
-- Make the most striking chart the first or most prominent one
-
-Every post MUST follow this data chunk skeleton exactly:
-
-STEP 1 — Setup chunk:
-```r
-knitr::opts_chunk$set(echo=TRUE, warning=FALSE, message=FALSE, error=TRUE)
-```
-
-STEP 2 — Data chunk using EXACT parameter names from the catalogue:
-RULE: Use only table IDs from the catalogue. Pass TRUE for all dimension parameters (never hardcode codes).
-```r
-df <- NULL
-
-tryCatch({{
-  raw <- ApiData(
-    "https://data.ssb.no/api/v0/no/table/XXXXX",  # MUST be a table ID from the catalogue
-    EXACT_PARAM_NAME = TRUE,   # TRUE = fetch all values; filter in R afterwards
-    Tid = list(filter="top", values=40)
-  )
-  tmp <- raw[[1]]
-
-  time_col <- names(tmp)[grepl(
-    "tid|\u00e5r|kvartal|m\u00e5ned|aar|maaned|year|month|quarter",
-    names(tmp), ignore.case = TRUE, perl = TRUE
-  )][1]
-  if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
-
-  value_col <- names(tmp)[vapply(tmp, is.numeric, logical(1L))][1]
-  if (is.na(value_col)) value_col <- names(tmp)[length(names(tmp))]
-
-  df <- tmp |>
-    mutate(
-      value    = as.numeric(.data[[value_col]]),
-      time_str = .data[[time_col]],
-      date     = case_when(
-        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
-        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
-        nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),
-        TRUE ~ NA_Date_
-      )
-    ) |>
-    filter(!is.na(value), !is.na(date))
-
-  if (nrow(df) == 0) stop("Data frame is empty after cleaning — check parameter names")
-}}, error = function(e) message("Fetch failed: ", e$message))
-```
-
-STEP 3 — Plot chunk (guard + explicit print):
-```r
-if (!is.null(df)) {{
-  p <- ggplot(df, aes(x = date, y = value)) +
-    geom_line(color = pal[1], linewidth = 1.2) +
-    labs(title = "Your title", subtitle = "Your insight",
-         caption = "Source: SSB", x = NULL, y = "Value") +
-    theme_minimal()
-  print(p)
-}}
-```
-'
+# ── User prompt ────────────────────────────────────────────────────────────────
+USER_PROMPT <- paste0(
+  "Today is ", format(TODAY, "%A, %d %B %Y"), ".\n\n",
+  VERIFIED_SPEC, "\n\n",
+  recent_topics_note, "\n\n",
+  "Write a complete Quarto blog post following the story angle above.\n",
+  "Copy the ApiData() parameters exactly as shown in the spec.\n",
+  "Include 3-5 charts with different visualization styles.\n\n",
+  "STEP 1 — Setup chunk (first chunk in the document):\n",
+  "```r\n",
+  "knitr::opts_chunk$set(echo=TRUE, warning=FALSE, message=FALSE, error=TRUE)\n",
+  "```\n\n",
+  "STEP 2 — Data chunk: use EXACT ApiData() params from the spec above.\n\n",
+  "STEP 3 — Plot chunks: guard with if (!is.null(df)), always print() explicitly."
 )
 
-# ── Call Anthropic API ────────────────────────────────────────────────────────
-message("Calling Anthropic API to generate post for ", POST_SLUG, "...")
+# ── Generation call ────────────────────────────────────────────────────────────
+message("Phase 2: Generating post...")
 
 response <- with_retry(function() {
   request("https://api.anthropic.com/v1/messages") |>
@@ -533,11 +581,9 @@ response <- with_retry(function() {
     ) |>
     req_body_json(list(
       model      = "claude-sonnet-4-6",
-      max_tokens = 16000,
+      max_tokens = 16000L,
       system     = SYSTEM_PROMPT,
-      messages   = list(
-        list(role = "user", content = USER_PROMPT)
-      )
+      messages   = list(list(role = "user", content = USER_PROMPT))
     )) |>
     req_timeout(300) |>
     req_perform()
@@ -545,17 +591,15 @@ response <- with_retry(function() {
 
 result <- resp_body_json(response)
 
-stop_reason <- if (is.null(result$stop_reason)) "unknown" else result$stop_reason
-if (stop_reason == "max_tokens") {
-  warning("API response was truncated (hit max_tokens). Post may have incomplete code chunks.")
+if (identical(result$stop_reason, "max_tokens")) {
+  warning("Response truncated (max_tokens). Post may be incomplete.")
 }
 
-# ── Concatenate all text blocks safely ────────────────────────────────────────
 text_blocks <- Filter(function(b) identical(b$type, "text"), result$content)
-if (length(text_blocks) == 0L) stop("No text blocks in API response.")
+if (length(text_blocks) == 0L) stop("No text in API response.")
 raw_text <- paste(vapply(text_blocks, function(b) b$text, character(1L)), collapse = "")
 
-# ── Parse metadata (tolerates missing, lowercase, slightly different format) ──
+# ── Parse metadata ─────────────────────────────────────────────────────────────
 extract_meta_field <- function(text, field) {
   pat <- paste0("(?i)", field, "\\s*=\\s*\"([^\"]+)\"")
   m   <- regmatches(text, regexpr(pat, text, perl = TRUE))
@@ -563,7 +607,7 @@ extract_meta_field <- function(text, field) {
   sub(paste0("(?i)", field, "\\s*=\\s*\"([^\"]+)\""), "\\1", m, perl = TRUE)
 }
 
-meta_line    <- tryCatch(
+meta_line     <- tryCatch(
   regmatches(raw_text, regexpr("(?i)metadata:[ \t]*[^\n]*", raw_text, perl = TRUE)),
   error = function(e) character(0)
 )
@@ -572,35 +616,27 @@ meta_datasets <- extract_meta_field(meta_line, "datasets")
 meta_charts   <- extract_meta_field(meta_line, "chart_types")
 if (nchar(meta_title) == 0L) meta_title <- "SSB Analysis"
 
-# ── Extract .qmd — find first YAML front matter (--- at line start) ───────────
+# ── Extract QMD ───────────────────────────────────────────────────────────────
 m <- regexpr("(?m)^---[ \t]*$", raw_text, perl = TRUE)
-if (m[[1]] < 0L) {
-  stop("Could not find YAML front matter in API response. Raw output:\n",
-       substr(raw_text, 1, 500))
-}
+if (m[[1]] < 0L) stop("No YAML front matter in response:\n", substr(raw_text, 1, 500))
 qmd_raw <- substring(raw_text, m[[1]])
 
-# ── Enforce today's date — only within YAML front matter ─────────────────────
+# ── Enforce today's date ───────────────────────────────────────────────────────
 local({
   fm_m <- regexpr("(?s)^---[ \t]*\n.*?\n---", qmd_raw, perl = TRUE)
   if (fm_m[[1]] > 0L && attr(fm_m, "match.length") > 0L) {
     fm_len <- attr(fm_m, "match.length")
-    fm      <- substring(qmd_raw, 1L, fm_len)
-    rest    <- substring(qmd_raw, fm_len + 1L)
-    fm      <- gsub('date:\\s*"[^"]*"',
-                    paste0('date: "', format(TODAY, "%Y-%m-%d"), '"'), fm)
+    fm     <- substring(qmd_raw, 1L, fm_len)
+    rest   <- substring(qmd_raw, fm_len + 1L)
+    fm     <- gsub('date:\\s*"[^"]*"', paste0('date: "', format(TODAY, "%Y-%m-%d"), '"'), fm)
     qmd_raw <<- paste0(fm, rest)
   }
 })
 
-# ── Remove image: thumbnail.png — it never exists and breaks rendering ────────
+# ── Remove thumbnail ──────────────────────────────────────────────────────────
 qmd_raw <- gsub('\nimage:\\s*["\']thumbnail\\.png["\']', "", qmd_raw)
 
-# ── Patch: harden time_col detection in generated code ───────────────────────
-# Strategy: scan line-by-line for any `*_col <- names(VAR)[...]` assignment
-# that uses a grepl pattern, and ensure the canonical Unicode-safe pattern and
-# NA fallback are both present. Handles arbitrary variable names including
-# expressions like raw[[1]].
+# ── Patch: harden time_col detection ─────────────────────────────────────────
 local({
   lines     <- strsplit(qmd_raw, "\n", fixed = TRUE)[[1]]
   canonical <- paste0('grepl("tid|\u00e5r|kvartal|m\u00e5ned|aar|maaned|year|month|quarter"')
@@ -610,10 +646,8 @@ local({
     if (grepl("time_col\\s*<-\\s*names\\(", lines[i], perl = TRUE) &&
         grepl("grepl\\(", lines[i], perl = TRUE)) {
 
-      # 1. Replace the grepl pattern with the canonical one (same-line only)
       lines[i] <- sub('grepl\\("[^"]*"', canonical, lines[i], perl = TRUE)
 
-      # 2. Ensure perl = TRUE is present (same-line only)
       if (!grepl("perl\\s*=\\s*TRUE", lines[i], perl = TRUE)) {
         lines[i] <- sub(
           "ignore\\.case\\s*=\\s*TRUE\\)",
@@ -622,22 +656,16 @@ local({
         )
       }
 
-      # 3. Extract variable name — handles tmp, df, raw[[1]], etc.
       var_match <- regmatches(lines[i], regexpr("names\\(([^)]+)\\)", lines[i], perl = TRUE))
       var_name  <- if (length(var_match) > 0L) {
         sub("names\\(([^)]+)\\)", "\\1", var_match, perl = TRUE)
-      } else {
-        "tmp"
-      }
+      } else "tmp"
 
-      # 4. Find where the time_col assignment expression ends (balance brackets).
-      #    The expression may span multiple lines, e.g. names(tmp)[grepl(\n  "...",\n  ...)][1]
-      #    We must NOT insert the fallback inside the still-open expression.
       count_chars <- function(s, chars) {
         nchar(gsub(paste0("[^", chars, "]"), "", s, perl = TRUE))
       }
       net_open <- count_chars(lines[i], "\\[\\(") - count_chars(lines[i], "\\]\\)")
-      end_i <- i
+      end_i    <- i
       while (net_open > 0L && end_i < length(lines)) {
         end_i    <- end_i + 1L
         net_open <- net_open +
@@ -645,7 +673,6 @@ local({
           count_chars(lines[end_i], "\\]\\)")
       }
 
-      # 5. Ensure NA fallback follows the completed expression
       next_i <- end_i + 1L
       while (next_i <= length(lines) && trimws(lines[next_i]) == "") next_i <- next_i + 1L
       has_fallback <- next_i <= length(lines) &&
@@ -664,86 +691,50 @@ local({
   qmd_raw <<- paste(lines, collapse = "\n")
 })
 
-# ── Reviewer: second-pass fix for common generation failures ──────────────────
-REVIEWER_SYSTEM_PROMPT <- '
-You are a code reviewer for Quarto blog posts that fetch and visualize Statistics Norway (SSB) data.
-Fix ONLY the specific bugs listed below. Do not refactor, rename, or rewrite anything else.
+# ── Reviewer pass ─────────────────────────────────────────────────────────────
+REVIEWER_SYSTEM_PROMPT <- 'You are a code reviewer for Quarto blog posts that use SSB data.
+Fix ONLY the specific bugs listed. Do not refactor or rewrite anything else.
 
 BUG 1 — HARDCODED SSB PARAMETER CODES
-  Wrong: ContentsCode = "Lonn"  or  NACE = c("nr23_6", "pub2X06")  or  Kjonn = "1"
-         Also wrong: FunksjonKOSTRA = c("120", "201", "211")  — any character vector of codes
-  Fix:   Replace with TRUE for every dimension parameter except Tid, including parameters
-         that currently pass a character vector of specific codes.
-  Rule:  Tid = list(filter="top", values=N) is always correct — never change it.
-  Rule:  Only fix parameters inside ApiData() calls — do not touch filter() or mutate().
+  Wrong: ContentsCode = "Lonn" or Kjonn = "1" or NACE = c("nr23_6")
+  Fix: Replace with TRUE for every dimension parameter except Tid.
+  Tid = list(filter="top", values=N) is always correct — never change it.
+  Only fix inside ApiData() calls — leave filter() and mutate() alone.
 
 BUG 2 — MISSING NULL GUARD ON PLOT CHUNK
-  Wrong: p <- ggplot(df, ...) at top level without an enclosing if (!is.null(df)) { }
-  Fix:   Wrap the entire plot expression in if (!is.null(df)) { ... }
+  Wrong: p <- ggplot(df, ...) without if (!is.null(df)) { }
+  Fix: Wrap the entire plot in if (!is.null(df)) { ... }
 
 BUG 3 — MISSING print() ON GGPLOT OBJECT
-  Wrong: ggplot(df, aes(x, y)) + geom_line()  (no variable, no print)
-  Fix:   p <- ggplot(df, aes(x, y)) + geom_line(); print(p)
+  Wrong: ggplot(df, aes(x, y)) + geom_line()
+  Fix: p <- ggplot(df, aes(x, y)) + geom_line(); print(p)
 
-BUG 4 — MONTHLY/SEASONAL CHART WITHOUT has_monthly GUARD
-  Wrong: A month-faceted or month-grouped chart without first checking the time format.
-  Fix:   Add before the chart:
-           has_monthly <- any(stringr::str_detect(df$time_str, "M\\d{2}"), na.rm = TRUE)
-         Wrap the chart in: if (has_monthly) { ... }
+BUG 4 — SEASONAL CHART WITHOUT has_monthly GUARD
+  Fix: has_monthly <- any(stringr::str_detect(df$time_str, "M\\d{2}"), na.rm=TRUE)
+       Wrap chart in: if (has_monthly) { ... }
 
 BUG 5 — CROSS-CHUNK VARIABLE WITHOUT exists() CHECK
-  Wrong: if (!is.null(df_a)) { use df_combined }
-         when df_combined was created inside a separate earlier if-block.
-  Fix:   Add exists("df_combined") to the guard condition.
+  Fix: Add exists("df_combined") to the guard condition.
 
-BUG 6 — COLUMN DETECTION PATTERN MISSING NORWEGIAN CHARACTERS OR MISSING NA GUARD
-  Norwegian special characters MUST be represented as regex dot (.) in grepl patterns:
-    æ → .   (næring → "n.ring",  næringer → "n.ringer")
-    ø → .   (kjønn  → "kj.nn",   størrelse → "st.rrelse",  lønn → "l.nn")
-    å → .   (år     → ".r",      måned → "m.ned")
-  Exception: the time_col pattern may use \\u00e5r / m\\u00e5ned — those are also correct.
+BUG 6 — NORWEGIAN CHARACTERS IN grepl PATTERNS / MISSING NA GUARD
+  Use . for ae/oe/aa in grepl patterns (never raw Norwegian chars).
+  After every *_col <- names(tmp)[grepl(...)][1], add:
+    if (is.na(col)) stop("Cannot detect column: ", paste(names(tmp), collapse=", "))
 
-  a) Check every `*_col <- names(tmp)[grepl(...)]` pattern that targets a categorical column.
-     Canonical safe patterns:
-       sector/industry : "n.ring|nace|industry|sektor|branch"
-       gas/component   : "komponent|contents|innhold|statistikkvariabel|variable"
-       gender          : "kj.nn|gender|sex|kjonn"
-       age             : "alder|age|aldersgruppe"
-       region          : "region|kommune|fylke"
-       wage/benefit    : "l.nn|wage|salary|st.nad"
-     If the pattern contains a raw æ, ø, or å character, replace it with ".".
-     If the pattern omits the Norwegian term entirely, add it.
+BUG 7 — FILTER WITHOUT nrow GUARD
+  After every filter() selecting categories:
+    if (nrow(df_sub) == 0) { message("Filter empty: ", paste(head(unique(df[[col]]), 15), collapse=", ")); df_sub <- NULL }
+  Then: if (!is.null(df_sub)) { p <- ggplot(df_sub, ...); print(p) }
 
-  b) After EVERY `*_col <- names(tmp)[grepl(...)][1]` assignment there must be an NA guard
-     before the column is used in mutate() or filter():
-       if (is.na(sector_col)) stop("Cannot detect sector column: ", paste(names(tmp), collapse=", "))
-     If the guard is missing, add it.
-
-BUG 7 — FILTER WITHOUT POST-FILTER NROW GUARD
-  Wrong: df_sub <- df |> filter(grepl("metric_name", col))
-         followed directly by ggplot(df_sub, ...) or if (!is.null(df_sub)) without an nrow check.
-  Fix:   After EVERY filter() that selects a category subset, add an nrow guard:
-           if (nrow(df_sub) == 0) {
-             message("Filter empty. Available in col: ",
-                     paste(head(unique(df[[col]]), 15), collapse = ", "))
-             df_sub <- NULL
-           }
-         Then guard the plot: if (!is.null(df_sub)) { p <- ggplot(df_sub, ...); print(p) }
-  Apply to every filtered subset variable used in a plot, not just the main df.
-
-OUTPUT FORMAT (required — no preamble, nothing else):
-Line 1:  ISSUES: <comma-separated bug types fixed, e.g. "BUG1,BUG3", or "none">
-Line 2+: The corrected .qmd file starting immediately with --- (YAML front matter).
-'
+OUTPUT FORMAT:
+Line 1: ISSUES: <comma-separated bugs fixed, or "none">
+Line 2+: Corrected .qmd starting with ---'
 
 review_and_fix_qmd <- function(qmd_content, valid_table_ids) {
-  message("Running reviewer pass on generated QMD...")
-
+  message("Reviewer pass...")
   reviewer_user <- paste0(
-    "Valid SSB table IDs (only these are allowed): ",
-    paste(valid_table_ids, collapse = ", "), "\n\n",
-    "Review and fix the following .qmd:\n\n",
-    qmd_content
+    "Valid table IDs: ", paste(valid_table_ids, collapse = ", "), "\n\n",
+    "Review and fix:\n\n", qmd_content
   )
 
   resp <- tryCatch(
@@ -756,90 +747,67 @@ review_and_fix_qmd <- function(qmd_content, valid_table_ids) {
         ) |>
         req_body_json(list(
           model      = "claude-haiku-4-5-20251001",
-          max_tokens = 16000,
+          max_tokens = 16000L,
           system     = REVIEWER_SYSTEM_PROMPT,
           messages   = list(list(role = "user", content = reviewer_user))
         )) |>
         req_timeout(300) |>
         req_perform()
     }, max_attempts = 2L, base_wait = 5),
-    error = function(e) {
-      message("  Reviewer API call failed: ", e$message)
-      NULL
-    }
+    error = function(e) { message("  Reviewer failed: ", e$message); NULL }
   )
 
-  if (is.null(resp)) return(list(qmd = qmd_content, issues = "reviewer_api_failed"))
+  if (is.null(resp)) return(list(qmd = qmd_content, issues = "reviewer_failed"))
 
   raw <- tryCatch({
     r   <- resp_body_json(resp)
     blk <- Filter(function(b) identical(b$type, "text"), r$content)
     if (length(blk) == 0L) stop("no text blocks")
     paste(vapply(blk, function(b) b$text, character(1L)), collapse = "")
-  }, error = function(e) {
-    message("  Reviewer response parse failed: ", e$message)
-    NULL
-  })
+  }, error = function(e) { message("  Reviewer parse failed: ", e$message); NULL })
 
-  if (is.null(raw)) return(list(qmd = qmd_content, issues = "reviewer_parse_failed"))
+  if (is.null(raw)) return(list(qmd = qmd_content, issues = "parse_failed"))
 
-  # Extract ISSUES line
   issues_m <- regmatches(raw, regexpr("(?i)^ISSUES:[ \t]*[^\n]*", raw, perl = TRUE))
   issues   <- if (length(issues_m) > 0L) {
     trimws(sub("(?i)^ISSUES:[ \t]*", "", issues_m, perl = TRUE))
-  } else {
-    "unknown"
-  }
-  message("  Reviewer issues found: ", issues)
+  } else "unknown"
+  message("  Issues: ", issues)
 
-  # Extract corrected QMD (find first YAML front matter)
   m <- regexpr("(?m)^---[ \t]*$", raw, perl = TRUE)
   if (m[[1]] < 0L) {
-    message("  Reviewer did not return valid QMD — using original")
+    message("  Reviewer returned no QMD — using original")
     return(list(qmd = qmd_content, issues = issues))
   }
-
   list(qmd = substring(raw, m[[1]]), issues = issues)
 }
 
-# Apply reviewer pass — failures are non-fatal, fall back to original
-valid_ids       <- vapply(valid_tables, function(r) r$id, character(1L))
 reviewer_result <- review_and_fix_qmd(qmd_raw, valid_ids)
 qmd_raw         <- reviewer_result$qmd
 
-# ── Validate generated QMD before writing ─────────────────────────────────────
+# ── Validate ──────────────────────────────────────────────────────────────────
 validate_qmd <- function(content) {
   issues <- character(0)
-  if (!grepl("^---", trimws(content))) {
+  if (!grepl("^---", trimws(content)))
     issues <- c(issues, "Missing YAML front matter")
-  }
-  fence_positions <- gregexpr("(?m)^```", content, perl = TRUE)[[1]]
-  if (!identical(fence_positions, -1L) && length(fence_positions) %% 2L != 0L) {
-    issues <- c(issues, paste0("Unbalanced code fences (", length(fence_positions), " occurrences)"))
-  }
-  if (!grepl("ApiData\\(", content)) {
+  fences <- gregexpr("(?m)^```", content, perl = TRUE)[[1]]
+  if (!identical(fences, -1L) && length(fences) %% 2L != 0L)
+    issues <- c(issues, paste0("Unbalanced code fences (", length(fences), ")"))
+  if (!grepl("ApiData\\(", content))
     issues <- c(issues, "No ApiData() call found")
-  }
-  if (!grepl("print\\(", content)) {
-    issues <- c(issues, "No print() call found — plots may not render")
-  }
-  filter_locs <- gregexpr("filter\\(grepl\\(", content)[[1]]
-  if (!identical(filter_locs, -1L) && !grepl("nrow\\(", content)) {
-    issues <- c(issues, "filter(grepl()) found but no nrow() guard — filtered plots may silently show nothing")
-  }
+  if (!grepl("print\\(", content))
+    issues <- c(issues, "No print() call — plots may not render")
   issues
 }
 
 validation_issues <- validate_qmd(qmd_raw)
-if (length(validation_issues) > 0L) {
-  warning("QMD validation warnings:\n", paste("-", validation_issues, collapse = "\n"))
-}
+if (length(validation_issues) > 0L)
+  warning("Validation: ", paste(validation_issues, collapse = "; "))
 
-# ── Write post file ───────────────────────────────────────────────────────────
+# ── Write post ────────────────────────────────────────────────────────────────
 dir.create(POST_DIR, recursive = TRUE, showWarnings = FALSE)
 writeLines(qmd_raw, POST_FILE)
-message("Post written to: ", POST_FILE)
+message("Post written: ", POST_FILE)
 
-# ── Update compact topic index ────────────────────────────────────────────────
 append_topic_index(TOPIC_INDEX_FILE, POST_SLUG, meta_title, meta_datasets, meta_charts)
-message("Topic index updated: ", meta_title, " | ", meta_datasets, " | ", meta_charts)
+message("Index updated: ", meta_title, " | ", meta_datasets, " | ", meta_charts)
