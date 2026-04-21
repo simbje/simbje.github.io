@@ -405,61 +405,84 @@ run_discovery_agent <- function() {
   NULL
 }
 
-# ── Build verified spec string for the generation prompt ──────────────────────
+# ── Build verified spec: pre-written fetch chunks with column names baked in ───
 build_verified_spec <- function(agent_result) {
-  sections <- lapply(agent_result$datasets, function(d) {
+  n  <- length(agent_result$datasets)
+  df_names <- if (n == 1L) "df" else paste0("df", seq_len(n))
+
+  sections <- mapply(function(d, df_name) {
     param_names  <- as.character(unlist(d$param_names))
     column_names <- as.character(unlist(d$column_names))
     description  <- if (!is.null(d$description)) as.character(d$description) else as.character(d$table_id)
     frequency    <- if (!is.null(d$frequency)) as.character(d$frequency) else "unknown"
+    has_measure  <- !is.null(d$measure_column) && nchar(as.character(d$measure_column)) > 0L
 
-    param_str <- paste(
-      paste0("    ", param_names, " = TRUE"),
-      collapse = ",\n"
-    )
+    param_str    <- paste(paste0("    ", param_names, " = TRUE"), collapse = ",\n")
+    measure_line <- if (has_measure) {
+      paste0('  measure_col  <- "', as.character(d$measure_column), '"\n')
+    } else ""
 
-    # Emit explicit R variable assignments — no guessing in the generator
-    dim_lines <- paste0(
-      'time_col   <- "', as.character(d$time_column),   '"\n',
-      'value_col  <- "', as.character(d$value_column),  '"\n',
-      'series_col <- "', as.character(d$series_column), '"'
-    )
-    has_measure <- !is.null(d$measure_column) && nchar(as.character(d$measure_column)) > 0
-    if (has_measure) {
-      dim_lines <- paste0(dim_lines, '\nmeasure_col <- "', as.character(d$measure_column), '"')
-    }
-
-    # Series / measure example values for building accurate filters
-    ex_str <- ""
-    if (!is.null(d$series_examples) && length(d$series_examples) > 0L) {
-      ex_str <- paste0(ex_str,
-        "series_col values (filter WHAT):  [",
-        paste(as.character(unlist(d$series_examples)), collapse = ", "), "]\n")
-    }
-    if (has_measure && !is.null(d$measure_examples) && length(d$measure_examples) > 0L) {
-      ex_str <- paste0(ex_str,
-        "measure_col values (filter HOW):  [",
-        paste(as.character(unlist(d$measure_examples)), collapse = ", "), "]\n")
-    }
-
-    paste0(
-      "### ", d$table_id, " — ", description, "  (frequency: ", frequency, ")\n",
-      "ApiData() call:\n",
-      '  ApiData("https://data.ssb.no/api/v0/no/table/', d$table_id, '",\n',
+    # Complete, ready-to-run R fetch chunk — column names baked in
+    fetch_chunk <- paste0(
+      "```r\n",
+      df_name, " <- NULL\n",
+      "tryCatch({\n",
+      "  raw <- ApiData(\n",
+      '    "https://data.ssb.no/api/v0/no/table/', d$table_id, '",\n',
       param_str, ',\n',
       '    Tid = list(filter = "top", values = 40)\n',
       "  )\n",
-      "All columns in raw[[1]]: ", paste(column_names, collapse = ", "), "\n",
-      "Dimension assignments (copy verbatim into fetch chunk):\n",
-      dim_lines, "\n",
+      "  tmp          <- raw[[1]]\n",
+      '  time_col     <- "', as.character(d$time_column),  '"\n',
+      '  value_col    <- "', as.character(d$value_column), '"\n',
+      '  series_col   <- "', as.character(d$series_column),'"\n',
+      measure_line,
+      "  ", df_name, " <- tmp |>\n",
+      "    mutate(\n",
+      "      value    = as.numeric(.data[[value_col]]),\n",
+      "      time_str = .data[[time_col]],\n",
+      "      date     = case_when(\n",
+      '        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),\n',
+      '        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),\n',
+      '        nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),\n',
+      "        TRUE ~ NA_Date_\n",
+      "      )\n",
+      "    ) |>\n",
+      "    filter(!is.na(value), !is.na(date))\n",
+      '}, error = function(e) message("Fetch failed: ", e$message))\n',
+      "```"
+    )
+
+    ex_str <- ""
+    if (!is.null(d$series_examples) && length(d$series_examples) > 0L)
+      ex_str <- paste0(ex_str,
+        'series_col ("', as.character(d$series_column), '") values — use for filtering WHAT: [',
+        paste(as.character(unlist(d$series_examples)), collapse = ", "), "]\n")
+    if (has_measure && !is.null(d$measure_examples) && length(d$measure_examples) > 0L)
+      ex_str <- paste0(ex_str,
+        'measure_col ("', as.character(d$measure_column), '") values — use for filtering HOW: [',
+        paste(as.character(unlist(d$measure_examples)), collapse = ", "), "]\n")
+
+    paste0(
+      "### ", df_name, " — table ", d$table_id, " — ", description,
+      "  (frequency: ", frequency, ")\n\n",
+      "Pre-written fetch chunk — include verbatim, do NOT rewrite:\n",
+      fetch_chunk, "\n\n",
       ex_str
     )
-  })
+  }, agent_result$datasets, df_names, SIMPLIFY = FALSE)
+
+  any_measure <- any(vapply(agent_result$datasets, function(d)
+    !is.null(d$measure_column) && nchar(as.character(d$measure_column)) > 0L, logical(1L)))
 
   paste0(
-    "## VERIFIED DATASETS — confirmed by discovery agent\n\n",
-    "Use ONLY these table IDs. All parameters and column names are from real API calls.\n",
-    "Do NOT invent table IDs or parameter names.\n\n",
+    "## VERIFIED DATASETS — pre-written fetch chunks\n\n",
+    "CRITICAL RULES:\n",
+    "1. Include the fetch chunks VERBATIM — do NOT rewrite them or add grepl detection\n",
+    "2. Use ONLY the table IDs listed here\n",
+    "3. Data frame variables: ", paste(df_names, collapse = ", "), "\n",
+    "4. Column variables set by fetch chunks: time_col, value_col, series_col",
+    if (any_measure) ", measure_col" else "", "\n\n",
     paste(unlist(sections), collapse = "\n\n"),
     "\n\nStory angle: ", as.character(agent_result$story_angle)
   )
@@ -496,47 +519,21 @@ Your job is to write a complete, self-contained Quarto (.qmd) blog post analyzin
 - Add annotations, reference lines, and direct labels where helpful
 - Always assign ggplot to a variable then call print() explicitly
 
-## Using the verified dataset spec (CRITICAL)
-The user prompt contains a VERIFIED SPEC produced by a discovery agent that made real API calls.
-- Use ONLY the table IDs listed in the spec — never invent table IDs
-- Copy the ApiData() call exactly as shown — do not change parameter names
-- "Dimension assignments" shows exact R variable names to use — copy them verbatim
-- Do NOT use ApiData(returnMetaFrames = TRUE) in the post code
+## Data fetching (CRITICAL — read carefully)
+The user prompt contains PRE-WRITTEN fetch chunks with exact column names already assigned.
+Your job is to INCLUDE THEM VERBATIM — copy each chunk into its own ```{r} block, unchanged.
 
-## Data fetching pattern
-```{r fetch-data}
-df <- NULL
-tryCatch({
-  raw <- ApiData(
-    "https://data.ssb.no/api/v0/no/table/TABLE_ID",
-    PARAM1 = TRUE,
-    PARAM2 = TRUE,
-    Tid = list(filter = "top", values = 40)
-  )
-  tmp <- raw[[1]]
+Do NOT write:
+  time_col  <- names(tmp)[grepl(...)]   ← FORBIDDEN
+  value_col <- names(tmp)[vapply(...)]  ← FORBIDDEN
+  Any grepl-based column detection      ← FORBIDDEN
 
-  # Copy EXACT assignments from the spec — do NOT re-detect these columns
-  time_col   <- "EXACT_FROM_SPEC"
-  value_col  <- "EXACT_FROM_SPEC"
-  series_col <- "EXACT_FROM_SPEC"
-  # measure_col <- "EXACT_FROM_SPEC"  # only if spec includes measure_col
-
-  df <- tmp |>
-    mutate(
-      value    = as.numeric(.data[[value_col]]),
-      time_str = .data[[time_col]],
-      date     = case_when(
-        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
-        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
-        nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),
-        TRUE ~ NA_Date_
-      )
-    ) |>
-    filter(!is.na(value), !is.na(date))
-
-  if (nrow(df) == 0) stop("Empty after cleaning")
-}, error = function(e) message("Fetch failed: ", e$message))
-```
+After the fetch chunks, these R variables are available:
+  df (or df1, df2)  — the cleaned data frame(s)
+  time_col          — exact time column name
+  value_col         — exact numeric value column name
+  series_col        — column for WHAT entity is measured
+  measure_col       — column for HOW it is expressed (only if listed in spec)
 
 ## Filtering rules (CRITICAL — series vs measure distinction)
 - series_col  = WHAT entity is measured (GDP, household consumption, unemployment, Aust-Agder)
@@ -618,15 +615,21 @@ USER_PROMPT <- paste0(
   "Today is ", format(TODAY, "%A, %d %B %Y"), ".\n\n",
   VERIFIED_SPEC, "\n\n",
   recent_topics_note, "\n\n",
-  "Write a complete Quarto blog post following the story angle above.\n",
-  "Copy the ApiData() parameters exactly as shown in the spec.\n",
-  "Include 3-5 charts with different visualization styles.\n\n",
-  "STEP 1 — Setup chunk (first chunk in the document):\n",
+  "Write a complete Quarto blog post following the story angle above.\n\n",
+  "Your document must contain these chunks in order:\n\n",
+  "CHUNK 1 — Setup (first chunk, label: setup):\n",
   "```r\n",
   "knitr::opts_chunk$set(echo=TRUE, warning=FALSE, message=FALSE, error=TRUE)\n",
   "```\n\n",
-  "STEP 2 — Data chunk: use EXACT ApiData() params from the spec above.\n\n",
-  "STEP 3 — Plot chunks: guard with if (!is.null(df)), always print() explicitly."
+  "CHUNK 2 — Libraries:\n",
+  "```r\n",
+  "library(tidyverse); library(lubridate); library(PxWebApiData)\n",
+  "library(scales)  # and any palette package you choose\n",
+  "```\n\n",
+  "CHUNK 3+ — Fetch chunks: copy each pre-written fetch chunk from the spec VERBATIM.\n",
+  "           Do NOT rewrite them. Do NOT add grepl column detection.\n\n",
+  "CHUNK N+ — Plot chunks (3-5 total): guard with if (!is.null(df)) { ... }; always print().\n",
+  "           Use series_col / measure_col variables for filtering — see spec for exact values."
 )
 
 # ── Generation call ────────────────────────────────────────────────────────────
