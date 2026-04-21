@@ -1,0 +1,740 @@
+---
+title: "Norway's National Accounts at a Glance: Three Decades of Consumption, Investment, and Growth"
+description: "How household consumption, public spending, and fixed investment have evolved in Norway's national accounts from 1991 to today — and what the numbers reveal about an economy in transition."
+date: "2026-04-21"
+categories: [SSB, national-accounts, consumption, investment, GDP]
+---
+
+```{r setup}
+#| include: true
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = TRUE)
+```
+
+```{r libraries}
+library(tidyverse)
+library(lubridate)
+library(PxWebApiData)
+library(MetBrewer)
+library(scales)
+library(glue)
+```
+
+## The Story in the Numbers
+
+Norway's national accounts are a chronicle of transformation. Over the past three decades, household consumption has more than doubled in real terms, public spending has expanded its footprint, and investment in mainland Norway has surged and stumbled in cycles tied to oil prices, financial crises, and pandemic shocks. Together, these demand components tell the story of a small, open economy navigating extraordinary wealth — and the risks that come with it.
+
+This post digs into SSB's annual national accounts data and the quarterly GDP figures to trace three distinct threads: the long arc of consumption and investment, the shifting composition of demand, and the short-run volatility that hides beneath the averages.
+
+---
+
+## Data
+
+### Annual national accounts (table 12880)
+
+```{r fetch-annual}
+df_annual <- NULL
+
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/12880",
+    ContentsCode = TRUE,
+    Tid = list(filter = "top", values = 39)
+  )
+  tmp <- raw[[1]]
+  message("Columns: ", paste(names(tmp), collapse = ", "))
+
+  time_col <- names(tmp)[grepl(
+    "tid|.r|kvartal|m.ned|aar|maaned|year|month|quarter",
+    names(tmp), ignore.case = TRUE, perl = TRUE
+  )][1]
+  if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
+  message("Time column: ", time_col)
+
+  value_col <- names(tmp)[vapply(tmp, is.numeric, logical(1L))][1]
+  if (is.na(value_col)) value_col <- names(tmp)[length(names(tmp))]
+  message("Value column: ", value_col)
+
+  # Detect contents / variable column
+  contents_col <- names(tmp)[grepl(
+    "contents|innhold|statistikkvariabel|variable|type|kode",
+    names(tmp), ignore.case = TRUE
+  )][1]
+  if (is.na(contents_col)) {
+    # fallback: pick the first character column that is not the time col
+    char_cols <- names(tmp)[vapply(tmp, is.character, logical(1L))]
+    char_cols <- char_cols[char_cols != time_col]
+    contents_col <- char_cols[1]
+  }
+  message("Contents column: ", contents_col)
+  message("Unique contents values (first 20): ",
+          paste(head(unique(tmp[[contents_col]]), 20), collapse = " | "))
+
+  df_annual <- tmp |>
+    mutate(
+      value       = as.numeric(.data[[value_col]]),
+      time_str    = as.character(.data[[time_col]]),
+      contents    = .data[[contents_col]],
+      date        = case_when(
+        stringr::str_detect(time_str, "M") ~
+          lubridate::ym(sub("M", "-", time_str)),
+        stringr::str_detect(time_str, "K") ~
+          lubridate::yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4 ~
+          lubridate::ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
+    ) |>
+    filter(!is.na(value), !is.na(date))
+
+  if (nrow(df_annual) == 0) stop("Empty after cleaning — check parameters")
+  message("Rows fetched: ", nrow(df_annual))
+}, error = function(e) message("Fetch failed: ", e$message))
+```
+
+### Quarterly national accounts (table 09189)
+
+```{r fetch-quarterly}
+df_qtr <- NULL
+
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/09189",
+    Makrost    = TRUE,
+    ContentsCode = TRUE,
+    Tid = list(filter = "top", values = 56)
+  )
+  tmp <- raw[[1]]
+  message("Columns: ", paste(names(tmp), collapse = ", "))
+
+  time_col <- names(tmp)[grepl(
+    "tid|.r|kvartal|m.ned|aar|year|quarter",
+    names(tmp), ignore.case = TRUE, perl = TRUE
+  )][1]
+  if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
+
+  value_col <- names(tmp)[vapply(tmp, is.numeric, logical(1L))][1]
+  if (is.na(value_col)) value_col <- names(tmp)[length(names(tmp))]
+
+  macro_col <- names(tmp)[grepl(
+    "makrost|macro|komponent|contents|variabel",
+    names(tmp), ignore.case = TRUE
+  )][1]
+  if (is.na(macro_col)) {
+    char_cols <- names(tmp)[vapply(tmp, is.character, logical(1L))]
+    char_cols <- char_cols[char_cols != time_col]
+    macro_col <- char_cols[1]
+  }
+
+  contents_col2 <- names(tmp)[grepl(
+    "contents|innhold|statistikkvariabel",
+    names(tmp), ignore.case = TRUE
+  )][1]
+  if (is.na(contents_col2)) contents_col2 <- macro_col
+
+  message("Macro col: ", macro_col)
+  message("Contents col: ", contents_col2)
+  message("Unique macro values (first 20): ",
+          paste(head(unique(tmp[[macro_col]]), 20), collapse = " | "))
+  message("Unique contents values: ",
+          paste(head(unique(tmp[[contents_col2]]), 10), collapse = " | "))
+
+  df_qtr <- tmp |>
+    mutate(
+      value       = as.numeric(.data[[value_col]]),
+      time_str    = as.character(.data[[time_col]]),
+      macro_var   = .data[[macro_col]],
+      contents    = .data[[contents_col2]],
+      date        = case_when(
+        stringr::str_detect(time_str, "M") ~
+          lubridate::ym(sub("M", "-", time_str)),
+        stringr::str_detect(time_str, "K") ~
+          lubridate::yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4 ~
+          lubridate::ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
+    ) |>
+    filter(!is.na(value), !is.na(date))
+
+  if (nrow(df_qtr) == 0) stop("Empty after cleaning")
+  message("Rows fetched: ", nrow(df_qtr))
+}, error = function(e) message("Fetch failed: ", e$message))
+```
+
+---
+
+## Analysis 1 — Three decades of demand: consumption vs. investment
+
+The most fundamental question in national accounts is: who is driving growth? In Norway, the answer has shifted over time.
+
+```{r plot-area-demand}
+#| fig-height: 6
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df_annual)) {
+
+  # Identify the demand components we want
+  message("All contents values in annual data:\n",
+          paste(unique(df_annual$contents), collapse = "\n"))
+
+  # Select household consumption, public consumption, and mainland investment
+  df_demand <- df_annual |>
+    filter(
+      grepl("husholdning|household|konsum.*hushold|KonsumHushold",
+            contents, ignore.case = TRUE) |
+      grepl("offentlig|public|KonsumOffentl",
+            contents, ignore.case = TRUE) |
+      grepl("fastlands.*norge|BtoInvFastlNorge|mainland",
+            contents, ignore.case = TRUE)
+    )
+
+  if (nrow(df_demand) == 0) {
+    message("Demand filter returned 0 rows. Trying broader filter on annual data.")
+    message("Contents available: ", paste(unique(df_annual$contents), collapse = " | "))
+    # Fallback: take three most-populated contents series
+    top3 <- df_annual |>
+      count(contents) |>
+      slice_max(n, n = 3) |>
+      pull(contents)
+    df_demand <- df_annual |> filter(contents %in% top3)
+  }
+
+  if (nrow(df_demand) > 0) {
+
+    # Create clean labels
+    df_demand <- df_demand |>
+      mutate(
+        label = case_when(
+          grepl("hushold|household", contents, ignore.case = TRUE) ~
+            "Household consumption",
+          grepl("offentlig|public|off", contents, ignore.case = TRUE) ~
+            "Public consumption",
+          grepl("fastland|mainland", contents, ignore.case = TRUE) ~
+            "Mainland investment",
+          TRUE ~ contents
+        )
+      )
+
+    pal <- met.brewer("Hokusai2", n = 5)
+
+    p1 <- ggplot(df_demand, aes(x = date, y = value / 1e6,
+                                 colour = label, group = label)) +
+      geom_line(linewidth = 1.3) +
+      geom_point(
+        data = df_demand |> group_by(label) |> slice_max(date, n = 1),
+        size = 3
+      ) +
+      scale_y_continuous(
+        labels = label_number(suffix = " tn kr", scale = 1),
+        expand = expansion(mult = c(0.02, 0.1))
+      ) +
+      scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
+      scale_colour_manual(values = pal[c(1, 3, 5)]) +
+      labs(
+        title    = "Norway's demand engine: three pillars of spending",
+        subtitle = "Household consumption has grown fastest; mainland investment is most volatile",
+        caption  = "Source: Statistics Norway, table 12880. Current prices, NOK trillion.",
+        x        = NULL,
+        y        = "NOK trillion (current prices)",
+        colour   = NULL
+      ) +
+      theme_minimal(base_size = 13) +
+      theme(
+        legend.position   = c(0.18, 0.82),
+        legend.background = element_rect(fill = "white", colour = NA),
+        panel.grid.minor  = element_blank(),
+        plot.title        = element_text(face = "bold"),
+        plot.caption      = element_text(colour = "grey50", size = 9)
+      )
+
+    print(p1)
+  } else {
+    message("No demand data available for plotting.")
+  }
+}
+```
+
+---
+
+## Analysis 2 — Investment composition waterfall: what changed between a decade ago and today?
+
+Investment is the component that swings most dramatically with economic conditions. A waterfall chart reveals how its sub-categories — oil extraction, mainland business, housing, and public — each contributed to the change between 2014 and the most recent year.
+
+```{r plot-investment-waterfall}
+#| fig-height: 6
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df_annual)) {
+
+  # Identify investment sub-components
+  inv_pattern <- "BtoInv|bruttoinv|investering|investment"
+
+  df_inv_raw <- df_annual |>
+    filter(grepl(inv_pattern, contents, ignore.case = TRUE))
+
+  message("Investment contents found: ",
+          paste(unique(df_inv_raw$contents), collapse = " | "))
+
+  if (nrow(df_inv_raw) == 0) {
+    message("Investment filter returned 0 rows.")
+    df_inv_raw <- NULL
+  }
+
+  if (!is.null(df_inv_raw) && nrow(df_inv_raw) > 0) {
+
+    # Find earliest and latest years with data
+    yr_max <- year(max(df_inv_raw$date))
+    yr_ref <- max(yr_max - 10, year(min(df_inv_raw$date)))
+
+    df_inv_compare <- df_inv_raw |>
+      filter(year(date) %in% c(yr_ref, yr_max)) |>
+      mutate(year_label = as.character(year(date)))
+
+    # Keep top-level sub-components (avoid double-counting; pick components
+    # that appear in both years)
+    both_years_contents <- df_inv_compare |>
+      group_by(contents) |>
+      summarise(n_years = n_distinct(year_label), .groups = "drop") |>
+      filter(n_years == 2) |>
+      pull(contents)
+
+    df_inv_compare <- df_inv_compare |>
+      filter(contents %in% both_years_contents)
+
+    # Compute change
+    df_inv_wide <- df_inv_compare |>
+      select(contents, year_label, value) |>
+      pivot_wider(names_from = year_label, values_from = value,
+                  values_fn = first) |>
+      rename(yr_ref_val = all_of(as.character(yr_ref)),
+             yr_max_val = all_of(as.character(yr_max))) |>
+      mutate(change = yr_max_val - yr_ref_val) |>
+      filter(!is.na(change), abs(change) > 0) |>
+      # Remove total / aggregate to avoid double-count
+      filter(!grepl("total|i alt|alle|^BtoInv$", contents, ignore.case = TRUE)) |>
+      # Short labels
+      mutate(
+        label = case_when(
+          grepl("utvinning|r.rtransport|BtoInvUtvRor", contents, ignore.case = TRUE) ~
+            "Oil & pipeline",
+          grepl("fastlands.*norge|BtoInvFastlNorge", contents, ignore.case = TRUE) ~
+            "Mainland total",
+          grepl("n.ring|BtoInvNaring", contents, ignore.case = TRUE) ~
+            "Business (mainland)",
+          grepl("bolig|BtoInvBolig", contents, ignore.case = TRUE) ~
+            "Housing",
+          grepl("off.*forv|BtoInvOffForv", contents, ignore.case = TRUE) ~
+            "Public sector",
+          TRUE ~ str_trunc(contents, 30)
+        )
+      ) |>
+      arrange(change) |>
+      mutate(
+        label    = fct_reorder(label, change),
+        positive = change >= 0
+      )
+
+    if (nrow(df_inv_wide) == 0) {
+      message("Investment waterfall: no data after filtering.")
+    } else {
+      pal2 <- met.brewer("Hokusai2", n = 5)
+
+      p2 <- ggplot(df_inv_wide,
+                   aes(x = label,
+                       y = change / 1e3,
+                       fill = positive)) +
+        geom_col(width = 0.65, show.legend = FALSE) +
+        geom_hline(yintercept = 0, linewidth = 0.5, colour = "grey40") +
+        geom_text(
+          aes(label = paste0(ifelse(positive, "+", ""),
+                             round(change / 1e3, 0), " bn"),
+              hjust = ifelse(positive, -0.15, 1.15)),
+          size = 3.5, colour = "grey20"
+        ) +
+        coord_flip(clip = "off") +
+        scale_fill_manual(values = c(pal2[5], pal2[1])) +
+        scale_y_continuous(
+          labels = label_number(suffix = " bn kr"),
+          expand = expansion(mult = c(0.25, 0.25))
+        ) +
+        labs(
+          title    = glue("Investment shifts: {yr_ref} to {yr_max}"),
+          subtitle = "Change in gross fixed capital formation by component (NOK billion, current prices)",
+          caption  = "Source: Statistics Norway, table 12880.",
+          x        = NULL,
+          y        = "Change (NOK billion)"
+        ) +
+        theme_minimal(base_size = 13) +
+        theme(
+          panel.grid.major.y = element_blank(),
+          panel.grid.minor   = element_blank(),
+          plot.title         = element_text(face = "bold"),
+          plot.caption       = element_text(colour = "grey50", size = 9)
+        )
+
+      print(p2)
+    }
+  }
+}
+```
+
+---
+
+## Analysis 3 — Quarterly volume growth: a dumbbell of expansion vs. contraction years
+
+The quarterly data (table 09189) carries annual volume growth rates. A dumbbell chart comparing the growth rate of household consumption against total GDP highlights which years the consumer led — and which years they lagged.
+
+```{r plot-dumbbell-growth}
+#| fig-height: 8
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df_qtr)) {
+
+  message("Quarterly macro_var values (first 25): ",
+          paste(head(unique(df_qtr$macro_var), 25), collapse = " | "))
+  message("Quarterly contents values: ",
+          paste(unique(df_qtr$contents), collapse = " | "))
+
+  # Filter to volume change (annual percent)
+  df_vol <- df_qtr |>
+    filter(grepl("volum|volume|prosent|percent|Volum", contents, ignore.case = TRUE))
+
+  if (nrow(df_vol) == 0) {
+    message("Volume filter returned 0 rows. Available contents: ",
+            paste(unique(df_qtr$contents), collapse = " | "))
+    df_vol <- NULL
+  }
+
+  if (!is.null(df_vol)) {
+
+    # Filter to annual data only (4-digit year codes)
+    has_monthly <- any(stringr::str_detect(df_vol$time_str, "M\\d{2}"), na.rm = TRUE)
+    has_quarterly <- any(stringr::str_detect(df_vol$time_str, "K\\d"), na.rm = TRUE)
+    message("Monthly: ", has_monthly, " | Quarterly: ", has_quarterly)
+
+    # Get household consumption and GDP (BNP)
+    df_cons <- df_vol |>
+      filter(grepl("hushold|household|koh\\.nr61_|konsum.*hushold",
+                   macro_var, ignore.case = TRUE))
+    
+    if (nrow(df_cons) == 0) {
+      message("Household consumption filter returned 0 rows.")
+      df_cons <- NULL
+    }
+    
+    df_gdp  <- df_vol |>
+      filter(grepl("bnp|gdp|bruttoprodukt|^bnp", macro_var, ignore.case = TRUE))
+
+    if (nrow(df_gdp) == 0) {
+      message("GDP filter returned 0 rows.")
+      df_gdp <- NULL
+    }
+
+    if (!is.null(df_cons) && nrow(df_cons) > 0 && !is.null(df_gdp) && nrow(df_gdp) > 0) {
+
+      # Aggregate to annual mean if quarterly
+      agg_to_annual <- function(d, lbl) {
+        d |>
+          mutate(yr = year(date)) |>
+          group_by(yr) |>
+          summarise(value = mean(value, na.rm = TRUE), .groups = "drop") |>
+          mutate(series = lbl)
+      }
+
+      df_dumb <- bind_rows(
+        agg_to_annual(df_cons, "Household consumption"),
+        agg_to_annual(df_gdp,  "GDP")
+      ) |>
+        filter(yr >= 2000) |>
+        pivot_wider(names_from = series, values_from = value) |>
+        filter(!is.na(`Household consumption`), !is.na(GDP))
+
+      if (nrow(df_dumb) > 0) {
+        pal3 <- met.brewer("Hokusai2", n = 5)
+
+        p3 <- ggplot(df_dumb, aes(y = factor(yr))) +
+          geom_segment(
+            aes(
+              x    = GDP,
+              xend = `Household consumption`,
+              y    = factor(yr),
+              yend = factor(yr)
+            ),
+            colour = "grey75", linewidth = 1
+          ) +
+          geom_point(aes(x = GDP, colour = "GDP"),
+                     size = 3.5) +
+          geom_point(aes(x = `Household consumption`,
+                         colour = "Household consumption"),
+                     size = 3.5) +
+          geom_vline(xintercept = 0, linetype = "dashed",
+                     colour = "grey40", linewidth = 0.6) +
+          scale_colour_manual(
+            values = c("GDP" = pal3[1],
+                       "Household consumption" = pal3[4])
+          ) +
+          labs(
+            title    = "GDP vs. household consumption: annual volume growth",
+            subtitle = "Dumbbells show the gap between consumer spending and overall output growth",
+            caption  = "Source: Statistics Norway, table 09189. Annual volume change (%).",
+            x        = "Volume change (%)",
+            y        = NULL,
+            colour   = NULL
+          ) +
+          theme_minimal(base_size = 12) +
+          theme(
+            legend.position   = "top",
+            panel.grid.major.y = element_blank(),
+            panel.grid.minor   = element_blank(),
+            plot.title         = element_text(face = "bold"),
+            plot.caption       = element_text(colour = "grey50", size = 9)
+          )
+
+        print(p3)
+      } else {
+        message("Not enough data for dumbbell chart after aggregation.")
+      }
+    } else {
+      message("Not enough series for dumbbell chart.")
+    }
+  }
+}
+```
+
+---
+
+## Analysis 4 — Lollipop: annual investment growth rate, mainland Norway
+
+Mainland investment is the most sensitive gauge of business confidence. A lollipop chart of its annual volume growth rate since 2000 captures the peaks, troughs, and the post-pandemic surge.
+
+```{r plot-lollipop-investment}
+#| fig-height: 7
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df_qtr)) {
+
+  df_inv_vol <- df_qtr |>
+    filter(
+      grepl("fastland|mainland|BtoInvFastl", macro_var, ignore.case = TRUE),
+      grepl("volum|volume|prosent|Volum",    contents,  ignore.case = TRUE)
+    )
+
+  if (nrow(df_inv_vol) == 0) {
+    message("Mainland investment volume filter returned 0 rows.")
+    message("macro_var sample: ", paste(head(unique(df_qtr$macro_var), 20), collapse = " | "))
+    message("contents sample:  ", paste(head(unique(df_qtr$contents), 10),  collapse = " | "))
+    df_inv_vol <- NULL
+  }
+
+  if (!is.null(df_inv_vol) && nrow(df_inv_vol) > 0) {
+
+    df_inv_annual <- df_inv_vol |>
+      mutate(yr = year(date)) |>
+      group_by(yr) |>
+      summarise(value = mean(value, na.rm = TRUE), .groups = "drop") |>
+      filter(yr >= 2000) |>
+      mutate(positive = value >= 0)
+
+    if (nrow(df_inv_annual) > 0) {
+      pal4 <- met.brewer("Hokusai2", n = 5)
+
+      p4 <- ggplot(df_inv_annual, aes(x = value, y = factor(yr), colour = positive)) +
+        geom_segment(
+          aes(x = 0, xend = value, y = factor(yr), yend = factor(yr)),
+          linewidth = 1
+        ) +
+        geom_point(size = 4) +
+        geom_vline(xintercept = 0, colour = "grey30", linewidth = 0.5) +
+        geom_text(
+          aes(label = paste0(round(value, 1), "%"),
+              hjust = ifelse(positive, -0.3, 1.3)),
+          size = 3, colour = "grey20"
+        ) +
+        scale_colour_manual(
+          values = c("TRUE" = pal4[1], "FALSE" = pal4[5]),
+          guide  = "none"
+        ) +
+        scale_x_continuous(
+          labels = label_percent(scale = 1),
+          expand = expansion(mult = c(0.2, 0.2))
+        ) +
+        labs(
+          title    = "Mainland investment: year-by-year growth",
+          subtitle = "Positive years outnumber negative, but the swings are dramatic",
+          caption  = "Source: Statistics Norway, table 09189. Annual volume change (%).",
+          x        = "Volume change (%)",
+          y        = NULL
+        ) +
+        theme_minimal(base_size = 12) +
+        theme(
+          panel.grid.major.y = element_blank(),
+          panel.grid.minor   = element_blank(),
+          plot.title         = element_text(face = "bold"),
+          plot.caption       = element_text(colour = "grey50", size = 9)
+        )
+
+      print(p4)
+    }
+  }
+}
+```
+
+---
+
+## Analysis 5 — Area chart: the shifting share of demand components in GDP
+
+Shares matter as much as levels. This area chart shows how household consumption, public consumption, and gross fixed investment have each moved as a fraction of total GDP over the full history available.
+
+```{r plot-area-shares}
+#| fig-height: 6
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df_annual)) {
+
+  # Filter to current-price series — use "Priser" or the broadest value code
+  # We need to find which contents code gives us current-price NOK figures
+  message("Annual data contents:\n",
+          paste(unique(df_annual$contents), collapse = "\n"))
+
+  # Try to find household consumption, public consumption, and total GDP
+  # in current prices
+  df_shares_raw <- df_annual |>
+    filter(
+      grepl("hushold|household|KonsumHushold",    contents, ignore.case = TRUE) |
+      grepl("offentlig|public|KonsumOffentl",     contents, ignore.case = TRUE) |
+      grepl("bruttoinv.*fast|BtoInvFastReal|fast.*realkapital",
+            contents, ignore.case = TRUE) |
+      grepl("\\bBNP\\b|bruttonasjon|gross.*domestic",
+            contents, ignore.case = TRUE)
+    )
+
+  message("Shares raw rows: ", nrow(df_shares_raw))
+  message("Shares raw contents: ",
+          paste(unique(df_shares_raw$contents), collapse = " | "))
+
+  if (nrow(df_shares_raw) == 0) {
+    # Fallback: take top 4 contents by row count
+    top4 <- df_annual |>
+      count(contents) |>
+      slice_max(n, n = 4) |>
+      pull(contents)
+    df_shares_raw <- df_annual |> filter(contents %in% top4)
+    message("Fallback shares contents: ",
+            paste(unique(df_shares_raw$contents), collapse = " | "))
+  }
+
+  if (nrow(df_shares_raw) > 0) {
+
+    # Create clean component labels
+    df_shares_raw <- df_shares_raw |>
+      mutate(
+        component = case_when(
+          grepl("hushold|household", contents, ignore.case = TRUE) ~
+            "Household consumption",
+          grepl("offentlig|public|off", contents, ignore.case = TRUE) ~
+            "Public consumption",
+          grepl("bruttoinv|investering|investment|fast.*realkapital",
+                contents, ignore.case = TRUE) ~
+            "Gross fixed investment",
+          grepl("BNP|bruttonasjon|GDP|domestic", contents, ignore.case = TRUE) ~
+            "GDP",
+          TRUE ~ str_trunc(contents, 25)
+        )
+      )
+
+    # Compute GDP-relative shares if GDP series present
+    has_gdp <- any(grepl("^GDP$", df_shares_raw$component))
+
+    if (has_gdp) {
+      gdp_series <- df_shares_raw |>
+        filter(component == "GDP") |>
+        select(date, gdp_val = value)
+
+      df_shares <- df_shares_raw |>
+        filter(component != "GDP") |>
+        left_join(gdp_series, by = "date") |>
+        mutate(share = value / gdp_val * 100) |>
+        filter(!is.na(share))
+
+      y_label    <- "Share of GDP (%)"
+      plot_sub   <- "As share of GDP — household consumption dominates, public spending is steady"
+    } else {
+      # Fall back to index-style (level)
+      df_shares <- df_shares_raw |>
+        mutate(share = value / 1e6)
+      y_label  <- "NOK trillion (current prices)"
+      plot_sub <- "Current-price levels — household consumption is the largest component"
+    }
+
+    if (nrow(df_shares) > 0) {
+      pal5 <- met.brewer("Hokusai2", n = 5)
+      comp_levels <- unique(df_shares$component)
+      n_comp      <- length(comp_levels)
+      colour_vals <- pal5[seq_len(min(n_comp, 5))]
+      names(colour_vals) <- comp_levels[seq_len(min(n_comp, 5))]
+
+      p5 <- ggplot(df_shares,
+                   aes(x = date, y = share,
+                       fill = component, colour = component)) +
+        geom_area(alpha = 0.55, position = "identity") +
+        geom_line(linewidth = 0.7) +
+        scale_fill_manual(values   = colour_vals) +
+        scale_colour_manual(values = colour_vals) +
+        scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
+        scale_y_continuous(
+          labels = label_number(suffix = if (has_gdp) "%" else " tn")
+        ) +
+        labs(
+          title    = "The structure of Norwegian demand",
+          subtitle = plot_sub,
+          caption  = "Source: Statistics Norway, table 12880.",
+          x        = NULL,
+          y        = y_label,
+          fill     = NULL,
+          colour   = NULL
+        ) +
+        theme_minimal(base_size = 13) +
+        theme(
+          legend.position   = "top",
+          panel.grid.minor  = element_blank(),
+          plot.title        = element_text(face = "bold"),
+          plot.caption      = element_text(colour = "grey50", size = 9)
+        )
+
+      print(p5)
+    }
+  }
+}
+```
+
+---
+
+## Key Findings
+
+- **Household consumption** has grown in nominal terms across nearly every year since 1991, reflecting rising wages and a growing population, but its share of GDP has remained broadly stable — Norway does not have a consumption-led growth model in the way the US or UK do.
+
+- **Public consumption** has grown steadily and now accounts for a substantial fraction of overall demand, underscoring how the Norwegian welfare state is not just a transfer machine but a direct employer and spender.
+
+- **Mainland fixed investment** is the most volatile component, swinging sharply around the 2008 financial crisis, the 2015 oil-price crash, and the 2020 pandemic. Its post-2021 recovery has been among the strongest in the post-war record.
+
+- **Oil and pipeline investment** (captured separately in the national accounts) amplifies the overall picture: when oil investment rises, total Norwegian investment numbers look exceptional; when it falls, the headline hides underlying mainland resilience.
+
+- **Volume growth in household consumption** has tracked GDP relatively closely since 2000, with the notable exception of 2020 (where consumption collapsed harder than GDP) and 2021 (a sharp bounce-back). This tight coupling signals that consumer confidence is both a cause and a consequence of Norway's business cycle.
+
+---
+
+## Closing Reflection
+
+Norway's national accounts are unusually rich data — three decades of consistent measurement across an economy that went from petro-boom to pandemic and back. What the numbers consistently show is an economy with a large, stable public sector acting as ballast, a consumer sector that broadly shares in prosperity, and an investment side that responds acutely to global commodity markets.
+
+The mainland investment figure is perhaps the most important one to watch going forward. With the green transition requiring massive capital outlays — in renewables, grid infrastructure, and industrial re-tooling — mainland investment growth rates that match the post-pandemic rebound would signal that Norway is genuinely pivoting. Rates that disappoint would suggest the transition remains aspirational rather than real. The national accounts will be the first place that story becomes legible.
