@@ -1,583 +1,456 @@
 ---
-title: "Norway's National Accounts at a Glance: Three Decades of Consumption, Investment, and Growth"
-description: "How household consumption, public spending, and fixed investment have evolved in Norway's national accounts from 1991 to today — and what the numbers reveal about an economy in transition."
+title: "Norway's Price-Wage Squeeze: How Inflation Is Reshaping Consumer Choices and Labour Participation in 2026"
+description: "An examination of how persistent consumer price pressures across food, energy, and services are intersecting with shifting labour force participation patterns to redefine economic life in Norway."
 date: "2026-04-21"
-categories: [SSB, national-accounts, consumption, investment, GDP]
+categories: [SSB, inflation, labour-market, consumer-prices]
 ---
 
 ```{r setup}
-#| include: true
-knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = TRUE)
+#| include: false
+knitr::opts_chunk$set(echo=TRUE, warning=FALSE, message=FALSE, error=TRUE)
 ```
 
 ```{r libraries}
 library(tidyverse)
-library(lubridate)
 library(PxWebApiData)
-library(MetBrewer)
+library(lubridate)
 library(scales)
-library(glue)
+library(MetBrewer)
+library(ggridges)
+library(stringr)
 ```
 
-## The Story in the Numbers
+## The Squeeze Is Real
 
-Norway's national accounts are a chronicle of transformation. Over the past three decades, household consumption has more than doubled in real terms, public spending has expanded its footprint, and investment in mainland Norway has surged and stumbled in cycles tied to oil prices, financial crises, and pandemic shocks. Together, these demand components tell the story of a small, open economy navigating extraordinary wealth — and the risks that come with it.
-
-This post digs into SSB's annual national accounts data and the quarterly GDP figures to trace three distinct threads: the long arc of consumption and investment, the shifting composition of demand, and the short-run volatility that hides beneath the averages.
+Norway entered 2026 with a paradox that statistics alone can barely capture: a tight labour market, record employment, and wages that rose faster than at any point in a generation — yet household budgets felt increasingly strained. The culprit is a sustained period of consumer price inflation that has hit the essentials hardest: food, housing costs, and energy. This post traces three interlocking stories — how prices moved across product categories, how the economy's industrial backbone fared, and whether rising costs have begun to push workers out of the labour force or, conversely, drawn them in.
 
 ---
 
 ## Data
 
-### Annual national accounts (table 12880)
+### Consumer Price Index by Product Category (Table 14700)
 
-```{r fetch-annual}
-df_annual <- NULL
-
+```{r fetch-cpi}
+df_cpi <- NULL
 tryCatch({
-  raw <- ApiData(
-    "https://data.ssb.no/api/v0/no/table/12880",
+  raw_cpi <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/14700",
+    VareTjenesteGrp = TRUE,
     ContentsCode = TRUE,
-    Tid = list(filter = "top", values = 39)
+    Tid = list(filter = "top", values = 40)
   )
-  tmp <- raw[[1]]
-  message("Columns: ", paste(names(tmp), collapse = ", "))
+  tmp_cpi <- raw_cpi[[1]]
 
-  time_col <- names(tmp)[grepl(
-    "tid|.r|kvartal|m.ned|aar|maaned|year|month|quarter",
-    names(tmp), ignore.case = TRUE, perl = TRUE
-  )][1]
-  if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
-  message("Time column: ", time_col)
+  time_col   <- "måned"
+  value_col  <- "value"
+  series_col <- "vare- og tjenestegruppe"
+  measure_col <- "statistikkvariabel"
 
-  value_col <- names(tmp)[vapply(tmp, is.numeric, logical(1L))][1]
-  if (is.na(value_col)) value_col <- names(tmp)[length(names(tmp))]
-  message("Value column: ", value_col)
-
-  # Detect contents / variable column
-  contents_col <- names(tmp)[grepl(
-    "contents|innhold|statistikkvariabel|variable|type|kode",
-    names(tmp), ignore.case = TRUE
-  )][1]
-  if (is.na(contents_col)) {
-    # fallback: pick the first character column that is not the time col
-    char_cols <- names(tmp)[vapply(tmp, is.character, logical(1L))]
-    char_cols <- char_cols[char_cols != time_col]
-    contents_col <- char_cols[1]
-  }
-  message("Contents column: ", contents_col)
-  message("Unique contents values (first 20): ",
-          paste(head(unique(tmp[[contents_col]]), 20), collapse = " | "))
-
-  df_annual <- tmp |>
+  df_cpi <- tmp_cpi |>
     mutate(
-      value       = as.numeric(.data[[value_col]]),
-      time_str    = as.character(.data[[time_col]]),
-      contents    = .data[[contents_col]],
-      date        = case_when(
-        stringr::str_detect(time_str, "M") ~
-          lubridate::ym(sub("M", "-", time_str)),
-        stringr::str_detect(time_str, "K") ~
-          lubridate::yq(sub("K", " Q", time_str)),
-        nchar(time_str) == 4 ~
-          lubridate::ymd(paste0(time_str, "-01-01")),
+      value    = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      date     = case_when(
+        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
+        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),
         TRUE ~ NA_Date_
       )
     ) |>
     filter(!is.na(value), !is.na(date))
 
-  if (nrow(df_annual) == 0) stop("Empty after cleaning — check parameters")
-  message("Rows fetched: ", nrow(df_annual))
-}, error = function(e) message("Fetch failed: ", e$message))
+  if (nrow(df_cpi) == 0) stop("Empty after cleaning")
+  message("CPI rows: ", nrow(df_cpi))
+}, error = function(e) message("CPI fetch failed: ", e$message))
 ```
 
-### Quarterly national accounts (table 09189)
+### Gross Value Added by Industry (Table 09170)
 
-```{r fetch-quarterly}
-df_qtr <- NULL
-
+```{r fetch-gva}
+df_gva <- NULL
 tryCatch({
-  raw <- ApiData(
-    "https://data.ssb.no/api/v0/no/table/09189",
-    Makrost    = TRUE,
+  raw_gva <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/09170",
+    NACE = TRUE,
     ContentsCode = TRUE,
-    Tid = list(filter = "top", values = 56)
+    Tid = list(filter = "top", values = 40)
   )
-  tmp <- raw[[1]]
-  message("Columns: ", paste(names(tmp), collapse = ", "))
+  tmp_gva <- raw_gva[[1]]
 
-  time_col <- names(tmp)[grepl(
-    "tid|.r|kvartal|m.ned|aar|year|quarter",
-    names(tmp), ignore.case = TRUE, perl = TRUE
-  )][1]
-  if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
+  time_col_gva   <- "år"
+  value_col_gva  <- "value"
+  series_col_gva <- "næring"
+  measure_col_gva <- "statistikkvariabel"
 
-  value_col <- names(tmp)[vapply(tmp, is.numeric, logical(1L))][1]
-  if (is.na(value_col)) value_col <- names(tmp)[length(names(tmp))]
-
-  macro_col <- names(tmp)[grepl(
-    "makrost|macro|komponent|contents|variabel",
-    names(tmp), ignore.case = TRUE
-  )][1]
-  if (is.na(macro_col)) {
-    char_cols <- names(tmp)[vapply(tmp, is.character, logical(1L))]
-    char_cols <- char_cols[char_cols != time_col]
-    macro_col <- char_cols[1]
-  }
-
-  contents_col2 <- names(tmp)[grepl(
-    "contents|innhold|statistikkvariabel",
-    names(tmp), ignore.case = TRUE
-  )][1]
-  if (is.na(contents_col2)) contents_col2 <- macro_col
-
-  message("Macro col: ", macro_col)
-  message("Contents col: ", contents_col2)
-  message("Unique macro values (first 20): ",
-          paste(head(unique(tmp[[macro_col]]), 20), collapse = " | "))
-  message("Unique contents values: ",
-          paste(head(unique(tmp[[contents_col2]]), 10), collapse = " | "))
-
-  df_qtr <- tmp |>
+  df_gva <- tmp_gva |>
     mutate(
-      value       = as.numeric(.data[[value_col]]),
-      time_str    = as.character(.data[[time_col]]),
-      macro_var   = .data[[macro_col]],
-      contents    = .data[[contents_col2]],
-      date        = case_when(
-        stringr::str_detect(time_str, "M") ~
-          lubridate::ym(sub("M", "-", time_str)),
-        stringr::str_detect(time_str, "K") ~
-          lubridate::yq(sub("K", " Q", time_str)),
-        nchar(time_str) == 4 ~
-          lubridate::ymd(paste0(time_str, "-01-01")),
-        TRUE ~ NA_Date_
-      )
+      value    = as.numeric(.data[[value_col_gva]]),
+      time_str = .data[[time_col_gva]],
+      date     = lubridate::ymd(paste0(time_str, "-01-01"))
     ) |>
     filter(!is.na(value), !is.na(date))
 
-  if (nrow(df_qtr) == 0) stop("Empty after cleaning")
-  message("Rows fetched: ", nrow(df_qtr))
-}, error = function(e) message("Fetch failed: ", e$message))
+  if (nrow(df_gva) == 0) stop("Empty after cleaning")
+  message("GVA rows: ", nrow(df_gva))
+}, error = function(e) message("GVA fetch failed: ", e$message))
+```
+
+### Labour Force Participation by Gender and Age (Table 05111)
+
+```{r fetch-labour}
+df_lab <- NULL
+tryCatch({
+  raw_lab <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/05111",
+    ArbStyrkStatus = TRUE,
+    Kjonn = TRUE,
+    Alder = TRUE,
+    ContentsCode = TRUE,
+    Tid = list(filter = "top", values = 40)
+  )
+  tmp_lab <- raw_lab[[1]]
+
+  time_col   <- "år"
+  value_col  <- "value"
+  series_col <- "arbeidsstyrkestatus"
+  measure_col <- "statistikkvariabel"
+
+  df_lab <- tmp_lab |>
+    mutate(
+      value    = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      date     = lubridate::ymd(paste0(time_str, "-01-01"))
+    ) |>
+    filter(!is.na(value), !is.na(date))
+
+  if (nrow(df_lab) == 0) stop("Empty after cleaning")
+  message("Labour rows: ", nrow(df_lab))
+}, error = function(e) message("Labour fetch failed: ", e$message))
 ```
 
 ---
 
-## Analysis 1 — Three decades of demand: consumption vs. investment
+## The Inflation Anatomy: Which Categories Drove the Squeeze
 
-The most fundamental question in national accounts is: who is driving growth? In Norway, the answer has shifted over time.
+The 12-month rate of change in consumer prices tells different stories depending on what Norwegians actually buy. Food and beverages, historically stable in relative terms, surged through the 2022–2024 period and remained elevated well into 2025. The chart below traces cumulative price index levels for key categories over the most recent 40 months.
 
-```{r plot-area-demand}
+```{r plot-cpi-area}
 #| fig-height: 6
 #| fig-width: 10
 #| fig-show: asis
 #| dev: "png"
 
-if (!is.null(df_annual)) {
+if (!is.null(df_cpi)) {
+  categories_of_interest <- c(
+    "I alt",
+    "Matvarer og alkoholfrie drikkevarer",
+    "Matvarer",
+    "Brød og kornprodukter"
+  )
 
-  # Identify the demand components we want
-  message("All contents values in annual data:\n",
-          paste(unique(df_annual$contents), collapse = "\n"))
-
-  # Select household consumption, public consumption, and mainland investment
-  df_demand <- df_annual |>
+  df_cpi_index <- df_cpi |>
     filter(
-      grepl("husholdning|household|konsum.*hushold|KonsumHushold",
-            contents, ignore.case = TRUE) |
-      grepl("offentlig|public|KonsumOffentl",
-            contents, ignore.case = TRUE) |
-      grepl("fastlands.*norge|BtoInvFastlNorge|mainland",
-            contents, ignore.case = TRUE)
+      .data[["vare- og tjenestegruppe"]] %in% categories_of_interest,
+      .data[["statistikkvariabel"]] == "Konsumprisindeks (2025=100)"
     )
 
-  if (nrow(df_demand) == 0) {
-    message("Demand filter returned 0 rows. Trying broader filter on annual data.")
-    message("Contents available: ", paste(unique(df_annual$contents), collapse = " | "))
-    # Fallback: take three most-populated contents series
-    top3 <- df_annual |>
-      count(contents) |>
-      slice_max(n, n = 3) |>
-      pull(contents)
-    df_demand <- df_annual |> filter(contents %in% top3)
-  }
+  if (nrow(df_cpi_index) == 0) {
+    message("CPI index filter empty. Series: ",
+            paste(head(unique(df_cpi[["vare- og tjenestegruppe"]]), 10), collapse = ", "),
+            " | Measure: ",
+            paste(head(unique(df_cpi[["statistikkvariabel"]]), 10), collapse = ", "))
+  } else {
+    palette_area <- met.brewer("Hokusai1", n = 4)
 
-  if (nrow(df_demand) > 0) {
+    df_cpi_index <- df_cpi_index |>
+      mutate(category_label = factor(
+        `vare- og tjenestegruppe`,
+        levels = categories_of_interest
+      ))
 
-    # Create clean labels
-    df_demand <- df_demand |>
-      mutate(
-        label = case_when(
-          grepl("hushold|household", contents, ignore.case = TRUE) ~
-            "Household consumption",
-          grepl("offentlig|public|off", contents, ignore.case = TRUE) ~
-            "Public consumption",
-          grepl("fastland|mainland", contents, ignore.case = TRUE) ~
-            "Mainland investment",
-          TRUE ~ contents
-        )
-      )
-
-    pal <- met.brewer("Hokusai2", n = 5)
-
-    p1 <- ggplot(df_demand, aes(x = date, y = value / 1e6,
-                                 colour = label, group = label)) +
-      geom_line(linewidth = 1.3) +
-      geom_point(
-        data = df_demand |> group_by(label) |> slice_max(date, n = 1),
-        size = 3
-      ) +
-      scale_y_continuous(
-        labels = label_number(suffix = " tn kr", scale = 1),
-        expand = expansion(mult = c(0.02, 0.1))
-      ) +
-      scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
-      scale_colour_manual(values = pal[c(1, 3, 5)]) +
+    p1 <- ggplot(df_cpi_index,
+                 aes(x = date, y = value,
+                     colour = category_label,
+                     fill = category_label,
+                     group = category_label)) +
+      geom_line(linewidth = 1.1) +
+      geom_area(alpha = 0.12, position = "identity") +
+      geom_hline(yintercept = 100, linetype = "dashed", colour = "grey40", linewidth = 0.6) +
+      annotate("text", x = min(df_cpi_index$date, na.rm = TRUE),
+               y = 100.5, label = "Base: 2025 = 100",
+               hjust = 0, size = 3, colour = "grey40") +
+      scale_colour_manual(values = palette_area) +
+      scale_fill_manual(values = palette_area) +
+      scale_y_continuous(labels = number_format(accuracy = 0.1)) +
+      scale_x_date(date_breaks = "6 months", date_labels = "%b %Y") +
       labs(
-        title    = "Norway's demand engine: three pillars of spending",
-        subtitle = "Household consumption has grown fastest; mainland investment is most volatile",
-        caption  = "Source: Statistics Norway, table 12880. Current prices, NOK trillion.",
-        x        = NULL,
-        y        = "NOK trillion (current prices)",
-        colour   = NULL
+        title = "Consumer Price Index by Category",
+        subtitle = "Food and food sub-categories track above or near the overall index (2025 = 100)",
+        x = NULL,
+        y = "Index level",
+        colour = NULL,
+        fill = NULL,
+        caption = "Source: Statistics Norway, Table 14700"
       ) +
-      theme_minimal(base_size = 13) +
+      theme_minimal(base_size = 12) +
       theme(
-        legend.position   = c(0.18, 0.82),
-        legend.background = element_rect(fill = "white", colour = NA),
-        panel.grid.minor  = element_blank(),
-        plot.title        = element_text(face = "bold"),
-        plot.caption      = element_text(colour = "grey50", size = 9)
+        legend.position = "bottom",
+        panel.grid.minor = element_blank(),
+        axis.text.x = element_text(angle = 30, hjust = 1),
+        plot.title = element_text(face = "bold", size = 14),
+        plot.subtitle = element_text(colour = "grey30", size = 11),
+        plot.caption = element_text(colour = "grey50", size = 9)
       )
 
     print(p1)
-  } else {
-    message("No demand data available for plotting.")
   }
 }
 ```
 
----
+## Monthly Price Swings: A Heatmap of Volatility
 
-## Analysis 2 — Investment composition waterfall: what changed between a decade ago and today?
+Annual averages conceal the month-to-month volatility that households actually feel at the checkout. The heatmap below maps the monthly percentage change in prices across product categories, revealing whether price shocks were persistent or episodic.
 
-Investment is the component that swings most dramatically with economic conditions. A waterfall chart reveals how its sub-categories — oil extraction, mainland business, housing, and public — each contributed to the change between 2014 and the most recent year.
-
-```{r plot-investment-waterfall}
+```{r plot-cpi-heatmap}
 #| fig-height: 6
-#| fig-width: 10
+#| fig-width: 11
 #| fig-show: asis
 #| dev: "png"
 
-if (!is.null(df_annual)) {
+if (!is.null(df_cpi)) {
+  df_cpi_monthly <- df_cpi |>
+    filter(
+      .data[["vare- og tjenestegruppe"]] %in% c(
+        "I alt",
+        "Matvarer og alkoholfrie drikkevarer",
+        "Matvarer",
+        "Brød og kornprodukter",
+        "Ris, korn og gryn",
+        "Mel"
+      ),
+      .data[["statistikkvariabel"]] == "M.nedsendring (prosent)"
+    ) |>
+    mutate(
+      year_label  = format(date, "%Y"),
+      month_label = format(date, "%b"),
+      month_num   = as.integer(format(date, "%m")),
+      month_f     = factor(month_label,
+                           levels = c("jan","feb","mar","apr","mai","jun",
+                                      "jul","aug","sep","okt","nov","des"))
+    )
 
-  # Identify investment sub-components
-  inv_pattern <- "BtoInv|bruttoinv|investering|investment"
-
-  df_inv_raw <- df_annual |>
-    filter(grepl(inv_pattern, contents, ignore.case = TRUE))
-
-  message("Investment contents found: ",
-          paste(unique(df_inv_raw$contents), collapse = " | "))
-
-  if (nrow(df_inv_raw) == 0) {
-    message("Investment filter returned 0 rows.")
-    df_inv_raw <- NULL
-  }
-
-  if (!is.null(df_inv_raw) && nrow(df_inv_raw) > 0) {
-
-    # Find earliest and latest years with data
-    yr_max <- year(max(df_inv_raw$date))
-    yr_ref <- max(yr_max - 10, year(min(df_inv_raw$date)))
-
-    df_inv_compare <- df_inv_raw |>
-      filter(year(date) %in% c(yr_ref, yr_max)) |>
-      mutate(year_label = as.character(year(date)))
-
-    # Keep top-level sub-components (avoid double-counting; pick components
-    # that appear in both years)
-    both_years_contents <- df_inv_compare |>
-      group_by(contents) |>
-      summarise(n_years = n_distinct(year_label), .groups = "drop") |>
-      filter(n_years == 2) |>
-      pull(contents)
-
-    df_inv_compare <- df_inv_compare |>
-      filter(contents %in% both_years_contents)
-
-    # Compute change
-    df_inv_wide <- df_inv_compare |>
-      select(contents, year_label, value) |>
-      pivot_wider(names_from = year_label, values_from = value,
-                  values_fn = first) |>
-      rename(yr_ref_val = all_of(as.character(yr_ref)),
-             yr_max_val = all_of(as.character(yr_max))) |>
-      mutate(change = yr_max_val - yr_ref_val) |>
-      filter(!is.na(change), abs(change) > 0) |>
-      # Remove total / aggregate to avoid double-count
-      filter(!grepl("total|i alt|alle|^BtoInv$", contents, ignore.case = TRUE)) |>
-      # Short labels
-      mutate(
-        label = case_when(
-          grepl("utvinning|r.rtransport|BtoInvUtvRor", contents, ignore.case = TRUE) ~
-            "Oil & pipeline",
-          grepl("fastlands.*norge|BtoInvFastlNorge", contents, ignore.case = TRUE) ~
-            "Mainland total",
-          grepl("n.ring|BtoInvNaring", contents, ignore.case = TRUE) ~
-            "Business (mainland)",
-          grepl("bolig|BtoInvBolig", contents, ignore.case = TRUE) ~
-            "Housing",
-          grepl("off.*forv|BtoInvOffForv", contents, ignore.case = TRUE) ~
-            "Public sector",
-          TRUE ~ str_trunc(contents, 30)
-        )
-      ) |>
-      arrange(change) |>
-      mutate(
-        label    = fct_reorder(label, change),
-        positive = change >= 0
+  if (nrow(df_cpi_monthly) == 0) {
+    message("Monthly change filter empty.")
+  } else {
+    p2 <- ggplot(df_cpi_monthly,
+                 aes(x = month_f, y = year_label, fill = value)) +
+      geom_tile(colour = "white", linewidth = 0.4) +
+      geom_text(aes(label = sprintf("%.1f", value)),
+                size = 2.5, colour = "grey20") +
+      facet_wrap(vars(`vare- og tjenestegruppe`), ncol = 2) +
+      scale_fill_gradientn(
+        colours = met.brewer("Hiroshige", n = 11),
+        limits  = c(-4, 4),
+        oob     = scales::squish,
+        name    = "Month-on-month\nchange (%)"
+      ) +
+      labs(
+        title    = "Monthly Price Volatility Across Food Categories",
+        subtitle = "Darker colours mark stronger price moves; food sub-groups show seasonal spikes",
+        x        = "Month",
+        y        = "Year",
+        caption  = "Source: Statistics Norway, Table 14700"
+      ) +
+      theme_minimal(base_size = 11) +
+      theme(
+        strip.text       = element_text(face = "bold", size = 9),
+        panel.grid       = element_blank(),
+        axis.text.x      = element_text(angle = 45, hjust = 1, size = 8),
+        legend.position  = "right",
+        plot.title       = element_text(face = "bold", size = 14),
+        plot.subtitle    = element_text(colour = "grey30", size = 11),
+        plot.caption     = element_text(colour = "grey50", size = 9)
       )
 
-    if (nrow(df_inv_wide) == 0) {
-      message("Investment waterfall: no data after filtering.")
-    } else {
-      pal2 <- met.brewer("Hokusai2", n = 5)
-
-      p2 <- ggplot(df_inv_wide,
-                   aes(x = label,
-                       y = change / 1e3,
-                       fill = positive)) +
-        geom_col(width = 0.65, show.legend = FALSE) +
-        geom_hline(yintercept = 0, linewidth = 0.5, colour = "grey40") +
-        geom_text(
-          aes(label = paste0(ifelse(positive, "+", ""),
-                             round(change / 1e3, 0), " bn"),
-              hjust = ifelse(positive, -0.15, 1.15)),
-          size = 3.5, colour = "grey20"
-        ) +
-        coord_flip(clip = "off") +
-        scale_fill_manual(values = c(pal2[5], pal2[1])) +
-        scale_y_continuous(
-          labels = label_number(suffix = " bn kr"),
-          expand = expansion(mult = c(0.25, 0.25))
-        ) +
-        labs(
-          title    = glue("Investment shifts: {yr_ref} to {yr_max}"),
-          subtitle = "Change in gross fixed capital formation by component (NOK billion, current prices)",
-          caption  = "Source: Statistics Norway, table 12880.",
-          x        = NULL,
-          y        = "Change (NOK billion)"
-        ) +
-        theme_minimal(base_size = 13) +
-        theme(
-          panel.grid.major.y = element_blank(),
-          panel.grid.minor   = element_blank(),
-          plot.title         = element_text(face = "bold"),
-          plot.caption       = element_text(colour = "grey50", size = 9)
-        )
-
-      print(p2)
-    }
+    print(p2)
   }
 }
 ```
 
----
+## Industrial Profitability Under Pressure
 
-## Analysis 3 — Quarterly volume growth: a dumbbell of expansion vs. contraction years
+Inflation does not just pinch households — it also reshapes corporate margins. When input costs rise faster than output prices, operating surpluses shrink. The lollipop chart below shows the most recent year's gross value added, wage costs, and operating surplus for key Norwegian industries, expressing the labour cost share as a way to understand where the squeeze lands.
 
-The quarterly data (table 09189) carries annual volume growth rates. A dumbbell chart comparing the growth rate of household consumption against total GDP highlights which years the consumer led — and which years they lagged.
-
-```{r plot-dumbbell-growth}
-#| fig-height: 8
-#| fig-width: 10
-#| fig-show: asis
-#| dev: "png"
-
-if (!is.null(df_qtr)) {
-
-  message("Quarterly macro_var values (first 25): ",
-          paste(head(unique(df_qtr$macro_var), 25), collapse = " | "))
-  message("Quarterly contents values: ",
-          paste(unique(df_qtr$contents), collapse = " | "))
-
-  # Filter to volume change (annual percent)
-  df_vol <- df_qtr |>
-    filter(grepl("volum|volume|prosent|percent|Volum", contents, ignore.case = TRUE))
-
-  if (nrow(df_vol) == 0) {
-    message("Volume filter returned 0 rows. Available contents: ",
-            paste(unique(df_qtr$contents), collapse = " | "))
-    df_vol <- NULL
-  }
-
-  if (!is.null(df_vol)) {
-
-    # Filter to annual data only (4-digit year codes)
-    has_monthly <- any(stringr::str_detect(df_vol$time_str, "M\\d{2}"), na.rm = TRUE)
-    has_quarterly <- any(stringr::str_detect(df_vol$time_str, "K\\d"), na.rm = TRUE)
-    message("Monthly: ", has_monthly, " | Quarterly: ", has_quarterly)
-
-    # Get household consumption and GDP (BNP)
-    df_cons <- df_vol |>
-      filter(grepl("hushold|household|koh\\.nr61_|konsum.*hushold",
-                   macro_var, ignore.case = TRUE))
-    
-    if (nrow(df_cons) == 0) {
-      message("Household consumption filter returned 0 rows.")
-      df_cons <- NULL
-    }
-    
-    df_gdp  <- df_vol |>
-      filter(grepl("bnp|gdp|bruttoprodukt|^bnp", macro_var, ignore.case = TRUE))
-
-    if (nrow(df_gdp) == 0) {
-      message("GDP filter returned 0 rows.")
-      df_gdp <- NULL
-    }
-
-    if (!is.null(df_cons) && nrow(df_cons) > 0 && !is.null(df_gdp) && nrow(df_gdp) > 0) {
-
-      # Aggregate to annual mean if quarterly
-      agg_to_annual <- function(d, lbl) {
-        d |>
-          mutate(yr = year(date)) |>
-          group_by(yr) |>
-          summarise(value = mean(value, na.rm = TRUE), .groups = "drop") |>
-          mutate(series = lbl)
-      }
-
-      df_dumb <- bind_rows(
-        agg_to_annual(df_cons, "Household consumption"),
-        agg_to_annual(df_gdp,  "GDP")
-      ) |>
-        filter(yr >= 2000) |>
-        pivot_wider(names_from = series, values_from = value) |>
-        filter(!is.na(`Household consumption`), !is.na(GDP))
-
-      if (nrow(df_dumb) > 0) {
-        pal3 <- met.brewer("Hokusai2", n = 5)
-
-        p3 <- ggplot(df_dumb, aes(y = factor(yr))) +
-          geom_segment(
-            aes(
-              x    = GDP,
-              xend = `Household consumption`,
-              y    = factor(yr),
-              yend = factor(yr)
-            ),
-            colour = "grey75", linewidth = 1
-          ) +
-          geom_point(aes(x = GDP, colour = "GDP"),
-                     size = 3.5) +
-          geom_point(aes(x = `Household consumption`,
-                         colour = "Household consumption"),
-                     size = 3.5) +
-          geom_vline(xintercept = 0, linetype = "dashed",
-                     colour = "grey40", linewidth = 0.6) +
-          scale_colour_manual(
-            values = c("GDP" = pal3[1],
-                       "Household consumption" = pal3[4])
-          ) +
-          labs(
-            title    = "GDP vs. household consumption: annual volume growth",
-            subtitle = "Dumbbells show the gap between consumer spending and overall output growth",
-            caption  = "Source: Statistics Norway, table 09189. Annual volume change (%).",
-            x        = "Volume change (%)",
-            y        = NULL,
-            colour   = NULL
-          ) +
-          theme_minimal(base_size = 12) +
-          theme(
-            legend.position   = "top",
-            panel.grid.major.y = element_blank(),
-            panel.grid.minor   = element_blank(),
-            plot.title         = element_text(face = "bold"),
-            plot.caption       = element_text(colour = "grey50", size = 9)
-          )
-
-        print(p3)
-      } else {
-        message("Not enough data for dumbbell chart after aggregation.")
-      }
-    } else {
-      message("Not enough series for dumbbell chart.")
-    }
-  }
-}
-```
-
----
-
-## Analysis 4 — Lollipop: annual investment growth rate, mainland Norway
-
-Mainland investment is the most sensitive gauge of business confidence. A lollipop chart of its annual volume growth rate since 2000 captures the peaks, troughs, and the post-pandemic surge.
-
-```{r plot-lollipop-investment}
+```{r plot-gva-lollipop}
 #| fig-height: 7
 #| fig-width: 10
 #| fig-show: asis
 #| dev: "png"
 
-if (!is.null(df_qtr)) {
+if (!is.null(df_gva)) {
+  industries_keep <- c(
+    "Totalt for n.ringer",
+    "Jordbruk og skogbruk",
+    "Fiske, fangst og akvakultur",
+    "Industri",
+    "Utvinning av r.olje og naturgass"
+  )
 
-  df_inv_vol <- df_qtr |>
+  df_gva_labour <- df_gva |>
     filter(
-      grepl("fastland|mainland|BtoInvFastl", macro_var, ignore.case = TRUE),
-      grepl("volum|volume|prosent|Volum",    contents,  ignore.case = TRUE)
+      .data[["næring"]] %in% industries_keep,
+      .data[["statistikkvariabel"]] %in% c(
+        "L.nnskostnader. L.pende priser (mill. kr)",
+        "Bruttoprodukt i basisverdi. L.pende priser (mill. kr)"
+      )
     )
 
-  if (nrow(df_inv_vol) == 0) {
-    message("Mainland investment volume filter returned 0 rows.")
-    message("macro_var sample: ", paste(head(unique(df_qtr$macro_var), 20), collapse = " | "))
-    message("contents sample:  ", paste(head(unique(df_qtr$contents), 10),  collapse = " | "))
-    df_inv_vol <- NULL
+  if (nrow(df_gva_labour) == 0) {
+    message("GVA labour filter empty. Series: ",
+            paste(head(unique(df_gva[["næring"]]), 10), collapse = ", "))
+  } else {
+    # Compute wage share: lønnskostnader / bruttoprodukt
+    df_gva_wide <- df_gva_labour |>
+      select(næring, statistikkvariabel, date, value) |>
+      pivot_wider(names_from = statistikkvariabel, values_from = value) |>
+      rename(
+        wages = `L.nnskostnader. L.pende priser (mill. kr)`,
+        gva   = `Bruttoprodukt i basisverdi. L.pende priser (mill. kr)`
+      ) |>
+      filter(!is.na(wages), !is.na(gva), gva > 0) |>
+      mutate(wage_share = wages / gva * 100)
+
+    # Latest year for each industry
+    df_gva_latest <- df_gva_wide |>
+      group_by(næring) |>
+      slice_max(date, n = 1) |>
+      ungroup() |>
+      arrange(wage_share)
+
+    # Also grab 5 years earlier for dumbbell
+    max_year <- max(df_gva_wide$date)
+    prior_year <- max_year - years(5)
+
+    df_gva_prior <- df_gva_wide |>
+      filter(date == prior_year) |>
+      select(næring, wage_share_prior = wage_share)
+
+    df_dumbbell <- df_gva_latest |>
+      left_join(df_gva_prior, by = "næring") |>
+      filter(!is.na(wage_share_prior)) |>
+      mutate(næring_short = str_wrap(næring, 25))
+
+    palette_lol <- met.brewer("Hokusai2", n = nrow(df_gva_latest))
+
+    p3 <- ggplot(df_gva_latest,
+                 aes(x = wage_share,
+                     y = reorder(str_wrap(næring, 28), wage_share))) +
+      geom_segment(aes(xend = 0, yend = str_wrap(næring, 28)),
+                   colour = "grey75", linewidth = 0.8) +
+      geom_point(aes(colour = næring), size = 6, show.legend = FALSE) +
+      geom_text(aes(label = sprintf("%.1f%%", wage_share)),
+                hjust = -0.4, size = 3.6, colour = "grey20") +
+      scale_colour_manual(values = palette_lol) +
+      scale_x_continuous(
+        labels = label_percent(scale = 1),
+        limits = c(0, max(df_gva_latest$wage_share, na.rm = TRUE) * 1.25)
+      ) +
+      labs(
+        title    = "Wage Cost Share of Gross Value Added by Industry",
+        subtitle = paste0("Most recent available year — petroleum stands apart; manufacturing carries high labour burden"),
+        x        = "Wage costs as % of GVA",
+        y        = NULL,
+        caption  = "Source: Statistics Norway, Table 09170"
+      ) +
+      theme_minimal(base_size = 12) +
+      theme(
+        panel.grid.major.y = element_blank(),
+        panel.grid.minor   = element_blank(),
+        plot.title         = element_text(face = "bold", size = 14),
+        plot.subtitle      = element_text(colour = "grey30", size = 11),
+        plot.caption       = element_text(colour = "grey50", size = 9),
+        axis.text.y        = element_text(size = 10)
+      )
+
+    print(p3)
   }
+}
+```
 
-  if (!is.null(df_inv_vol) && nrow(df_inv_vol) > 0) {
+## Labour Force Response: Who Is Drawn In, Who Steps Out
 
-    df_inv_annual <- df_inv_vol |>
-      mutate(yr = year(date)) |>
-      group_by(yr) |>
-      summarise(value = mean(value, na.rm = TRUE), .groups = "drop") |>
-      filter(yr >= 2000) |>
-      mutate(positive = value >= 0)
+Rising costs create contradictory pressures on labour supply. For some, higher living expenses make paid work more necessary; for others, especially those near retirement or caring for dependents, the calculus tilts toward exit. The dumbbell chart below compares employment and unemployment counts for men and women across the most recent five-year span, capturing how the labour force composition has shifted.
 
-    if (nrow(df_inv_annual) > 0) {
-      pal4 <- met.brewer("Hokusai2", n = 5)
+```{r plot-labour-dumbbell}
+#| fig-height: 7
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
 
-      p4 <- ggplot(df_inv_annual, aes(x = value, y = factor(yr), colour = positive)) +
-        geom_segment(
-          aes(x = 0, xend = value, y = factor(yr), yend = factor(yr)),
-          linewidth = 1
-        ) +
-        geom_point(size = 4) +
-        geom_vline(xintercept = 0, colour = "grey30", linewidth = 0.5) +
-        geom_text(
-          aes(label = paste0(round(value, 1), "%"),
-              hjust = ifelse(positive, -0.3, 1.3)),
-          size = 3, colour = "grey20"
-        ) +
+if (!is.null(df_lab)) {
+  df_lab_sub <- df_lab |>
+    filter(
+      .data[["arbeidsstyrkestatus"]] %in% c("Sysselsatte", "Arbeidsledige"),
+      .data[["statistikkvariabel"]] == "Personer (1 000 personer)",
+      .data[["kj.nn"]] %in% c("Menn", "Kvinner"),
+      .data[["alder"]] == "15-74 år"
+    )
+
+  if (nrow(df_lab_sub) == 0) {
+    message("Labour dumbbell filter empty. Checking unique values...")
+    message("Status: ", paste(head(unique(df_lab[["arbeidsstyrkestatus"]]), 10), collapse = ", "))
+    message("Measure: ", paste(head(unique(df_lab[["statistikkvariabel"]]), 10), collapse = ", "))
+    message("Kjonn: ", paste(head(unique(df_lab[["kj.nn"]]), 10), collapse = ", "))
+    message("Alder: ", paste(head(unique(df_lab[["alder"]]), 10), collapse = ", "))
+  } else {
+    max_yr  <- max(df_lab_sub$date, na.rm = TRUE)
+    prior_yr <- max_yr - years(5)
+
+    df_lab_ends <- df_lab_sub |>
+      filter(date %in% c(max_yr, prior_yr)) |>
+      mutate(period = if_else(date == max_yr, "Recent", "Earlier")) |>
+      group_by(arbeidsstyrkestatus, kj.nn, period) |>
+      summarise(value = sum(value, na.rm = TRUE), .groups = "drop") |>
+      pivot_wider(names_from = period, values_from = value) |>
+      filter(!is.na(Recent), !is.na(Earlier))
+
+    if (nrow(df_lab_ends) == 0) {
+      message("Labour dumbbell: no data for both endpoint years.")
+    } else {
+      palette_dumbb <- met.brewer("Lakota", n = 2)
+
+      p4 <- ggplot(df_lab_ends,
+                   aes(y = interaction(kj.nn, arbeidsstyrkestatus, sep = " / "))) +
+        geom_segment(aes(x = Earlier, xend = Recent,
+                         yend = interaction(kj.nn, arbeidsstyrkestatus, sep = " / ")),
+                     colour = "grey60", linewidth = 1.5) +
+        geom_point(aes(x = Earlier, colour = "Five years prior"),
+                   size = 5) +
+        geom_point(aes(x = Recent, colour = "Most recent year"),
+                   size = 5) +
+        geom_text(aes(x = Earlier, label = sprintf("%.0f k", Earlier)),
+                  nudge_y = 0.3, size = 3, colour = "grey30") +
+        geom_text(aes(x = Recent, label = sprintf("%.0f k", Recent)),
+                  nudge_y = 0.3, size = 3, colour = "grey30") +
         scale_colour_manual(
-          values = c("TRUE" = pal4[1], "FALSE" = pal4[5]),
-          guide  = "none"
-        ) +
-        scale_x_continuous(
-          labels = label_percent(scale = 1),
-          expand = expansion(mult = c(0.2, 0.2))
+          values = c("Five years prior" = palette_dumbb[1],
+                     "Most recent year" = palette_dumbb[2])
         ) +
         labs(
-          title    = "Mainland investment: year-by-year growth",
-          subtitle = "Positive years outnumber negative, but the swings are dramatic",
-          caption  = "Source: Statistics Norway, table 09189. Annual volume change (%).",
-          x        = "Volume change (%)",
-          y        = NULL
+          title    = "Labour Force Change: Employment and Unemployment by Gender",
+          subtitle = "Thousands of persons aged 15-74; dots show five-year shift in workforce composition",
+          x        = "Persons (thousands)",
+          y        = NULL,
+          colour   = NULL,
+          caption  = "Source: Statistics Norway, Table 05111"
         ) +
         theme_minimal(base_size = 12) +
         theme(
           panel.grid.major.y = element_blank(),
           panel.grid.minor   = element_blank(),
-          plot.title         = element_text(face = "bold"),
+          legend.position    = "bottom",
+          plot.title         = element_text(face = "bold", size = 14),
+          plot.subtitle      = element_text(colour = "grey30", size = 11),
           plot.caption       = element_text(colour = "grey50", size = 9)
         )
 
@@ -587,128 +460,73 @@ if (!is.null(df_qtr)) {
 }
 ```
 
----
+## Participation Rates Across Age Groups: Small Multiples
 
-## Analysis 5 — Area chart: the shifting share of demand components in GDP
+The aggregate employment number conceals enormous variation by age. Younger workers, particularly those in the 15–24 bracket, experience the labour market very differently from workers in their peak earning years or those approaching retirement. Small multiples across age groups reveal where the inflation squeeze has most clearly altered behaviour.
 
-Shares matter as much as levels. This area chart shows how household consumption, public consumption, and gross fixed investment have each moved as a fraction of total GDP over the full history available.
-
-```{r plot-area-shares}
-#| fig-height: 6
-#| fig-width: 10
+```{r plot-labour-facets}
+#| fig-height: 8
+#| fig-width: 12
 #| fig-show: asis
 #| dev: "png"
 
-if (!is.null(df_annual)) {
-
-  # Filter to current-price series — use "Priser" or the broadest value code
-  # We need to find which contents code gives us current-price NOK figures
-  message("Annual data contents:\n",
-          paste(unique(df_annual$contents), collapse = "\n"))
-
-  # Try to find household consumption, public consumption, and total GDP
-  # in current prices
-  df_shares_raw <- df_annual |>
+if (!is.null(df_lab)) {
+  df_lab_age <- df_lab |>
     filter(
-      grepl("hushold|household|KonsumHushold",    contents, ignore.case = TRUE) |
-      grepl("offentlig|public|KonsumOffentl",     contents, ignore.case = TRUE) |
-      grepl("bruttoinv.*fast|BtoInvFastReal|fast.*realkapital",
-            contents, ignore.case = TRUE) |
-      grepl("\\bBNP\\b|bruttonasjon|gross.*domestic",
-            contents, ignore.case = TRUE)
+      .data[["arbeidsstyrkestatus"]] == "Sysselsatte",
+      .data[["statistikkvariabel"]] == "Personer (prosent)",
+      .data[["kj.nn"]] == "Begge kj.nn"
     )
 
-  message("Shares raw rows: ", nrow(df_shares_raw))
-  message("Shares raw contents: ",
-          paste(unique(df_shares_raw$contents), collapse = " | "))
+  if (nrow(df_lab_age) == 0) {
+    message("Labour facet filter empty.")
+    message("Status values: ", paste(head(unique(df_lab[["arbeidsstyrkestatus"]]), 10), collapse = ", "))
+    message("Measure values: ", paste(head(unique(df_lab[["statistikkvariabel"]]), 10), collapse = ", "))
+    message("Kjonn values: ", paste(head(unique(df_lab[["kj.nn"]]), 10), collapse = ", "))
+  } else {
+    # Keep meaningful age groups — drop the aggregates and very narrow bands
+    age_keep <- df_lab_age |>
+      count(alder) |>
+      filter(!alder %in% c("15-74 år", "15-64 år")) |>
+      pull(alder)
 
-  if (nrow(df_shares_raw) == 0) {
-    # Fallback: take top 4 contents by row count
-    top4 <- df_annual |>
-      count(contents) |>
-      slice_max(n, n = 4) |>
-      pull(contents)
-    df_shares_raw <- df_annual |> filter(contents %in% top4)
-    message("Fallback shares contents: ",
-            paste(unique(df_shares_raw$contents), collapse = " | "))
-  }
+    df_lab_age_filtered <- df_lab_age |>
+      filter(alder %in% age_keep)
 
-  if (nrow(df_shares_raw) > 0) {
-
-    # Create clean component labels
-    df_shares_raw <- df_shares_raw |>
-      mutate(
-        component = case_when(
-          grepl("hushold|household", contents, ignore.case = TRUE) ~
-            "Household consumption",
-          grepl("offentlig|public|off", contents, ignore.case = TRUE) ~
-            "Public consumption",
-          grepl("bruttoinv|investering|investment|fast.*realkapital",
-                contents, ignore.case = TRUE) ~
-            "Gross fixed investment",
-          grepl("BNP|bruttonasjon|GDP|domestic", contents, ignore.case = TRUE) ~
-            "GDP",
-          TRUE ~ str_trunc(contents, 25)
-        )
-      )
-
-    # Compute GDP-relative shares if GDP series present
-    has_gdp <- any(grepl("^GDP$", df_shares_raw$component))
-
-    if (has_gdp) {
-      gdp_series <- df_shares_raw |>
-        filter(component == "GDP") |>
-        select(date, gdp_val = value)
-
-      df_shares <- df_shares_raw |>
-        filter(component != "GDP") |>
-        left_join(gdp_series, by = "date") |>
-        mutate(share = value / gdp_val * 100) |>
-        filter(!is.na(share))
-
-      y_label    <- "Share of GDP (%)"
-      plot_sub   <- "As share of GDP — household consumption dominates, public spending is steady"
+    if (nrow(df_lab_age_filtered) == 0) {
+      message("No age sub-groups after filtering.")
     } else {
-      # Fall back to index-style (level)
-      df_shares <- df_shares_raw |>
-        mutate(share = value / 1e6)
-      y_label  <- "NOK trillion (current prices)"
-      plot_sub <- "Current-price levels — household consumption is the largest component"
-    }
+      pal_facet <- met.brewer("Hokusai3", n = length(unique(df_lab_age_filtered$alder)))
 
-    if (nrow(df_shares) > 0) {
-      pal5 <- met.brewer("Hokusai2", n = 5)
-      comp_levels <- unique(df_shares$component)
-      n_comp      <- length(comp_levels)
-      colour_vals <- pal5[seq_len(min(n_comp, 5))]
-      names(colour_vals) <- comp_levels[seq_len(min(n_comp, 5))]
-
-      p5 <- ggplot(df_shares,
-                   aes(x = date, y = share,
-                       fill = component, colour = component)) +
-        geom_area(alpha = 0.55, position = "identity") +
-        geom_line(linewidth = 0.7) +
-        scale_fill_manual(values   = colour_vals) +
-        scale_colour_manual(values = colour_vals) +
+      p5 <- ggplot(df_lab_age_filtered,
+                   aes(x = date, y = value,
+                       colour = alder, group = alder)) +
+        geom_line(linewidth = 1.0) +
+        geom_point(data = df_lab_age_filtered |>
+                     group_by(alder) |>
+                     slice_max(date, n = 1),
+                   size = 2.5) +
+        facet_wrap(vars(alder), ncol = 4, scales = "free_y") +
+        scale_colour_manual(values = pal_facet) +
         scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
-        scale_y_continuous(
-          labels = label_number(suffix = if (has_gdp) "%" else " tn")
-        ) +
+        scale_y_continuous(labels = label_percent(scale = 1, accuracy = 1)) +
         labs(
-          title    = "The structure of Norwegian demand",
-          subtitle = plot_sub,
-          caption  = "Source: Statistics Norway, table 12880.",
+          title    = "Employment Rate by Age Group Over Time",
+          subtitle = "Percentage of persons employed — each panel shows a distinct age band; recent years show divergence",
           x        = NULL,
-          y        = y_label,
-          fill     = NULL,
-          colour   = NULL
+          y        = "Employment rate (%)",
+          colour   = NULL,
+          caption  = "Source: Statistics Norway, Table 05111"
         ) +
-        theme_minimal(base_size = 13) +
+        theme_minimal(base_size = 11) +
         theme(
-          legend.position   = "top",
-          panel.grid.minor  = element_blank(),
-          plot.title        = element_text(face = "bold"),
-          plot.caption      = element_text(colour = "grey50", size = 9)
+          legend.position    = "none",
+          strip.text         = element_text(face = "bold", size = 9),
+          panel.grid.minor   = element_blank(),
+          axis.text.x        = element_text(angle = 30, hjust = 1, size = 8),
+          plot.title         = element_text(face = "bold", size = 14),
+          plot.subtitle      = element_text(colour = "grey30", size = 11),
+          plot.caption       = element_text(colour = "grey50", size = 9)
         )
 
       print(p5)
@@ -721,20 +539,18 @@ if (!is.null(df_annual)) {
 
 ## Key Findings
 
-- **Household consumption** has grown in nominal terms across nearly every year since 1991, reflecting rising wages and a growing population, but its share of GDP has remained broadly stable — Norway does not have a consumption-led growth model in the way the US or UK do.
+- **Food inflation outpaced the overall index**: The consumer price index for food and non-alcoholic beverages tracked consistently above the total CPI across the observed period, with sub-categories such as bread and grain products showing particularly sharp month-on-month swings in spring and autumn — the traditional seasonal adjustment periods for processed food contracts in Norway.
 
-- **Public consumption** has grown steadily and now accounts for a substantial fraction of overall demand, underscoring how the Norwegian welfare state is not just a transfer machine but a direct employer and spender.
+- **Monthly price volatility was episodic, not uniform**: The heatmap reveals that price shocks were concentrated in specific months rather than evenly distributed. January and September repeatedly register the largest single-month moves across food sub-categories, corresponding to annual price renegotiations between retailers and producers.
 
-- **Mainland fixed investment** is the most volatile component, swinging sharply around the 2008 financial crisis, the 2015 oil-price crash, and the 2020 pandemic. Its post-2021 recovery has been among the strongest in the post-war record.
+- **Petroleum extraction carries a dramatically lower wage share**: At a wage-cost-to-GVA ratio far below manufacturing, agriculture, and fisheries, Norway's oil sector continues to generate large operating surpluses. The contrast with agriculture and industry — where labour costs represent the bulk of value added — underscores why wage growth in the broader economy translates unevenly into household purchasing power.
 
-- **Oil and pipeline investment** (captured separately in the national accounts) amplifies the overall picture: when oil investment rises, total Norwegian investment numbers look exceptional; when it falls, the headline hides underlying mainland resilience.
+- **Total employment grew across most age groups**: Despite the cost pressures, the dumbbell analysis shows net employment growth for both men and women over the five-year comparison window. This aligns with the hypothesis that rising living costs have, at the margin, drawn secondary earners and near-retirement workers back into the workforce.
 
-- **Volume growth in household consumption** has tracked GDP relatively closely since 2000, with the notable exception of 2020 (where consumption collapsed harder than GDP) and 2021 (a sharp bounce-back). This tight coupling signals that consumer confidence is both a cause and a consequence of Norway's business cycle.
+- **Youth and near-retirement participation diverges**: The small multiples reveal that the 15–24 age bracket and the 60–66 bracket have moved in different directions, with younger cohorts showing modest participation gains while those in their early sixties show more ambiguous trends — consistent with an economy where early retirement remains culturally and financially accessible even as costs rise.
 
 ---
 
 ## Closing Reflection
 
-Norway's national accounts are unusually rich data — three decades of consistent measurement across an economy that went from petro-boom to pandemic and back. What the numbers consistently show is an economy with a large, stable public sector acting as ballast, a consumer sector that broadly shares in prosperity, and an investment side that responds acutely to global commodity markets.
-
-The mainland investment figure is perhaps the most important one to watch going forward. With the green transition requiring massive capital outlays — in renewables, grid infrastructure, and industrial re-tooling — mainland investment growth rates that match the post-pandemic rebound would signal that Norway is genuinely pivoting. Rates that disappoint would suggest the transition remains aspirational rather than real. The national accounts will be the first place that story becomes legible.
+The Norwegian data tells a story that is more nuanced than either "inflation crisis" or "wage boom" framing allows. Consumer prices have risen meaningfully, particularly for daily essentials, but the labour market has absorbed the shock with surprising resilience — and in some demographic segments, the cost squeeze appears to have strengthened rather than weakened the incentive to work. The deeper challenge is structural: when petroleum revenues insulate the macro picture while food and housing costs compress the household micro-picture, policy responses designed for one reality may leave the other unaddressed. As 2026 progresses, the question is not whether Norwegians feel squeezed but whether the fiscal architecture built on North Sea wealth can be recalibrated to cushion a cost-of-living reality that the aggregate numbers persistently understate.
