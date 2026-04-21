@@ -184,16 +184,40 @@ AGENT_TOOLS <- list(
                 items       = list(type = "string"),
                 description = "Actual column names in raw[[1]] from a confirmed fetch"
               ),
-              sample_values = list(
-                type                 = "object",
-                description          = "For each categorical column: sample values seen in the data",
-                additionalProperties = list(
-                  type  = "array",
-                  items = list(type = "string")
-                )
+              time_column = list(
+                type        = "string",
+                description = "Exact column name for the time dimension (contains year/quarter/month codes)"
+              ),
+              value_column = list(
+                type        = "string",
+                description = "Exact column name for the numeric value (usually 'value')"
+              ),
+              series_column = list(
+                type        = "string",
+                description = "Column identifying WHAT entity is measured (e.g. Makrost for national accounts, næring for industry, kjønn for gender)"
+              ),
+              frequency = list(
+                type        = "string",
+                enum        = list("year", "quarter", "month"),
+                description = "Time frequency inferred from Tid sample values"
+              ),
+              measure_column = list(
+                type        = "string",
+                description = "Optional: column for HOW the value is expressed (e.g. ContentsCode = current prices / volume change). Omit if table has no unit/measure split."
+              ),
+              series_examples = list(
+                type        = "array",
+                items       = list(type = "string"),
+                description = "Actual values from series_column (e.g. GDP, household consumption)"
+              ),
+              measure_examples = list(
+                type        = "array",
+                items       = list(type = "string"),
+                description = "Actual values from measure_column (e.g. current prices, volume change). Omit if no measure_column."
               )
             ),
-            required = list("table_id", "param_names", "column_names")
+            required = list("table_id", "param_names", "column_names",
+                            "time_column", "value_column", "series_column", "frequency")
           )
         ),
         story_angle = list(
@@ -274,14 +298,31 @@ run_discovery_agent <- function() {
     "Workflow:\n",
     "1. Pick 2-4 promising tables from the seed list\n",
     "2. Call get_ssb_metadata() to learn exact parameter names for each\n",
-    "3. Call fetch_ssb_sample() on the best 1-2 tables to confirm they work and record actual column names\n",
-    "4. Call finalize_topic() with the verified spec\n\n",
-    "Tips:\n",
-    "- Prefer tables with rich categorical dimensions (more story angles)\n",
-    "- Avoid tables that return errors\n",
-    "- In sample_values, copy the exact string values you see in each categorical column\n",
-    "  (the generator uses these to build correct filter() calls)\n",
-    "- Be efficient: aim to finalize in 6-8 tool calls total"
+    "3. Call fetch_ssb_sample() on the best 1-2 tables to confirm data quality\n",
+    "4. After each fetch_ssb_sample(), classify the dimension roles (see below)\n",
+    "5. Call finalize_topic() with the complete verified spec\n\n",
+    "## Dimension role classification (CRITICAL — do this for every fetched table)\n",
+    "After fetch_ssb_sample() returns, assign each column to exactly one role:\n\n",
+    "time_column:   the column whose values look like '2024', '2024K1', '2024M01'\n",
+    "value_column:  the first numeric column (almost always named 'value')\n",
+    "series_column: the main categorical column identifying WHAT entity is measured\n",
+    "               National accounts → Makrost\n",
+    "               Labour/industry   → næring (or similar)\n",
+    "               Demographics      → alder, kjønn, or region\n",
+    "               Housing           → boligtype or region\n",
+    "frequency:     inspect Tid sample values — 'K' suffix → 'quarter',\n",
+    "               'M' suffix → 'month', 4-digit only → 'year'\n\n",
+    "measure_column (optional — only for tables with a unit/measure split):\n",
+    "               A SECOND categorical column describing HOW the value is expressed\n",
+    "               e.g. ContentsCode = 'current prices' / 'volume change' / 'constant prices'\n",
+    "               National accounts tables almost always have this.\n",
+    "               Simple indicator tables (unemployment rate, house price index) usually do NOT.\n\n",
+    "CRITICAL DISTINCTION:\n",
+    "  series_column = WHAT entity  (GDP, household consumption, public investment, Aust-Agder)\n",
+    "  measure_column = HOW measured (current NOK, fixed 2015 prices, % change from prev year)\n",
+    "  These are NEVER the same column. Never confuse them.\n\n",
+    "- Be efficient: aim to finalize in 6-8 tool calls total\n",
+    "- Avoid tables that return errors"
   )
 
   agent_user <- paste0(
@@ -370,30 +411,48 @@ build_verified_spec <- function(agent_result) {
     param_names  <- as.character(unlist(d$param_names))
     column_names <- as.character(unlist(d$column_names))
     description  <- if (!is.null(d$description)) as.character(d$description) else as.character(d$table_id)
+    frequency    <- if (!is.null(d$frequency)) as.character(d$frequency) else "unknown"
 
     param_str <- paste(
       paste0("    ", param_names, " = TRUE"),
       collapse = ",\n"
     )
 
-    sv     <- d$sample_values
-    sv_str <- if (!is.null(sv) && length(sv) > 0L) {
-      sv_lines <- vapply(names(sv), function(col) {
-        vals <- as.character(unlist(sv[[col]]))
-        paste0("  ", col, ": [", paste(vals, collapse = ", "), "]")
-      }, character(1L))
-      paste0("Categorical values (use for grepl filters):\n", paste(sv_lines, collapse = "\n"))
-    } else ""
+    # Emit explicit R variable assignments — no guessing in the generator
+    dim_lines <- paste0(
+      'time_col   <- "', as.character(d$time_column),   '"\n',
+      'value_col  <- "', as.character(d$value_column),  '"\n',
+      'series_col <- "', as.character(d$series_column), '"'
+    )
+    has_measure <- !is.null(d$measure_column) && nchar(as.character(d$measure_column)) > 0
+    if (has_measure) {
+      dim_lines <- paste0(dim_lines, '\nmeasure_col <- "', as.character(d$measure_column), '"')
+    }
+
+    # Series / measure example values for building accurate filters
+    ex_str <- ""
+    if (!is.null(d$series_examples) && length(d$series_examples) > 0L) {
+      ex_str <- paste0(ex_str,
+        "series_col values (filter WHAT):  [",
+        paste(as.character(unlist(d$series_examples)), collapse = ", "), "]\n")
+    }
+    if (has_measure && !is.null(d$measure_examples) && length(d$measure_examples) > 0L) {
+      ex_str <- paste0(ex_str,
+        "measure_col values (filter HOW):  [",
+        paste(as.character(unlist(d$measure_examples)), collapse = ", "), "]\n")
+    }
 
     paste0(
-      "### ", d$table_id, " — ", description, "\n",
+      "### ", d$table_id, " — ", description, "  (frequency: ", frequency, ")\n",
       "ApiData() call:\n",
       '  ApiData("https://data.ssb.no/api/v0/no/table/', d$table_id, '",\n',
       param_str, ',\n',
       '    Tid = list(filter = "top", values = 40)\n',
       "  )\n",
-      "Confirmed columns in raw[[1]]: ", paste(column_names, collapse = ", "), "\n",
-      sv_str
+      "All columns in raw[[1]]: ", paste(column_names, collapse = ", "), "\n",
+      "Dimension assignments (copy verbatim into fetch chunk):\n",
+      dim_lines, "\n",
+      ex_str
     )
   })
 
@@ -438,12 +497,10 @@ Your job is to write a complete, self-contained Quarto (.qmd) blog post analyzin
 - Always assign ggplot to a variable then call print() explicitly
 
 ## Using the verified dataset spec (CRITICAL)
-The user prompt contains a VERIFIED SPEC with confirmed table IDs, exact parameter names,
-and actual column names from real API calls.
-- Use ONLY the table IDs listed in the spec
+The user prompt contains a VERIFIED SPEC produced by a discovery agent that made real API calls.
+- Use ONLY the table IDs listed in the spec — never invent table IDs
 - Copy the ApiData() call exactly as shown — do not change parameter names
-- "Confirmed columns in raw[[1]]" shows the actual column names the data frame will have
-- "Categorical values" shows real string values — use these to build accurate grepl() filters
+- "Dimension assignments" shows exact R variable names to use — copy them verbatim
 - Do NOT use ApiData(returnMetaFrames = TRUE) in the post code
 
 ## Data fetching pattern
@@ -458,14 +515,11 @@ tryCatch({
   )
   tmp <- raw[[1]]
 
-  time_col <- names(tmp)[grepl(
-    "tid|\u00e5r|kvartal|m\u00e5ned|aar|maaned|year|month|quarter",
-    names(tmp), ignore.case = TRUE, perl = TRUE
-  )][1]
-  if (is.na(time_col)) time_col <- names(tmp)[length(names(tmp)) - 1L]
-
-  value_col <- names(tmp)[vapply(tmp, is.numeric, logical(1L))][1]
-  if (is.na(value_col)) value_col <- names(tmp)[length(names(tmp))]
+  # Copy EXACT assignments from the spec — do NOT re-detect these columns
+  time_col   <- "EXACT_FROM_SPEC"
+  value_col  <- "EXACT_FROM_SPEC"
+  series_col <- "EXACT_FROM_SPEC"
+  # measure_col <- "EXACT_FROM_SPEC"  # only if spec includes measure_col
 
   df <- tmp |>
     mutate(
@@ -484,31 +538,37 @@ tryCatch({
 }, error = function(e) message("Fetch failed: ", e$message))
 ```
 
-## Column handling
-Since the spec provides confirmed column names, you can reference them directly.
-For additional columns not listed, use grepl detection with Norwegian-safe patterns (. for \u00f8/\u00e6/\u00e5):
-  sector_col <- names(tmp)[grepl("n.ring|nace|industry|sektor|branch", names(tmp), ignore.case=TRUE)][1]
-  comp_col   <- names(tmp)[grepl("komponent|contents|statistikkvariabel|variable|type", names(tmp), ignore.case=TRUE)][1]
-  gender_col <- names(tmp)[grepl("kj.nn|gender|sex|kjonn", names(tmp), ignore.case=TRUE)][1]
-  age_col    <- names(tmp)[grepl("alder|age|aldersgruppe", names(tmp), ignore.case=TRUE)][1]
-  region_col <- names(tmp)[grepl("region|kommune|fylke", names(tmp), ignore.case=TRUE)][1]
+## Filtering rules (CRITICAL — series vs measure distinction)
+- series_col  = WHAT entity is measured (GDP, household consumption, unemployment, Aust-Agder)
+- measure_col = HOW the value is expressed (current prices, fixed 2015 prices, volume change %)
 
-ALWAYS add NA guard after every detection:
-  if (is.na(comp_col)) stop("Cannot detect column: ", paste(names(tmp), collapse=", "))
-Use .data[[col]] in mutate/filter, never bare strings.
+To filter for a specific entity:
+  df_sub <- df |> filter(.data[[series_col]] == "exact value from series_col values in spec")
+
+To filter for a unit of measurement:
+  df_sub <- df |> filter(.data[[measure_col]] == "exact value from measure_col values in spec")
+
+NEVER filter series_col for unit concepts (prices, volume, %).
+NEVER filter measure_col for entity concepts (GDP, household, sector names).
+Use only the exact string values listed under "series_col values" and "measure_col values" in the spec.
 
 ## Post-filter guard (CRITICAL — every filter selecting a category subset)
 After ANY filter() that narrows to specific category labels:
-  df_sub <- df |> filter(grepl("keyword", .data[[comp_col]], ignore.case = TRUE))
+  df_sub <- df |> filter(.data[[series_col]] == "Exact Value")
   if (nrow(df_sub) == 0) {
-    message("Filter empty. Values: ", paste(head(unique(df[[comp_col]]), 15), collapse = ", "))
+    message("Filter empty. Values: ", paste(head(unique(df[[series_col]]), 15), collapse = ", "))
     df_sub <- NULL
   }
   if (!is.null(df_sub)) {
     p <- ggplot(df_sub, ...) + ...
     print(p)
   }
-Use the categorical values from the spec to pick accurate keywords.
+
+## Frequency guard (CRITICAL)
+The spec specifies frequency for each table. Respect it strictly:
+- frequency = "year"    → NO quarterly or monthly decomposition; use year-over-year trends
+- frequency = "quarter" → NO monthly seasonal charts; K1/K2/K3/K4 faceting is fine
+- frequency = "month"   → full seasonal / monthly analysis allowed
 
 ## Seasonal analysis guard
 Before any monthly/seasonal chart:
@@ -636,61 +696,6 @@ local({
 # ── Remove thumbnail ──────────────────────────────────────────────────────────
 qmd_raw <- gsub('\nimage:\\s*["\']thumbnail\\.png["\']', "", qmd_raw)
 
-# ── Patch: harden time_col detection ─────────────────────────────────────────
-local({
-  lines     <- strsplit(qmd_raw, "\n", fixed = TRUE)[[1]]
-  canonical <- paste0('grepl("tid|\u00e5r|kvartal|m\u00e5ned|aar|maaned|year|month|quarter"')
-
-  i <- 1L
-  while (i <= length(lines)) {
-    if (grepl("time_col\\s*<-\\s*names\\(", lines[i], perl = TRUE) &&
-        grepl("grepl\\(", lines[i], perl = TRUE)) {
-
-      lines[i] <- sub('grepl\\("[^"]*"', canonical, lines[i], perl = TRUE)
-
-      if (!grepl("perl\\s*=\\s*TRUE", lines[i], perl = TRUE)) {
-        lines[i] <- sub(
-          "ignore\\.case\\s*=\\s*TRUE\\)",
-          "ignore.case = TRUE, perl = TRUE)",
-          lines[i], perl = TRUE
-        )
-      }
-
-      var_match <- regmatches(lines[i], regexpr("names\\(([^)]+)\\)", lines[i], perl = TRUE))
-      var_name  <- if (length(var_match) > 0L) {
-        sub("names\\(([^)]+)\\)", "\\1", var_match, perl = TRUE)
-      } else "tmp"
-
-      count_chars <- function(s, chars) {
-        nchar(gsub(paste0("[^", chars, "]"), "", s, perl = TRUE))
-      }
-      net_open <- count_chars(lines[i], "\\[\\(") - count_chars(lines[i], "\\]\\)")
-      end_i    <- i
-      while (net_open > 0L && end_i < length(lines)) {
-        end_i    <- end_i + 1L
-        net_open <- net_open +
-          count_chars(lines[end_i], "\\[\\(") -
-          count_chars(lines[end_i], "\\]\\)")
-      }
-
-      next_i <- end_i + 1L
-      while (next_i <= length(lines) && trimws(lines[next_i]) == "") next_i <- next_i + 1L
-      has_fallback <- next_i <= length(lines) &&
-        grepl("is\\.na\\(time_col\\)", lines[next_i], perl = TRUE)
-      if (!has_fallback) {
-        indent   <- sub("^([ \t]*).*", "\\1", lines[i], perl = TRUE)
-        fallback <- paste0(indent, "if (is.na(time_col)) time_col <- names(",
-                           var_name, ")[length(names(", var_name, ")) - 1L]")
-        lines <- c(lines[seq_len(end_i)], fallback,
-                   lines[seq.int(end_i + 1L, length(lines))])
-        i <- end_i + 1L
-      }
-    }
-    i <- i + 1L
-  }
-  qmd_raw <<- paste(lines, collapse = "\n")
-})
-
 # ── Reviewer pass ─────────────────────────────────────────────────────────────
 REVIEWER_SYSTEM_PROMPT <- 'You are a code reviewer for Quarto blog posts that use SSB data.
 Fix ONLY the specific bugs listed. Do not refactor or rewrite anything else.
@@ -786,7 +791,7 @@ reviewer_result <- review_and_fix_qmd(qmd_raw, valid_ids)
 qmd_raw         <- reviewer_result$qmd
 
 # ── Validate ──────────────────────────────────────────────────────────────────
-validate_qmd <- function(content) {
+validate_qmd <- function(content, agent_result = NULL) {
   issues <- character(0)
   if (!grepl("^---", trimws(content)))
     issues <- c(issues, "Missing YAML front matter")
@@ -797,10 +802,31 @@ validate_qmd <- function(content) {
     issues <- c(issues, "No ApiData() call found")
   if (!grepl("print\\(", content))
     issues <- c(issues, "No print() call — plots may not render")
+
+  # Semantic checks against agent spec
+  if (!is.null(agent_result)) {
+    for (d in agent_result$datasets) {
+      # Frequency mismatch: annual table described or filtered as quarterly
+      if (identical(as.character(d$frequency), "year") &&
+          grepl("K[1-4]|kvartal|quarter", content, ignore.case = TRUE, perl = TRUE)) {
+        issues <- c(issues, paste0("Table ", d$table_id,
+          " is annual (frequency=year) but code references quarters"))
+      }
+      # Series/measure confusion: measure column filtered for entity concepts
+      mc <- if (!is.null(d$measure_column)) as.character(d$measure_column) else ""
+      if (nchar(mc) > 0 &&
+          grepl(mc, content, fixed = TRUE) &&
+          grepl("household|GDP|BNP|syssels|investment|konsum",
+                content, ignore.case = TRUE, perl = TRUE)) {
+        issues <- c(issues, paste0("Possible series/measure confusion: entity concept ",
+          "may be filtered from measure column '", mc, "'"))
+      }
+    }
+  }
   issues
 }
 
-validation_issues <- validate_qmd(qmd_raw)
+validation_issues <- validate_qmd(qmd_raw, agent_result)
 if (length(validation_issues) > 0L)
   warning("Validation: ", paste(validation_issues, collapse = "; "))
 
