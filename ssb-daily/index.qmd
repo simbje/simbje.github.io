@@ -1,6 +1,6 @@
 ---
 title: "SSB Daily Analysis"
-subtitle: "A new AI-generated analysis of Norwegian statistics every morning"
+subtitle: "The purpose of this section is to expore the power of AI generated analysis, with the help of AI 'swarms', Getting AI to consistently analyse statistcs and code visualiastions. A new AI-generated analysis of Norwegian statistics every morning"
 listing:
   contents: "posts"
   sort: "date desc"
