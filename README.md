@@ -2,7 +2,7 @@
 
 A Quarto personal website with an automated daily SSB analysis blog, powered by the Anthropic API.
 
-## 🗂️ Structure
+## Structure
 
 ```
 ├── index.qmd                    # Homepage
@@ -15,7 +15,7 @@ A Quarto personal website with an automated daily SSB analysis blog, powered by 
 │   └── *.qmd
 ├── ssb-daily/
 │   ├── index.qmd                # SSB Daily listing page (auto)
-│   ├── generate_post.R          # 🤖 AI post generator
+│   ├── generate_post.R          # AI post generator
 │   ├── r-packages.txt           # R deps for GH Actions cache
 │   └── posts/
 │       └── YYYY-MM-DD/          # Generated daily posts
@@ -27,7 +27,7 @@ A Quarto personal website with an automated daily SSB analysis blog, powered by 
 
 ---
 
-## 🚀 Setup (one time)
+## Setup (one time)
 
 ### 1. Fork / clone and configure
 
@@ -56,7 +56,7 @@ The workflow triggers on push — your site goes live. After that, every morning
 
 ---
 
-## 🤖 How the Daily Post Generation Works
+## How the Daily Post Generation Works
 
 ```
 07:00 CET daily
@@ -97,7 +97,7 @@ control what Claude knows and what style it writes in.
 
 ---
 
-## ✍️ Adding a Manual Blog Post
+## Adding a Manual Blog Post
 
 ```bash
 mkdir blog/posts/2025-04-my-topic
@@ -119,7 +119,7 @@ Commit and push — it appears in the blog listing automatically.
 
 ---
 
-## 🎨 Theming
+## Theming
 
 Edit `assets/styles.scss`. Key variables:
 
@@ -131,7 +131,7 @@ $accent:    #0f3460;   // Mid navy
 
 ---
 
-## 📦 Key R Packages
+## Key R Packages
 
 | Package | Purpose |
 |---|---|

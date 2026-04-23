@@ -491,7 +491,10 @@ build_verified_spec <- function(agent_result) {
 # ── Run discovery agent ────────────────────────────────────────────────────────
 message("Phase 1: Running discovery agent...")
 agent_result <- run_discovery_agent()
-if (is.null(agent_result)) stop("Discovery agent failed to finalize a topic. Check SSB API connectivity.")
+if (is.null(agent_result)) {
+  message("SSB API unavailable or discovery agent could not finalize — skipping today's post.")
+  quit(save = "no", status = 0)
+}
 
 VERIFIED_SPEC <- build_verified_spec(agent_result)
 valid_ids     <- vapply(agent_result$datasets, function(d) as.character(d$table_id), character(1L))
