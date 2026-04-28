@@ -86,6 +86,16 @@ recent_topics_note <- if (nrow(topic_index) > 0) {
   "No previous posts yet."
 }
 
+error_patterns_note <- local({
+  path <- file.path("ssb-daily", "error_patterns.md")
+  if (!file.exists(path) || file.size(path) == 0L) return("")
+  content  <- paste(readLines(path, warn = FALSE), collapse = "\n")
+  sections <- strsplit(content, "\n(?=## )", perl = TRUE)[[1]]
+  recent   <- tail(sections, 15L)
+  paste0("## Known error patterns from past posts — avoid repeating:\n\n",
+         paste(recent, collapse = "\n\n"))
+})
+
 # ── SSB seed table list ────────────────────────────────────────────────────────
 SSB_SEED_TABLES <- paste(c(
   "14700 - Consumer Price Index (new series 2026)",
@@ -588,8 +598,8 @@ Only do seasonal charts if has_monthly is TRUE.
 ```
 
 ## R code requirements
-- First chunk: knitr::opts_chunk$set(echo=TRUE, warning=FALSE, message=FALSE, error=TRUE)
-- Include all library() calls at the top
+- FIRST CHUNK (label: setup): combine knitr::opts_chunk$set(...), ALL library() calls, and ALL data fetch chunks into ONE single ```{r setup}``` block — no separate setup or library chunks
+- Do NOT split setup, libraries, or fetches into separate chunks
 - Use tidyverse throughout
 - echo: true
 
@@ -613,6 +623,14 @@ PART 1: METADATA: title="..." datasets="..." chart_types="..."
 PART 2: Raw .qmd starting with ---
 No preamble, no markdown fences around the output, no explanation.'
 
+# Append error patterns if any exist
+if (nzchar(error_patterns_note)) {
+  SYSTEM_PROMPT <- paste0(
+    SYSTEM_PROMPT,
+    "\n\n", error_patterns_note
+  )
+}
+
 # ── User prompt ────────────────────────────────────────────────────────────────
 USER_PROMPT <- paste0(
   "Today is ", format(TODAY, "%A, %d %B %Y"), ".\n\n",
@@ -620,17 +638,12 @@ USER_PROMPT <- paste0(
   recent_topics_note, "\n\n",
   "Write a complete Quarto blog post following the story angle above.\n\n",
   "Your document must contain these chunks in order:\n\n",
-  "CHUNK 1 — Setup (first chunk, label: setup):\n",
-  "```r\n",
-  "knitr::opts_chunk$set(echo=TRUE, warning=FALSE, message=FALSE, error=TRUE)\n",
-  "```\n\n",
-  "CHUNK 2 — Libraries:\n",
-  "```r\n",
-  "library(tidyverse); library(lubridate); library(PxWebApiData)\n",
-  "library(scales)  # and any palette package you choose\n",
-  "```\n\n",
-  "CHUNK 3+ — Fetch chunks: copy each pre-written fetch chunk from the spec VERBATIM.\n",
-  "           Do NOT rewrite them. Do NOT add grepl column detection.\n\n",
+  "CHUNK 1 — Combined infrastructure (label: setup) — ONE single block containing ALL of:\n",
+  "  - knitr::opts_chunk$set(echo=TRUE, warning=FALSE, message=FALSE, error=TRUE)\n",
+  "  - ALL library() calls (tidyverse, lubridate, PxWebApiData, scales, palette package, etc.)\n",
+  "  - ALL data fetch chunks from the spec, copied VERBATIM — do NOT rewrite or add grepl\n",
+  "Do NOT use separate chunks for setup, libraries, or fetches — combine into one.\n\n",
+  "CHUNK 2+ — Wrangle chunk(s): data transformation after fetching.\n\n",
   "CHUNK N+ — Plot chunks (3-5 total): guard with if (!is.null(df)) { ... }; always print().\n",
   "           Use series_col / measure_col variables for filtering — see spec for exact values."
 )
