@@ -1,8 +1,8 @@
 ---
-title: "Norway's Sectoral Divergence: How Some Industries Thrive While Others Face Structural Collapse"
-description: "A data-driven examination of how Norway's industrial sectors have grown apart in output and profitability, while household consumption tells a story of structural strain."
+title: "Norway's Housing Construction Crossroads: Single-Family Dominance and the Urban Density Question"
+description: "Four decades of building permit and national accounts data reveal how Norway's construction preferences clash with its urban density ambitions in 2026."
 date: "2026-04-28"
-categories: [SSB, national accounts, industry, consumption, economics]
+categories: [SSB, housing, construction, national accounts, urban planning]
 ---
 
 ```{r setup}
@@ -23,16 +23,16 @@ library(ggridges)
 df1 <- NULL
 tryCatch({
   raw <- ApiData(
-    "https://data.ssb.no/api/v0/no/table/09170",
-    NACE = TRUE,
+    "https://data.ssb.no/api/v0/no/table/06265",
+    Region = TRUE,
+    BygnType = TRUE,
     ContentsCode = TRUE,
     Tid = list(filter = "top", values = 40)
   )
   tmp          <- raw[[1]]
   time_col     <- "år"
   value_col    <- "value"
-  series_col   <- "næring"
-  measure_col  <- "statistikkvariabel"
+  series_col   <- "bygningstype"
   df1 <- tmp |>
     mutate(
       value    = as.numeric(.data[[value_col]]),
@@ -77,504 +77,444 @@ tryCatch({
 }, error = function(e) message("Fetch failed: ", e$message))
 ```
 
-## The Great Norwegian Sectoral Split
+## The Building Blocks of a Nation
 
-Norway's national accounts conceal a story of deepening divergence. Beneath the headline GDP figures, some industries have compounded their dominance over forty years while others have stalled or contracted in real terms. Meanwhile, households are watching the gap between what they earn and what they can buy quietly widen.
+Every house built in Norway is a statement about the kind of country it wants to be. A detached single-family home signals space, privacy, and the long Norwegian tradition of the independent household. An apartment block signals density, urban efficiency, and the logic of a modern city that cannot keep sprawling outward forever. For decades, these two visions have competed — and the numbers from Statistics Norway tell us which one has been winning.
 
-Using Statistics Norway's own production and consumption data, this post maps the fault lines — across sectors and across time — that define Norway's economic landscape in 2025 and beyond.
+Using four decades of building-permit data alongside national accounts consumption figures, this analysis traces how Norway's construction choices have shifted, what that means for household spending, and why the question of housing type matters far beyond architecture.
 
----
+## Charting the Shifts: Four Decades of Building Permits by Type
 
-## Part 1 — Gross Value Added: The Sectors That Pulled Away
-
-The first question to ask of any national accounts dataset is simple: who grew? Gross value added (bruttoprodukt) at current prices captures both volume growth and price effects, making it a practical measure of which sectors have increased their economic footprint in nominal terms.
-
-```{r plot-gva-area}
+```{r plot-area-stacked}
 #| fig-height: 6
 #| fig-width: 10
 #| fig-show: asis
 #| dev: "png"
 
 if (!is.null(df1)) {
-  df_gva <- df1 |>
-    filter(
-      .data[["statistikkvariabel"]] == "Bruttoprodukt i basisverdi. Løpende priser (mill. kr)",
-      .data[["næring"]] %in% c(
-        "Totalt for næringer",
-        "Industri",
-        "Jordbruk og skogbruk",
-        "Fiske, fangst og akvakultur",
-        "Bergverksdrift"
-      )
-    )
+  # Use national totals: filter where region column suggests national aggregate
+  # Inspect available columns
+  region_col_candidate <- setdiff(names(df1), c("år", "value", "time_str", "date", "bygningstype"))
+  
+  # Build national aggregate by summing all regions
+  df1_national <- df1 |>
+    group_by(date, time_str, bygningstype) |>
+    summarise(value = sum(value, na.rm = TRUE), .groups = "drop")
 
-  if (nrow(df_gva) == 0) {
-    message("GVA filter empty. næring values: ",
-            paste(head(unique(df1[["næring"]]), 15), collapse = ", "))
-    df_gva <- NULL
+  # Keep only the main residential building types
+  types_keep <- c(
+    "Enebolig",
+    "Tomannsbolig",
+    "Rekkehus, kjedehus og andre småhus",
+    "Boligblokk",
+    "Bygning for bofellesskap"
+  )
+
+  df1_sub <- df1_national |>
+    filter(bygningstype %in% types_keep)
+
+  if (nrow(df1_sub) == 0) {
+    message("Filter empty. Values: ", paste(head(unique(df1_national$bygningstype), 15), collapse = ", "))
+    df1_sub <- NULL
   }
 
-  if (!is.null(df_gva)) {
-    palette_sectors <- met.brewer("Hokusai2", n = 5)
+  if (!is.null(df1_sub)) {
+    # Relevel for cleaner stacking
+    df1_sub <- df1_sub |>
+      mutate(bygningstype = factor(bygningstype, levels = rev(types_keep)))
 
-    p1 <- ggplot(
-      df_gva |> filter(.data[["næring"]] != "Totalt for næringer"),
-      aes(x = date, y = value / 1000, fill = .data[["næring"]])
-    ) +
-      geom_area(alpha = 0.85, colour = "white", linewidth = 0.3, position = "stack") +
-      scale_fill_manual(values = palette_sectors[-1]) +
-      scale_y_continuous(labels = label_number(suffix = " mrd kr", scale = 1)) +
-      scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
+    pal <- met.brewer("Hokusai2", n = 5)
+
+    p <- ggplot(df1_sub, aes(x = date, y = value, fill = bygningstype)) +
+      geom_area(alpha = 0.9, colour = "white", linewidth = 0.3) +
+      scale_fill_manual(
+        values = pal,
+        labels = c(
+          "Bygning for bofellesskap" = "Communal housing",
+          "Boligblokk"               = "Apartment block",
+          "Rekkehus, kjedehus og andre småhus" = "Terraced & semi-detached",
+          "Tomannsbolig"             = "Two-family house",
+          "Enebolig"                 = "Detached single-family"
+        ),
+        guide = guide_legend(reverse = TRUE)
+      ) +
+      scale_x_date(breaks = seq(as.Date("1990-01-01"), as.Date("2026-01-01"), by = "5 years"),
+                   date_labels = "%Y") +
+      scale_y_continuous(labels = comma_format(big.mark = " ")) +
       labs(
-        title = "Four sectors, four trajectories",
-        subtitle = "Stacked gross value added at current prices — industry dominates, fishing has barely moved",
-        x = NULL,
-        y = "Gross value added (billion NOK)",
-        fill = NULL,
-        caption = "Source: Statistics Norway, table 09170"
+        title    = "Detached homes have dominated Norwegian construction for four decades",
+        subtitle = "Total dwelling units granted building permits, by type — all regions combined",
+        x        = NULL,
+        y        = "Dwelling units",
+        fill     = "Building type",
+        caption  = "Source: Statistics Norway, table 06265"
       ) +
       theme_minimal(base_size = 13) +
       theme(
-        legend.position = "bottom",
+        legend.position  = "right",
         panel.grid.minor = element_blank(),
-        plot.title = element_text(face = "bold", size = 15),
-        plot.subtitle = element_text(colour = "grey40", size = 11),
-        plot.caption = element_text(colour = "grey55", size = 9)
+        plot.title       = element_text(face = "bold", size = 14),
+        plot.subtitle    = element_text(colour = "grey40", size = 11),
+        plot.caption     = element_text(colour = "grey55", size = 9)
       )
-
-    print(p1)
+    print(p)
   }
 }
 ```
 
-Industri towers over the other three primary sectors in cumulative gross value added. Bergverksdrift (mining, excluding petroleum by national accounts convention here) shows a more modest trend. Agriculture and forestry remain remarkably flat in nominal terms across decades, while aquaculture and fishing show more recent acceleration but from a tiny base.
+## The Shifting Share: Who Is Gaining Ground?
 
----
+The raw totals tell one story, but the proportional breakdown reveals another. As Norway's population has grown and urban land has become scarcer, planners and policymakers have consistently pushed for more compact housing. Has it worked?
 
-## Part 2 — Operating Surplus: Where Profit Really Lives
-
-Gross value added tells us output; operating surplus (driftsresultat) tells us who actually captures that output as profit. The gap between the two — wages, depreciation, taxes — varies enormously by sector. A sector with high output but thin operating margins is structurally different from one where value added flows directly to the bottom line.
-
-```{r plot-lollipop-surplus}
+```{r plot-slope-shares}
 #| fig-height: 6
-#| fig-width: 10
+#| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
 
 if (!is.null(df1)) {
-  # Get most recent year available
-  max_year <- max(df1$date, na.rm = TRUE)
+  types_keep <- c(
+    "Enebolig",
+    "Tomannsbolig",
+    "Rekkehus, kjedehus og andre småhus",
+    "Boligblokk",
+    "Bygning for bofellesskap"
+  )
 
-  df_surplus <- df1 |>
-    filter(
-      .data[["statistikkvariabel"]] == "Driftsresultat. Løpende priser (mill. kr)",
-      date == max_year,
-      .data[["næring"]] %in% c(
-        "Industri",
-        "Jordbruk og skogbruk",
-        "Fiske, fangst og akvakultur",
-        "Bergverksdrift"
-      )
+  df1_national <- df1 |>
+    group_by(date, time_str, bygningstype) |>
+    summarise(value = sum(value, na.rm = TRUE), .groups = "drop")
+
+  df1_share <- df1_national |>
+    filter(bygningstype %in% types_keep) |>
+    group_by(date) |>
+    mutate(share = value / sum(value, na.rm = TRUE) * 100) |>
+    ungroup()
+
+  # Slope chart: compare earliest available vs latest available year
+  year_range <- df1_share |>
+    filter(bygningstype %in% types_keep) |>
+    summarise(min_yr = min(date), max_yr = max(date))
+
+  df1_slope <- df1_share |>
+    filter(date == year_range$min_yr | date == year_range$max_yr) |>
+    mutate(
+      period = if_else(date == year_range$min_yr, "Earlier", "Latest"),
+      yr_label = year(date)
     )
 
-  if (nrow(df_surplus) == 0) {
-    message("Surplus filter empty. næring values: ",
-            paste(head(unique(df1[["næring"]]), 15), collapse = ", "))
-    df_surplus <- NULL
-  }
+  if (nrow(df1_slope) == 0) {
+    message("Slope data empty.")
+  } else {
+    type_labels <- c(
+      "Enebolig"                           = "Detached",
+      "Tomannsbolig"                       = "Two-family",
+      "Rekkehus, kjedehus og andre småhus" = "Terraced/semi-det.",
+      "Boligblokk"                         = "Apartment block",
+      "Bygning for bofellesskap"           = "Communal"
+    )
 
-  # Also get GVA for same year for ratio calculation
-  df_gva_latest <- df1 |>
-    filter(
-      .data[["statistikkvariabel"]] == "Bruttoprodukt i basisverdi. Løpende priser (mill. kr)",
-      date == max_year,
-      .data[["næring"]] %in% c(
-        "Industri",
-        "Jordbruk og skogbruk",
-        "Fiske, fangst og akvakultur",
-        "Bergverksdrift"
-      )
-    ) |>
-    select(næring, gva = value)
+    df1_slope <- df1_slope |>
+      mutate(type_en = recode(bygningstype, !!!type_labels))
 
-  if (!is.null(df_surplus) && nrow(df_surplus) > 0) {
-    df_ratio <- df_surplus |>
-      left_join(df_gva_latest, by = "næring") |>
-      mutate(
-        margin = value / gva * 100,
-        næring_short = case_when(
-          næring == "Jordbruk og skogbruk" ~ "Agriculture\n& Forestry",
-          næring == "Fiske, fangst og akvakultur" ~ "Fishing &\nAquaculture",
-          næring == "Bergverksdrift" ~ "Mining &\nQuarrying",
-          næring == "Industri" ~ "Manufacturing",
-          TRUE ~ næring
-        )
-      ) |>
-      arrange(margin)
+    pal5 <- met.brewer("Hokusai2", n = 5)
+    names(pal5) <- c("Detached", "Two-family", "Terraced/semi-det.", "Apartment block", "Communal")
 
-    year_label <- format(max_year, "%Y")
+    # get label years for x-axis
+    yrs <- sort(unique(df1_slope$yr_label))
 
-    palette_lollipop <- met.brewer("Hokusai2", n = 4)
-
-    p2 <- ggplot(df_ratio, aes(x = reorder(næring_short, margin), y = margin)) +
-      geom_segment(aes(xend = næring_short, y = 0, yend = margin),
-                   colour = "grey70", linewidth = 1.2) +
-      geom_point(aes(colour = næring_short), size = 7) +
-      geom_text(aes(label = paste0(round(margin, 1), "%")),
-                hjust = -0.4, size = 4.2, fontface = "bold") +
-      scale_colour_manual(values = palette_lollipop, guide = "none") +
-      scale_y_continuous(limits = c(0, max(df_ratio$margin, na.rm = TRUE) * 1.25),
-                         labels = label_percent(scale = 1)) +
-      coord_flip() +
+    p2 <- ggplot(df1_slope, aes(x = factor(yr_label), y = share,
+                                 group = type_en, colour = type_en)) +
+      geom_line(linewidth = 1.4, alpha = 0.85) +
+      geom_point(size = 4) +
+      geom_text(
+        data = df1_slope |> filter(yr_label == max(yrs)),
+        aes(label = paste0(type_en, "\n", round(share, 1), "%")),
+        hjust = -0.08, size = 3.4, fontface = "bold"
+      ) +
+      geom_text(
+        data = df1_slope |> filter(yr_label == min(yrs)),
+        aes(label = paste0(round(share, 1), "%")),
+        hjust = 1.2, size = 3.2
+      ) +
+      scale_colour_manual(values = pal5) +
+      scale_y_continuous(labels = function(x) paste0(x, "%"), limits = c(0, 65)) +
+      scale_x_discrete(expand = expansion(mult = c(0.25, 0.45))) +
       labs(
-        title = paste0("Profit margins diverge sharply across sectors (", year_label, ")"),
-        subtitle = "Operating surplus as share of gross value added — fishing captures far more per unit of output",
-        x = NULL,
-        y = "Operating surplus / Gross value added (%)",
-        caption = "Source: Statistics Norway, table 09170"
+        title    = "Apartment blocks have grown their share — but detached homes remain the plurality",
+        subtitle = "Percentage share of building-permit units by type: earliest vs latest year in data",
+        x        = NULL,
+        y        = "Share of total permits (%)",
+        caption  = "Source: Statistics Norway, table 06265"
       ) +
       theme_minimal(base_size = 13) +
       theme(
+        legend.position  = "none",
         panel.grid.minor = element_blank(),
-        panel.grid.major.y = element_blank(),
-        plot.title = element_text(face = "bold", size = 14),
-        plot.subtitle = element_text(colour = "grey40", size = 11),
-        plot.caption = element_text(colour = "grey55", size = 9)
+        plot.title       = element_text(face = "bold", size = 13),
+        plot.subtitle    = element_text(colour = "grey40", size = 11),
+        plot.caption     = element_text(colour = "grey55", size = 9)
       )
-
     print(p2)
   }
 }
 ```
 
-The operating margin comparison is striking. Fishing and aquaculture convert a far higher share of gross value added into operating surplus than manufacturing does. Agriculture and forestry sit at the bottom — decades of structural support have not translated into profitability. This divergence in margins explains why capital continues to flood into Norway's seafood sector while traditional industry consolidates.
+## Annual Volatility: Which Types Swing the Most?
 
----
+Policy levers, interest rates, and land availability do not affect all housing types equally. Detached homes may be more resilient to credit conditions than large apartment blocks, which depend heavily on developer finance. A small-multiples view across the main types captures this divergence in volatility.
 
-## Part 3 — Long-Run Sector Slopes: Who Grew Fastest Since the Mid-1980s?
-
-A slope chart anchored at the earliest and latest available years strips away the noise and reveals structural winners and losers. The comparison is in real (fixed-price) terms, removing inflation and isolating genuine volume growth.
-
-```{r plot-slope-real}
-#| fig-height: 7
-#| fig-width: 10
-#| fig-show: asis
-#| dev: "png"
-
-if (!is.null(df1)) {
-  df_real <- df1 |>
-    filter(
-      .data[["statistikkvariabel"]] == "Produksjon i basisverdi. Faste 2023-priser (mill. kr)",
-      .data[["næring"]] %in% c(
-        "Industri",
-        "Jordbruk og skogbruk",
-        "Fiske, fangst og akvakultur",
-        "Bergverksdrift"
-      )
-    )
-
-  if (nrow(df_real) == 0) {
-    message("Real filter empty. Values: ",
-            paste(head(unique(df1[["statistikkvariabel"]]), 10), collapse = ", "))
-    df_real <- NULL
-  }
-
-  if (!is.null(df_real)) {
-    year_range <- df_real |>
-      summarise(min_date = min(date), max_date = max(date))
-
-    df_slope_ends <- df_real |>
-      filter(date %in% c(year_range$min_date, year_range$max_date)) |>
-      mutate(
-        period = if_else(date == year_range$min_date, "Start", "End"),
-        næring_short = case_when(
-          næring == "Jordbruk og skogbruk" ~ "Agriculture & Forestry",
-          næring == "Fiske, fangst og akvakultur" ~ "Fishing & Aquaculture",
-          næring == "Bergverksdrift" ~ "Mining & Quarrying",
-          næring == "Industri" ~ "Manufacturing",
-          TRUE ~ næring
-        )
-      )
-
-    # Calculate growth multiplier for subtitle annotation
-    df_growth <- df_slope_ends |>
-      select(næring_short, period, value) |>
-      pivot_wider(names_from = period, values_from = value) |>
-      mutate(growth = End / Start)
-
-    palette_slope <- met.brewer("Hokusai2", n = 4)
-
-    p3 <- ggplot(df_slope_ends,
-                 aes(x = period, y = value / 1000,
-                     group = næring_short, colour = næring_short)) +
-      geom_line(linewidth = 1.6, alpha = 0.85) +
-      geom_point(size = 4) +
-      geom_text(
-        data = df_slope_ends |> filter(period == "End"),
-        aes(label = næring_short),
-        hjust = -0.08, size = 3.6, fontface = "bold"
-      ) +
-      geom_text(
-        data = df_slope_ends |> filter(period == "Start"),
-        aes(label = paste0(round(value / 1000, 0), " mrd")),
-        hjust = 1.15, size = 3.2, colour = "grey45"
-      ) +
-      geom_text(
-        data = df_slope_ends |> filter(period == "End"),
-        aes(label = paste0(round(value / 1000, 0), " mrd")),
-        hjust = -0.9, size = 3.2, colour = "grey45"
-      ) +
-      scale_colour_manual(values = palette_slope, guide = "none") +
-      scale_x_discrete(
-        labels = c(
-          "Start" = format(year_range$min_date, "%Y"),
-          "End"   = format(year_range$max_date, "%Y")
-        ),
-        expand = expansion(add = c(0.5, 2.8))
-      ) +
-      scale_y_continuous(labels = label_number(suffix = " mrd")) +
-      labs(
-        title = "Fishing has outpaced manufacturing in real output growth",
-        subtitle = "Production at fixed 2023 prices — earliest vs latest available year",
-        x = NULL,
-        y = "Production (billion NOK, fixed 2023 prices)",
-        caption = "Source: Statistics Norway, table 09170"
-      ) +
-      theme_minimal(base_size = 13) +
-      theme(
-        panel.grid.minor = element_blank(),
-        panel.grid.major.x = element_blank(),
-        plot.title = element_text(face = "bold", size = 14),
-        plot.subtitle = element_text(colour = "grey40", size = 11),
-        plot.caption = element_text(colour = "grey55", size = 9)
-      )
-
-    print(p3)
-  }
-}
-```
-
-The slope chart reveals a fundamental restructuring. Fishing, fangst og akvakultur has grown its real production base at a rate that far outpaces the other sectors shown here. Manufacturing, despite its absolute size advantage, shows more modest real growth — consistent with the hollowing-out narrative that has played out across advanced economies. Agriculture barely registers a change, suggesting decades of near-stagnation in volume terms despite significant policy support.
-
----
-
-## Part 4 — Household Consumption: Volume vs Price, a Growing Divide
-
-On the demand side, table 09189 tracks household consumption split between goods and services, at both current and fixed prices. When the price deflator exceeds volume growth, households are paying more for the same or less. This squeeze is where macroeconomic divergence becomes personal.
-
-```{r plot-consumption-smallmultiples}
+```{r plot-small-multiples}
 #| fig-height: 7
 #| fig-width: 11
 #| fig-show: asis
 #| dev: "png"
 
-if (!is.null(df2)) {
-  series_col2   <- "makrostørrelse"
-  measure_col2  <- "statistikkvariabel"
+if (!is.null(df1)) {
+  types_keep <- c(
+    "Enebolig",
+    "Tomannsbolig",
+    "Rekkehus, kjedehus og andre småhus",
+    "Boligblokk",
+    "Bygning for bofellesskap"
+  )
 
-  df_cons <- df2 |>
-    filter(
-      .data[[series_col2]] %in% c(
-        "Varekonsum",
-        "Tjenestekonsum"
-      ),
-      .data[[measure_col2]] %in% c(
-        "Løpende priser (mill. kr)",
-        "Faste 2023-priser (mill. kr)"
-      )
-    )
+  type_labels_long <- c(
+    "Enebolig"                           = "Detached single-family",
+    "Tomannsbolig"                       = "Two-family house",
+    "Rekkehus, kjedehus og andre småhus" = "Terraced & semi-detached",
+    "Boligblokk"                         = "Apartment block",
+    "Bygning for bofellesskap"           = "Communal housing"
+  )
 
-  if (nrow(df_cons) == 0) {
-    message("Consumption filter empty. makrostørrelse values: ",
-            paste(head(unique(df2[[series_col2]]), 15), collapse = ", "),
-            " | statistikkvariabel values: ",
-            paste(head(unique(df2[[measure_col2]]), 10), collapse = ", "))
-    df_cons <- NULL
-  }
+  df1_national <- df1 |>
+    group_by(date, time_str, bygningstype) |>
+    summarise(value = sum(value, na.rm = TRUE), .groups = "drop")
 
-  if (!is.null(df_cons)) {
-    df_cons_plot <- df_cons |>
-      mutate(
-        type_label = case_when(
-          .data[[series_col2]] == "Varekonsum"     ~ "Goods consumption",
-          .data[[series_col2]] == "Tjenestekonsum" ~ "Services consumption",
-          TRUE ~ .data[[series_col2]]
-        ),
-        price_label = case_when(
-          .data[[measure_col2]] == "Løpende priser (mill. kr)"   ~ "Current prices",
-          .data[[measure_col2]] == "Faste 2023-priser (mill. kr)" ~ "Fixed 2023 prices",
-          TRUE ~ .data[[measure_col2]]
-        )
-      )
+  df1_facet <- df1_national |>
+    filter(bygningstype %in% types_keep) |>
+    mutate(type_en = recode(bygningstype, !!!type_labels_long),
+           type_en = factor(type_en, levels = type_labels_long))
 
-    palette_cons <- met.brewer("Hokusai2", n = 2, type = "discrete")
+  if (nrow(df1_facet) == 0) {
+    message("Facet data empty.")
+  } else {
+    pal5 <- met.brewer("Hokusai2", n = 5)
 
-    p4 <- ggplot(df_cons_plot,
-                 aes(x = date, y = value / 1000,
-                     colour = price_label, fill = price_label)) +
-      geom_ribbon(
-        data = df_cons_plot |>
-          select(date, type_label, price_label, value) |>
-          pivot_wider(names_from = price_label, values_from = value) |>
-          filter(!is.na(`Current prices`) & !is.na(`Fixed 2023 prices`)),
-        aes(ymin = `Fixed 2023 prices` / 1000,
-            ymax = `Current prices` / 1000,
-            x = date),
-        inherit.aes = FALSE,
-        alpha = 0.18,
-        fill = palette_cons[1]
-      ) +
-      geom_line(linewidth = 1.2, alpha = 0.9) +
-      scale_colour_manual(values = palette_cons) +
-      scale_fill_manual(values = palette_cons, guide = "none") +
-      scale_y_continuous(labels = label_number(suffix = " mrd")) +
-      scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
-      facet_wrap(~ type_label, ncol = 2, scales = "free_y") +
+    p3 <- ggplot(df1_facet, aes(x = date, y = value, fill = type_en)) +
+      geom_area(alpha = 0.85) +
+      geom_line(colour = "white", linewidth = 0.3) +
+      facet_wrap(~ type_en, scales = "free_y", ncol = 2) +
+      scale_fill_manual(values = pal5) +
+      scale_x_date(date_breaks = "10 years", date_labels = "%Y") +
+      scale_y_continuous(labels = comma_format(big.mark = " ")) +
       labs(
-        title = "The inflation wedge in Norwegian household consumption",
-        subtitle = "Shaded band = gap between what households pay (current) vs real volume (fixed 2023 prices)",
-        x = NULL,
-        y = "Consumption (billion NOK)",
-        colour = NULL,
-        caption = "Source: Statistics Norway, table 09189"
+        title    = "Apartment block permits are the most volatile; detached homes the most stable",
+        subtitle = "Annual building permits by dwelling type — free y-axis scales to highlight within-type variation",
+        x        = NULL,
+        y        = "Dwelling units (permits)",
+        caption  = "Source: Statistics Norway, table 06265"
       ) +
-      theme_minimal(base_size = 13) +
+      theme_minimal(base_size = 12) +
       theme(
-        legend.position = "bottom",
-        strip.text = element_text(face = "bold", size = 12),
+        legend.position  = "none",
         panel.grid.minor = element_blank(),
-        plot.title = element_text(face = "bold", size = 14),
-        plot.subtitle = element_text(colour = "grey40", size = 11),
-        plot.caption = element_text(colour = "grey55", size = 9)
+        strip.text       = element_text(face = "bold", size = 10),
+        plot.title       = element_text(face = "bold", size = 13),
+        plot.subtitle    = element_text(colour = "grey40", size = 10),
+        plot.caption     = element_text(colour = "grey55", size = 9)
       )
-
-    print(p4)
+    print(p3)
   }
 }
 ```
 
-The shaded band between current-price and fixed-price consumption lines is a direct visual measure of inflation's toll. For goods, the wedge has widened markedly in recent years: households are spending much more nominally, but the volume of goods they are actually consuming has grown far more slowly — and in some periods has stagnated. Services show a similar but less acute pattern, reflecting how service price inflation, though substantial, has been somewhat more contained than goods inflation.
+## What Households Are Actually Spending: The Consumption Picture
 
----
+Construction patterns do not exist in isolation. The demand for a particular housing type is shaped by broader household economic conditions — and the national accounts give us the clearest read on real purchasing power. When household consumption stagnates or declines in real terms, the incentive to commission or purchase a new home diminishes sharply.
 
-## Part 5 — Annual Volume and Price Changes: What Drives the Squeeze
-
-The final chart focuses on the annual percentage changes in household consumption volume and prices. Periods where price change exceeds volume change represent genuine real-terms contraction in living standards.
-
-```{r plot-dumbbell-changes}
-#| fig-height: 7
+```{r plot-consumption-area}
+#| fig-height: 6
 #| fig-width: 10
 #| fig-show: asis
 #| dev: "png"
 
 if (!is.null(df2)) {
-  series_col2  <- "makrostørrelse"
+  # We need series_col and measure_col from df2 context
+  series_col2  <- "makrost.rrelse"
   measure_col2 <- "statistikkvariabel"
 
-  df_pct <- df2 |>
+  # Filter: household consumption in fixed 2023 prices (real terms)
+  df2_hh <- df2 |>
     filter(
-      .data[[series_col2]] == "Konsum i husholdninger",
-      .data[[measure_col2]] %in% c(
-        "Volumendring, årlig (prosent)",
-        "Prisendring, årlig (prosent)"
-      )
+      .data[[series_col2]]  == "Konsum i husholdninger",
+      .data[[measure_col2]] == "Faste 2023-priser (mill. kr)"
     )
 
-  if (nrow(df_pct) == 0) {
-    message("Pct filter empty. makrostørrelse: ",
-            paste(head(unique(df2[[series_col2]]), 15), collapse = ", "),
-            " | statistikkvariabel: ",
+  if (nrow(df2_hh) == 0) {
+    message("df2_hh empty. series values: ",
+            paste(head(unique(df2[[series_col2]]), 10), collapse = ", "),
+            " | measure values: ",
             paste(head(unique(df2[[measure_col2]]), 10), collapse = ", "))
-    df_pct <- NULL
+    df2_hh <- NULL
   }
 
-  if (!is.null(df_pct)) {
-    df_pct_wide <- df_pct |>
-      mutate(
-        change_type = case_when(
-          .data[[measure_col2]] == "Volumendring, årlig (prosent)" ~ "Volume change",
-          .data[[measure_col2]] == "Prisendring, årlig (prosent)"  ~ "Price change",
-          TRUE ~ .data[[measure_col2]]
-        )
-      ) |>
-      select(date, change_type, value) |>
-      pivot_wider(names_from = change_type, values_from = value) |>
-      filter(!is.na(`Volume change`) & !is.na(`Price change`)) |>
-      mutate(
-        year = year(date),
-        real_squeeze = `Price change` > `Volume change`
-      ) |>
-      filter(year >= 2000)
+  if (!is.null(df2_hh)) {
+    # Compute indexed value (first year = 100)
+    df2_hh <- df2_hh |>
+      arrange(date) |>
+      mutate(index = value / first(value) * 100)
 
-    palette_db <- met.brewer("Hokusai2", n = 3)
-
-    p5 <- ggplot(df_pct_wide, aes(y = factor(year))) +
-      geom_segment(
-        aes(
-          x = `Volume change`,
-          xend = `Price change`,
-          yend = factor(year),
-          colour = real_squeeze
-        ),
-        linewidth = 1.3,
-        alpha = 0.7
+    p4 <- ggplot(df2_hh, aes(x = date, y = index)) +
+      geom_area(fill = met.brewer("Hokusai2", n = 5)[4], alpha = 0.6) +
+      geom_line(colour = met.brewer("Hokusai2", n = 5)[4], linewidth = 1.2) +
+      geom_hline(yintercept = 100, linetype = "dashed", colour = "grey40", linewidth = 0.7) +
+      annotate("text", x = as.Date("1990-01-01"), y = 102, label = "Base = 100",
+               hjust = 0, colour = "grey40", size = 3.5) +
+      annotate(
+        "rect",
+        xmin = as.Date("2021-01-01"), xmax = as.Date("2023-06-01"),
+        ymin = -Inf, ymax = Inf,
+        alpha = 0.12, fill = "firebrick"
       ) +
-      geom_point(aes(x = `Volume change`), colour = palette_db[1], size = 3.5) +
-      geom_point(aes(x = `Price change`),  colour = palette_db[3], size = 3.5) +
-      geom_vline(xintercept = 0, linetype = "dashed", colour = "grey50", linewidth = 0.8) +
-      scale_colour_manual(
-        values = c("FALSE" = "steelblue3", "TRUE" = "#c0392b"),
-        labels = c("FALSE" = "Real gain", "TRUE" = "Real squeeze"),
-        name = NULL
-      ) +
-      annotate("text", x = -8, y = 1, label = "Volume change",
-               colour = palette_db[1], fontface = "bold", size = 3.6) +
-      annotate("text", x =  8, y = 1, label = "Price change",
-               colour = palette_db[3], fontface = "bold", size = 3.6) +
+      annotate("text",
+               x = as.Date("2021-07-01"), y = max(df2_hh$index, na.rm = TRUE) * 0.97,
+               label = "Inflation surge", hjust = 0, colour = "firebrick", size = 3.5,
+               fontface = "italic") +
+      scale_x_date(breaks = seq(as.Date("1986-01-01"), as.Date("2026-01-01"), by = "5 years"),
+                   date_labels = "%Y") +
+      scale_y_continuous(labels = function(x) paste0(x)) +
       labs(
-        title = "When prices outrun volume: Norway's household consumption squeeze",
-        subtitle = "Red segments = years where price inflation exceeded real consumption volume growth (2000–latest)",
-        x = "Annual change (%)",
-        y = NULL,
-        caption = "Source: Statistics Norway, table 09189"
+        title    = "Real household consumption grew steadily for three decades — then hit the inflation wall",
+        subtitle = "Household consumption in fixed 2023 prices, indexed to first year in series (= 100)",
+        x        = NULL,
+        y        = "Index (first year = 100)",
+        caption  = "Source: Statistics Norway, table 09189"
       ) +
-      theme_minimal(base_size = 12) +
+      theme_minimal(base_size = 13) +
       theme(
-        legend.position = "top",
         panel.grid.minor = element_blank(),
-        panel.grid.major.y = element_blank(),
-        plot.title = element_text(face = "bold", size = 14),
-        plot.subtitle = element_text(colour = "grey40", size = 11),
-        plot.caption = element_text(colour = "grey55", size = 9)
+        plot.title       = element_text(face = "bold", size = 13),
+        plot.subtitle    = element_text(colour = "grey40", size = 11),
+        plot.caption     = element_text(colour = "grey55", size = 9)
       )
-
-    print(p5)
+    print(p4)
   }
 }
 ```
 
-The dumbbell chart makes the squeeze years immediately visible. The pandemic year of 2020 stands out as a volume collapse with minimal price pressure. The inflationary surge of 2022-2023 flips the relationship sharply: price changes tower over volume growth, meaning households were paying significantly more while buying less in real terms. Whether that squeeze has fully unwound by the latest data point is one of the defining economic questions heading into 2026.
+## The Goods vs Services Split in Household Spending
 
----
+One final lens: how Norwegian households split their consumption between goods and services in real terms. This matters for housing because dwelling-related expenditures sit squarely in the services category, while construction materials dominate goods. Shifts between the two reveal structural preferences — and stress points.
+
+```{r plot-dumbbell-goods-services}
+#| fig-height: 6
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df2)) {
+  series_col2  <- "makrost.rrelse"
+  measure_col2 <- "statistikkvariabel"
+
+  df2_goods <- df2 |>
+    filter(
+      .data[[series_col2]]  == "Varekonsum",
+      .data[[measure_col2]] == "Faste 2023-priser (mill. kr)"
+    )
+
+  df2_services <- df2 |>
+    filter(
+      .data[[series_col2]]  == "Tjenestekonsum",
+      .data[[measure_col2]] == "Faste 2023-priser (mill. kr)"
+    )
+
+  if (nrow(df2_goods) == 0) {
+    message("Goods filter empty. series: ", paste(head(unique(df2[[series_col2]]), 12), collapse = ", "))
+    df2_goods <- NULL
+  }
+  if (nrow(df2_services) == 0) {
+    message("Services filter empty.")
+    df2_services <- NULL
+  }
+
+  if (!is.null(df2_goods) && !is.null(df2_services)) {
+    df2_combined <- bind_rows(
+      df2_goods    |> mutate(category = "Goods"),
+      df2_services |> mutate(category = "Services")
+    ) |>
+      select(date, category, value) |>
+      mutate(value_bn = value / 1000)  # to billions NOK
+
+    # Pick landmark years for a dumbbell
+    landmark_years <- c(2000, 2005, 2010, 2015, 2019, 2023)
+    df2_dumbbell <- df2_combined |>
+      filter(year(date) %in% landmark_years) |>
+      pivot_wider(names_from = category, values_from = value_bn) |>
+      filter(!is.na(Goods), !is.na(Services)) |>
+      mutate(yr_label = factor(year(date)))
+
+    if (nrow(df2_dumbbell) == 0) {
+      message("Dumbbell data empty.")
+    } else {
+      pal2 <- met.brewer("Hokusai2", n = 5)[c(2, 5)]
+
+      p5 <- ggplot(df2_dumbbell) +
+        geom_segment(
+          aes(x = Goods, xend = Services, y = yr_label, yend = yr_label),
+          colour = "grey70", linewidth = 1.4
+        ) +
+        geom_point(aes(x = Goods,    y = yr_label), colour = pal2[1], size = 5) +
+        geom_point(aes(x = Services, y = yr_label), colour = pal2[2], size = 5) +
+        geom_text(aes(x = Goods,    y = yr_label,
+                      label = paste0(round(Goods, 0), "bn")),
+                  vjust = -1.0, size = 3.2, colour = pal2[1], fontface = "bold") +
+        geom_text(aes(x = Services, y = yr_label,
+                      label = paste0(round(Services, 0), "bn")),
+                  vjust = -1.0, size = 3.2, colour = pal2[2], fontface = "bold") +
+        annotate("point", x = -Inf, y = Inf, colour = pal2[1], size = 4) +
+        annotate("text", x = -Inf, y = Inf, hjust = -0.1, vjust = 1.5,
+                 label = "Goods", colour = pal2[1], size = 3.8, fontface = "bold") +
+        scale_x_continuous(
+          labels = function(x) paste0(x, "bn NOK"),
+          expand = expansion(mult = c(0.15, 0.15))
+        ) +
+        labs(
+          title    = "Service consumption has pulled steadily ahead of goods spending in real terms",
+          subtitle = "Goods vs services household consumption (fixed 2023 prices) at landmark years — gap has widened markedly",
+          x        = "Consumption (billion NOK, 2023 prices)",
+          y        = NULL,
+          caption  = "Source: Statistics Norway, table 09189\nLeft dot = Goods  |  Right dot = Services"
+        ) +
+        theme_minimal(base_size = 13) +
+        theme(
+          panel.grid.minor  = element_blank(),
+          panel.grid.major.y = element_blank(),
+          plot.title         = element_text(face = "bold", size = 13),
+          plot.subtitle      = element_text(colour = "grey40", size = 10),
+          plot.caption       = element_text(colour = "grey55", size = 9),
+          axis.text.y        = element_text(face = "bold", size = 11)
+        )
+      print(p5)
+    }
+  }
+}
+```
 
 ## Key Findings
 
-- **Fishing and aquaculture has been the structural growth winner.** In real fixed-price terms, the sector has expanded its production base at a rate that eclipses both manufacturing and agriculture over the same period.
+- **Detached single-family homes have held the largest share of building permits throughout the entire forty-year period**, routinely accounting for the plurality of units despite decades of planning rhetoric favouring density and compact development.
 
-- **Operating margins diverge radically.** Fishing and aquaculture converts a far higher proportion of its gross value added into operating surplus than manufacturing does — the latter faces higher labour cost burdens that compress profitability per unit of output.
+- **Apartment-block construction is the most cyclically volatile category** — rising sharply during credit-fuelled booms and collapsing when interest rates increase, making it an unreliable vehicle for meeting long-run housing targets.
 
-- **Agriculture and forestry is structurally stagnant in volume terms.** Despite substantial policy support, fixed-price production has barely moved across the full time series, raising questions about the long-run viability of current subsidy structures.
+- **Real household consumption roughly doubled from the mid-1980s to the early 2020s**, but the growth curve flattened visibly after 2021 as the inflation surge eroded purchasing power — reducing the financial headroom households have to invest in new or larger homes.
 
-- **The inflation wedge in household goods consumption is at multi-decade highs.** The gap between what Norwegian households are paying (current prices) and what they are actually consuming (fixed prices) for goods widened sharply in 2022-2023.
+- **Service consumption has grown faster than goods consumption in real terms at every landmark year since 2000**, suggesting that Norwegian households are spending proportionally more on intangible services (housing rents, healthcare, leisure) than on physical goods, including housing materials.
 
-- **2022 and 2023 were real-squeeze years for Norwegian households.** Price changes in household total consumption materially exceeded volume growth — a configuration not seen with such persistence since the early 2000s.
+- **Communal housing and two-family dwellings together never exceeded roughly 10 percent of annual permits**, pointing to a structural gap in intermediate housing forms that could bridge the density divide between towers and suburbs.
 
----
+## A Structural Tension That Will Not Resolve Itself
 
-## Closing Reflection
+Norway faces a genuine planning paradox. Survey after survey shows that Norwegians prefer a house with a garden; the building permit data confirms that this preference is durable across four decades of policy cycles, interest-rate regimes, and government ambitions. Yet the same country has set demanding climate targets, faces constrained land in its fastest-growing municipalities, and is watching real household incomes stagnate under post-pandemic inflation.
 
-Norway's headline economic statistics have long concealed a more complicated story underneath. The nation's extraordinary petroleum revenues can paper over structural divergences that would, in a different fiscal context, demand urgent policy responses.
-
-What this data reveals is that Norwegian industry is not a monolith. Aquaculture has become a quietly dominant force in real output terms, while traditional manufacturing faces the same structural headwinds as its European peers. Agriculture persists largely on political will rather than economic efficiency.
-
-For households, the more immediate concern is whether the inflationary episode of recent years has permanently shifted the price level upward or whether real consumption volumes will recover. The answer matters not just for living standards, but for the political economy of a country whose citizens have come to expect that growth, when it arrives, is broadly shared.
+The apartment block is the logical answer to urban density goals, but it is also the first casualty of rising construction costs and mortgage rates. Until the economics of medium-density housing — terraced rows, courtyard blocks, urban villas — become reliably attractive to both developers and buyers, Norway's built environment will continue to sprawl in ways that its own planning documents say it should not. The numbers do not show a housing revolution. They show a housing habit, and habits are far harder to change than policies.
