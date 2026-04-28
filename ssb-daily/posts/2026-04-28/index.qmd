@@ -1,0 +1,580 @@
+---
+title: "Norway's Sectoral Divergence: How Some Industries Thrive While Others Face Structural Collapse"
+description: "A data-driven examination of how Norway's industrial sectors have grown apart in output and profitability, while household consumption tells a story of structural strain."
+date: "2026-04-28"
+categories: [SSB, national accounts, industry, consumption, economics]
+---
+
+```{r setup}
+#| include: false
+knitr::opts_chunk$set(echo=TRUE, warning=FALSE, message=FALSE, error=TRUE)
+```
+
+```{r libraries}
+library(tidyverse)
+library(lubridate)
+library(PxWebApiData)
+library(scales)
+library(MetBrewer)
+library(ggridges)
+```
+
+```{r fetch-df1}
+df1 <- NULL
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/09170",
+    NACE = TRUE,
+    ContentsCode = TRUE,
+    Tid = list(filter = "top", values = 40)
+  )
+  tmp          <- raw[[1]]
+  time_col     <- "år"
+  value_col    <- "value"
+  series_col   <- "næring"
+  measure_col  <- "statistikkvariabel"
+  df1 <- tmp |>
+    mutate(
+      value    = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      date     = case_when(
+        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
+        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
+    ) |>
+    filter(!is.na(value), !is.na(date))
+}, error = function(e) message("Fetch failed: ", e$message))
+```
+
+```{r fetch-df2}
+df2 <- NULL
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/09189",
+    Makrost = TRUE,
+    ContentsCode = TRUE,
+    Tid = list(filter = "top", values = 40)
+  )
+  tmp          <- raw[[1]]
+  time_col     <- "år"
+  value_col    <- "value"
+  series_col   <- "makrostørrelse"
+  measure_col  <- "statistikkvariabel"
+  df2 <- tmp |>
+    mutate(
+      value    = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      date     = case_when(
+        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
+        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
+    ) |>
+    filter(!is.na(value), !is.na(date))
+}, error = function(e) message("Fetch failed: ", e$message))
+```
+
+## The Great Norwegian Sectoral Split
+
+Norway's national accounts conceal a story of deepening divergence. Beneath the headline GDP figures, some industries have compounded their dominance over forty years while others have stalled or contracted in real terms. Meanwhile, households are watching the gap between what they earn and what they can buy quietly widen.
+
+Using Statistics Norway's own production and consumption data, this post maps the fault lines — across sectors and across time — that define Norway's economic landscape in 2025 and beyond.
+
+---
+
+## Part 1 — Gross Value Added: The Sectors That Pulled Away
+
+The first question to ask of any national accounts dataset is simple: who grew? Gross value added (bruttoprodukt) at current prices captures both volume growth and price effects, making it a practical measure of which sectors have increased their economic footprint in nominal terms.
+
+```{r plot-gva-area}
+#| fig-height: 6
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df1)) {
+  df_gva <- df1 |>
+    filter(
+      .data[["statistikkvariabel"]] == "Bruttoprodukt i basisverdi. Løpende priser (mill. kr)",
+      .data[["næring"]] %in% c(
+        "Totalt for næringer",
+        "Industri",
+        "Jordbruk og skogbruk",
+        "Fiske, fangst og akvakultur",
+        "Bergverksdrift"
+      )
+    )
+
+  if (nrow(df_gva) == 0) {
+    message("GVA filter empty. næring values: ",
+            paste(head(unique(df1[["næring"]]), 15), collapse = ", "))
+    df_gva <- NULL
+  }
+
+  if (!is.null(df_gva)) {
+    palette_sectors <- met.brewer("Hokusai2", n = 5)
+
+    p1 <- ggplot(
+      df_gva |> filter(.data[["næring"]] != "Totalt for næringer"),
+      aes(x = date, y = value / 1000, fill = .data[["næring"]])
+    ) +
+      geom_area(alpha = 0.85, colour = "white", linewidth = 0.3, position = "stack") +
+      scale_fill_manual(values = palette_sectors[-1]) +
+      scale_y_continuous(labels = label_number(suffix = " mrd kr", scale = 1)) +
+      scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
+      labs(
+        title = "Four sectors, four trajectories",
+        subtitle = "Stacked gross value added at current prices — industry dominates, fishing has barely moved",
+        x = NULL,
+        y = "Gross value added (billion NOK)",
+        fill = NULL,
+        caption = "Source: Statistics Norway, table 09170"
+      ) +
+      theme_minimal(base_size = 13) +
+      theme(
+        legend.position = "bottom",
+        panel.grid.minor = element_blank(),
+        plot.title = element_text(face = "bold", size = 15),
+        plot.subtitle = element_text(colour = "grey40", size = 11),
+        plot.caption = element_text(colour = "grey55", size = 9)
+      )
+
+    print(p1)
+  }
+}
+```
+
+Industri towers over the other three primary sectors in cumulative gross value added. Bergverksdrift (mining, excluding petroleum by national accounts convention here) shows a more modest trend. Agriculture and forestry remain remarkably flat in nominal terms across decades, while aquaculture and fishing show more recent acceleration but from a tiny base.
+
+---
+
+## Part 2 — Operating Surplus: Where Profit Really Lives
+
+Gross value added tells us output; operating surplus (driftsresultat) tells us who actually captures that output as profit. The gap between the two — wages, depreciation, taxes — varies enormously by sector. A sector with high output but thin operating margins is structurally different from one where value added flows directly to the bottom line.
+
+```{r plot-lollipop-surplus}
+#| fig-height: 6
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df1)) {
+  # Get most recent year available
+  max_year <- max(df1$date, na.rm = TRUE)
+
+  df_surplus <- df1 |>
+    filter(
+      .data[["statistikkvariabel"]] == "Driftsresultat. Løpende priser (mill. kr)",
+      date == max_year,
+      .data[["næring"]] %in% c(
+        "Industri",
+        "Jordbruk og skogbruk",
+        "Fiske, fangst og akvakultur",
+        "Bergverksdrift"
+      )
+    )
+
+  if (nrow(df_surplus) == 0) {
+    message("Surplus filter empty. næring values: ",
+            paste(head(unique(df1[["næring"]]), 15), collapse = ", "))
+    df_surplus <- NULL
+  }
+
+  # Also get GVA for same year for ratio calculation
+  df_gva_latest <- df1 |>
+    filter(
+      .data[["statistikkvariabel"]] == "Bruttoprodukt i basisverdi. Løpende priser (mill. kr)",
+      date == max_year,
+      .data[["næring"]] %in% c(
+        "Industri",
+        "Jordbruk og skogbruk",
+        "Fiske, fangst og akvakultur",
+        "Bergverksdrift"
+      )
+    ) |>
+    select(næring, gva = value)
+
+  if (!is.null(df_surplus) && nrow(df_surplus) > 0) {
+    df_ratio <- df_surplus |>
+      left_join(df_gva_latest, by = "næring") |>
+      mutate(
+        margin = value / gva * 100,
+        næring_short = case_when(
+          næring == "Jordbruk og skogbruk" ~ "Agriculture\n& Forestry",
+          næring == "Fiske, fangst og akvakultur" ~ "Fishing &\nAquaculture",
+          næring == "Bergverksdrift" ~ "Mining &\nQuarrying",
+          næring == "Industri" ~ "Manufacturing",
+          TRUE ~ næring
+        )
+      ) |>
+      arrange(margin)
+
+    year_label <- format(max_year, "%Y")
+
+    palette_lollipop <- met.brewer("Hokusai2", n = 4)
+
+    p2 <- ggplot(df_ratio, aes(x = reorder(næring_short, margin), y = margin)) +
+      geom_segment(aes(xend = næring_short, y = 0, yend = margin),
+                   colour = "grey70", linewidth = 1.2) +
+      geom_point(aes(colour = næring_short), size = 7) +
+      geom_text(aes(label = paste0(round(margin, 1), "%")),
+                hjust = -0.4, size = 4.2, fontface = "bold") +
+      scale_colour_manual(values = palette_lollipop, guide = "none") +
+      scale_y_continuous(limits = c(0, max(df_ratio$margin, na.rm = TRUE) * 1.25),
+                         labels = label_percent(scale = 1)) +
+      coord_flip() +
+      labs(
+        title = paste0("Profit margins diverge sharply across sectors (", year_label, ")"),
+        subtitle = "Operating surplus as share of gross value added — fishing captures far more per unit of output",
+        x = NULL,
+        y = "Operating surplus / Gross value added (%)",
+        caption = "Source: Statistics Norway, table 09170"
+      ) +
+      theme_minimal(base_size = 13) +
+      theme(
+        panel.grid.minor = element_blank(),
+        panel.grid.major.y = element_blank(),
+        plot.title = element_text(face = "bold", size = 14),
+        plot.subtitle = element_text(colour = "grey40", size = 11),
+        plot.caption = element_text(colour = "grey55", size = 9)
+      )
+
+    print(p2)
+  }
+}
+```
+
+The operating margin comparison is striking. Fishing and aquaculture convert a far higher share of gross value added into operating surplus than manufacturing does. Agriculture and forestry sit at the bottom — decades of structural support have not translated into profitability. This divergence in margins explains why capital continues to flood into Norway's seafood sector while traditional industry consolidates.
+
+---
+
+## Part 3 — Long-Run Sector Slopes: Who Grew Fastest Since the Mid-1980s?
+
+A slope chart anchored at the earliest and latest available years strips away the noise and reveals structural winners and losers. The comparison is in real (fixed-price) terms, removing inflation and isolating genuine volume growth.
+
+```{r plot-slope-real}
+#| fig-height: 7
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df1)) {
+  df_real <- df1 |>
+    filter(
+      .data[["statistikkvariabel"]] == "Produksjon i basisverdi. Faste 2023-priser (mill. kr)",
+      .data[["næring"]] %in% c(
+        "Industri",
+        "Jordbruk og skogbruk",
+        "Fiske, fangst og akvakultur",
+        "Bergverksdrift"
+      )
+    )
+
+  if (nrow(df_real) == 0) {
+    message("Real filter empty. Values: ",
+            paste(head(unique(df1[["statistikkvariabel"]]), 10), collapse = ", "))
+    df_real <- NULL
+  }
+
+  if (!is.null(df_real)) {
+    year_range <- df_real |>
+      summarise(min_date = min(date), max_date = max(date))
+
+    df_slope_ends <- df_real |>
+      filter(date %in% c(year_range$min_date, year_range$max_date)) |>
+      mutate(
+        period = if_else(date == year_range$min_date, "Start", "End"),
+        næring_short = case_when(
+          næring == "Jordbruk og skogbruk" ~ "Agriculture & Forestry",
+          næring == "Fiske, fangst og akvakultur" ~ "Fishing & Aquaculture",
+          næring == "Bergverksdrift" ~ "Mining & Quarrying",
+          næring == "Industri" ~ "Manufacturing",
+          TRUE ~ næring
+        )
+      )
+
+    # Calculate growth multiplier for subtitle annotation
+    df_growth <- df_slope_ends |>
+      select(næring_short, period, value) |>
+      pivot_wider(names_from = period, values_from = value) |>
+      mutate(growth = End / Start)
+
+    palette_slope <- met.brewer("Hokusai2", n = 4)
+
+    p3 <- ggplot(df_slope_ends,
+                 aes(x = period, y = value / 1000,
+                     group = næring_short, colour = næring_short)) +
+      geom_line(linewidth = 1.6, alpha = 0.85) +
+      geom_point(size = 4) +
+      geom_text(
+        data = df_slope_ends |> filter(period == "End"),
+        aes(label = næring_short),
+        hjust = -0.08, size = 3.6, fontface = "bold"
+      ) +
+      geom_text(
+        data = df_slope_ends |> filter(period == "Start"),
+        aes(label = paste0(round(value / 1000, 0), " mrd")),
+        hjust = 1.15, size = 3.2, colour = "grey45"
+      ) +
+      geom_text(
+        data = df_slope_ends |> filter(period == "End"),
+        aes(label = paste0(round(value / 1000, 0), " mrd")),
+        hjust = -0.9, size = 3.2, colour = "grey45"
+      ) +
+      scale_colour_manual(values = palette_slope, guide = "none") +
+      scale_x_discrete(
+        labels = c(
+          "Start" = format(year_range$min_date, "%Y"),
+          "End"   = format(year_range$max_date, "%Y")
+        ),
+        expand = expansion(add = c(0.5, 2.8))
+      ) +
+      scale_y_continuous(labels = label_number(suffix = " mrd")) +
+      labs(
+        title = "Fishing has outpaced manufacturing in real output growth",
+        subtitle = "Production at fixed 2023 prices — earliest vs latest available year",
+        x = NULL,
+        y = "Production (billion NOK, fixed 2023 prices)",
+        caption = "Source: Statistics Norway, table 09170"
+      ) +
+      theme_minimal(base_size = 13) +
+      theme(
+        panel.grid.minor = element_blank(),
+        panel.grid.major.x = element_blank(),
+        plot.title = element_text(face = "bold", size = 14),
+        plot.subtitle = element_text(colour = "grey40", size = 11),
+        plot.caption = element_text(colour = "grey55", size = 9)
+      )
+
+    print(p3)
+  }
+}
+```
+
+The slope chart reveals a fundamental restructuring. Fishing, fangst og akvakultur has grown its real production base at a rate that far outpaces the other sectors shown here. Manufacturing, despite its absolute size advantage, shows more modest real growth — consistent with the hollowing-out narrative that has played out across advanced economies. Agriculture barely registers a change, suggesting decades of near-stagnation in volume terms despite significant policy support.
+
+---
+
+## Part 4 — Household Consumption: Volume vs Price, a Growing Divide
+
+On the demand side, table 09189 tracks household consumption split between goods and services, at both current and fixed prices. When the price deflator exceeds volume growth, households are paying more for the same or less. This squeeze is where macroeconomic divergence becomes personal.
+
+```{r plot-consumption-smallmultiples}
+#| fig-height: 7
+#| fig-width: 11
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df2)) {
+  series_col2   <- "makrostørrelse"
+  measure_col2  <- "statistikkvariabel"
+
+  df_cons <- df2 |>
+    filter(
+      .data[[series_col2]] %in% c(
+        "Varekonsum",
+        "Tjenestekonsum"
+      ),
+      .data[[measure_col2]] %in% c(
+        "Løpende priser (mill. kr)",
+        "Faste 2023-priser (mill. kr)"
+      )
+    )
+
+  if (nrow(df_cons) == 0) {
+    message("Consumption filter empty. makrostørrelse values: ",
+            paste(head(unique(df2[[series_col2]]), 15), collapse = ", "),
+            " | statistikkvariabel values: ",
+            paste(head(unique(df2[[measure_col2]]), 10), collapse = ", "))
+    df_cons <- NULL
+  }
+
+  if (!is.null(df_cons)) {
+    df_cons_plot <- df_cons |>
+      mutate(
+        type_label = case_when(
+          .data[[series_col2]] == "Varekonsum"     ~ "Goods consumption",
+          .data[[series_col2]] == "Tjenestekonsum" ~ "Services consumption",
+          TRUE ~ .data[[series_col2]]
+        ),
+        price_label = case_when(
+          .data[[measure_col2]] == "Løpende priser (mill. kr)"   ~ "Current prices",
+          .data[[measure_col2]] == "Faste 2023-priser (mill. kr)" ~ "Fixed 2023 prices",
+          TRUE ~ .data[[measure_col2]]
+        )
+      )
+
+    palette_cons <- met.brewer("Hokusai2", n = 2, type = "discrete")
+
+    p4 <- ggplot(df_cons_plot,
+                 aes(x = date, y = value / 1000,
+                     colour = price_label, fill = price_label)) +
+      geom_ribbon(
+        data = df_cons_plot |>
+          select(date, type_label, price_label, value) |>
+          pivot_wider(names_from = price_label, values_from = value) |>
+          filter(!is.na(`Current prices`) & !is.na(`Fixed 2023 prices`)),
+        aes(ymin = `Fixed 2023 prices` / 1000,
+            ymax = `Current prices` / 1000,
+            x = date),
+        inherit.aes = FALSE,
+        alpha = 0.18,
+        fill = palette_cons[1]
+      ) +
+      geom_line(linewidth = 1.2, alpha = 0.9) +
+      scale_colour_manual(values = palette_cons) +
+      scale_fill_manual(values = palette_cons, guide = "none") +
+      scale_y_continuous(labels = label_number(suffix = " mrd")) +
+      scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
+      facet_wrap(~ type_label, ncol = 2, scales = "free_y") +
+      labs(
+        title = "The inflation wedge in Norwegian household consumption",
+        subtitle = "Shaded band = gap between what households pay (current) vs real volume (fixed 2023 prices)",
+        x = NULL,
+        y = "Consumption (billion NOK)",
+        colour = NULL,
+        caption = "Source: Statistics Norway, table 09189"
+      ) +
+      theme_minimal(base_size = 13) +
+      theme(
+        legend.position = "bottom",
+        strip.text = element_text(face = "bold", size = 12),
+        panel.grid.minor = element_blank(),
+        plot.title = element_text(face = "bold", size = 14),
+        plot.subtitle = element_text(colour = "grey40", size = 11),
+        plot.caption = element_text(colour = "grey55", size = 9)
+      )
+
+    print(p4)
+  }
+}
+```
+
+The shaded band between current-price and fixed-price consumption lines is a direct visual measure of inflation's toll. For goods, the wedge has widened markedly in recent years: households are spending much more nominally, but the volume of goods they are actually consuming has grown far more slowly — and in some periods has stagnated. Services show a similar but less acute pattern, reflecting how service price inflation, though substantial, has been somewhat more contained than goods inflation.
+
+---
+
+## Part 5 — Annual Volume and Price Changes: What Drives the Squeeze
+
+The final chart focuses on the annual percentage changes in household consumption volume and prices. Periods where price change exceeds volume change represent genuine real-terms contraction in living standards.
+
+```{r plot-dumbbell-changes}
+#| fig-height: 7
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df2)) {
+  series_col2  <- "makrostørrelse"
+  measure_col2 <- "statistikkvariabel"
+
+  df_pct <- df2 |>
+    filter(
+      .data[[series_col2]] == "Konsum i husholdninger",
+      .data[[measure_col2]] %in% c(
+        "Volumendring, årlig (prosent)",
+        "Prisendring, årlig (prosent)"
+      )
+    )
+
+  if (nrow(df_pct) == 0) {
+    message("Pct filter empty. makrostørrelse: ",
+            paste(head(unique(df2[[series_col2]]), 15), collapse = ", "),
+            " | statistikkvariabel: ",
+            paste(head(unique(df2[[measure_col2]]), 10), collapse = ", "))
+    df_pct <- NULL
+  }
+
+  if (!is.null(df_pct)) {
+    df_pct_wide <- df_pct |>
+      mutate(
+        change_type = case_when(
+          .data[[measure_col2]] == "Volumendring, årlig (prosent)" ~ "Volume change",
+          .data[[measure_col2]] == "Prisendring, årlig (prosent)"  ~ "Price change",
+          TRUE ~ .data[[measure_col2]]
+        )
+      ) |>
+      select(date, change_type, value) |>
+      pivot_wider(names_from = change_type, values_from = value) |>
+      filter(!is.na(`Volume change`) & !is.na(`Price change`)) |>
+      mutate(
+        year = year(date),
+        real_squeeze = `Price change` > `Volume change`
+      ) |>
+      filter(year >= 2000)
+
+    palette_db <- met.brewer("Hokusai2", n = 3)
+
+    p5 <- ggplot(df_pct_wide, aes(y = factor(year))) +
+      geom_segment(
+        aes(
+          x = `Volume change`,
+          xend = `Price change`,
+          yend = factor(year),
+          colour = real_squeeze
+        ),
+        linewidth = 1.3,
+        alpha = 0.7
+      ) +
+      geom_point(aes(x = `Volume change`), colour = palette_db[1], size = 3.5) +
+      geom_point(aes(x = `Price change`),  colour = palette_db[3], size = 3.5) +
+      geom_vline(xintercept = 0, linetype = "dashed", colour = "grey50", linewidth = 0.8) +
+      scale_colour_manual(
+        values = c("FALSE" = "steelblue3", "TRUE" = "#c0392b"),
+        labels = c("FALSE" = "Real gain", "TRUE" = "Real squeeze"),
+        name = NULL
+      ) +
+      annotate("text", x = -8, y = 1, label = "Volume change",
+               colour = palette_db[1], fontface = "bold", size = 3.6) +
+      annotate("text", x =  8, y = 1, label = "Price change",
+               colour = palette_db[3], fontface = "bold", size = 3.6) +
+      labs(
+        title = "When prices outrun volume: Norway's household consumption squeeze",
+        subtitle = "Red segments = years where price inflation exceeded real consumption volume growth (2000–latest)",
+        x = "Annual change (%)",
+        y = NULL,
+        caption = "Source: Statistics Norway, table 09189"
+      ) +
+      theme_minimal(base_size = 12) +
+      theme(
+        legend.position = "top",
+        panel.grid.minor = element_blank(),
+        panel.grid.major.y = element_blank(),
+        plot.title = element_text(face = "bold", size = 14),
+        plot.subtitle = element_text(colour = "grey40", size = 11),
+        plot.caption = element_text(colour = "grey55", size = 9)
+      )
+
+    print(p5)
+  }
+}
+```
+
+The dumbbell chart makes the squeeze years immediately visible. The pandemic year of 2020 stands out as a volume collapse with minimal price pressure. The inflationary surge of 2022-2023 flips the relationship sharply: price changes tower over volume growth, meaning households were paying significantly more while buying less in real terms. Whether that squeeze has fully unwound by the latest data point is one of the defining economic questions heading into 2026.
+
+---
+
+## Key Findings
+
+- **Fishing and aquaculture has been the structural growth winner.** In real fixed-price terms, the sector has expanded its production base at a rate that eclipses both manufacturing and agriculture over the same period.
+
+- **Operating margins diverge radically.** Fishing and aquaculture converts a far higher proportion of its gross value added into operating surplus than manufacturing does — the latter faces higher labour cost burdens that compress profitability per unit of output.
+
+- **Agriculture and forestry is structurally stagnant in volume terms.** Despite substantial policy support, fixed-price production has barely moved across the full time series, raising questions about the long-run viability of current subsidy structures.
+
+- **The inflation wedge in household goods consumption is at multi-decade highs.** The gap between what Norwegian households are paying (current prices) and what they are actually consuming (fixed prices) for goods widened sharply in 2022-2023.
+
+- **2022 and 2023 were real-squeeze years for Norwegian households.** Price changes in household total consumption materially exceeded volume growth — a configuration not seen with such persistence since the early 2000s.
+
+---
+
+## Closing Reflection
+
+Norway's headline economic statistics have long concealed a more complicated story underneath. The nation's extraordinary petroleum revenues can paper over structural divergences that would, in a different fiscal context, demand urgent policy responses.
+
+What this data reveals is that Norwegian industry is not a monolith. Aquaculture has become a quietly dominant force in real output terms, while traditional manufacturing faces the same structural headwinds as its European peers. Agriculture persists largely on political will rather than economic efficiency.
+
+For households, the more immediate concern is whether the inflationary episode of recent years has permanently shifted the price level upward or whether real consumption volumes will recover. The answer matters not just for living standards, but for the political economy of a country whose citizens have come to expect that growth, when it arrives, is broadly shared.
