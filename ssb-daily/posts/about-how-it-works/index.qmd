@@ -1,0 +1,53 @@
+---
+title: "How SSB Daily Works — and Why I Built It"
+description: "A self-improving AI pipeline that explores Norwegian statistics through code and visualizations. The goal: minimize hallucinations by making the AI prove its claims."
+date: "2026-04-29"
+categories: [meta, ai-pipeline, ssb]
+image: ""
+---
+
+## The problem with AI and statistics
+
+Ask an AI model what Norway's unemployment rate was in Q3 2022, and it will give you a confident answer. That answer might be wrong. Models hallucinate numbers, mix up time periods, and confuse related-but-different indicators. For factual, data-heavy content like statistics, this is a serious problem.
+
+The standard fix is retrieval-augmented generation: give the model access to a database and let it look things up. That helps, but it still leaves the model narrating facts from memory rather than computing them directly. A model that *says* "unemployment peaked at 4.1%" and a model that *writes code which fetches the data and plots it* are doing fundamentally different things. The second one can be checked.
+
+That's the core idea behind SSB Daily: **make the AI prove every claim by writing the code that produces it.**
+
+## What the pipeline actually does
+
+Every morning, a two-phase AI pipeline runs on GitHub Actions and produces a new post about Norwegian statistics.
+
+**Phase 1 — Discovery.** A Claude Haiku agent browses 32 curated SSB tables using real API calls. It fetches column metadata, pulls sample rows, and works out what story the data can tell — without making anything up, because it's looking at the actual data. It ends by writing a precise specification: which table, which columns, which category values, what kind of chart.
+
+**Phase 2 — Generation.** Claude Sonnet receives that verified spec and writes a complete Quarto document — R code, ggplot2 charts, and written analysis — as if it were a journalist working from a brief. The R code uses the exact column names from Phase 1. A reviewer pass by Claude Haiku then checks for a short list of known bug types before the file is written to disk.
+
+The site is rendered with Quarto and deployed to GitHub Pages. A nightly error-fixer scans the rendered output for failed code blocks, patches them with Claude, and logs the error pattern so the next day's pipeline knows to avoid it.
+
+## The self-improving part
+
+The error log is the part I underestimated. When a post breaks — a plot fails to render, a column name is wrong, a missing `print()` call produces no output — the fix script doesn't just patch that day's post. It appends a description of the mistake to `error_patterns.md`, which is injected into every future generation prompt.
+
+After a few weeks the pipeline started avoiding whole categories of mistakes it used to make regularly. It's a slow feedback loop, but it works: the error rate on new posts has dropped noticeably since the log started growing.
+
+This is a deliberately minimal version of something more interesting. The patterns file is human-readable, so I can also add entries manually when I notice something the automated fixer missed. The AI is learning, but I'm also teaching it.
+
+## Why code instead of prose
+
+The design choice that matters most isn't the multi-agent setup — it's the decision to have the AI output *executable code* rather than written statements about data.
+
+A hallucination in code fails loudly. If the model invents a column name, the R script errors. If it gets the API parameters wrong, the fetch returns nothing. These failures are caught at render time, before anything goes live. A hallucination in prose can sit in a published post indefinitely.
+
+Visualizations add another layer. A chart that shows the wrong trend doesn't just fail — it looks wrong. Patterns that are plausible in text become implausible when you can see the time series. Forcing the AI to produce something visual creates a second check that pure text doesn't have.
+
+## What was unexpected
+
+When I started this, I expected the main challenge to be prompt engineering — getting the AI to write clean R code. That turned out to be straightforward.
+
+What I didn't expect was how much the *structure* of the pipeline mattered. The key breakthrough was separating discovery from generation. When a single model tried to both find data and write the post, it would sometimes commit to an angle before checking whether the data supported it, and then quietly adjust the numbers to fit the narrative. When the discovery phase is separate, with its own tool-use loop and an explicit finalization step, the generator receives a pre-verified brief and has no reason to invent anything.
+
+The other surprise was how stable the output became once the error log reached about a dozen entries. A handful of documented patterns — "always include `print()` around ggplot objects in a loop", "never hardcode `Value` as a column name" — had more impact on reliability than many hours of prompt tuning.
+
+---
+
+*The full pipeline source is in `ssb-daily/generate_post.R` and `ssb-daily/fix_post.R` in the [site repository](https://github.com/simbje/simbje.github.io). Posts are generated fresh each morning and cover a different dataset every day.*
