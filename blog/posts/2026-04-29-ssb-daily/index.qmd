@@ -24,6 +24,42 @@ Every morning, a two-phase AI pipeline runs on GitHub Actions and produces a new
 
 The site is rendered with Quarto and deployed to GitHub Pages. A nightly error-fixer scans the rendered output for failed code blocks, patches them with Claude, and logs the error pattern so the next day's pipeline knows to avoid it.
 
+```{mermaid}
+%%{init: {'theme': 'dark', 'themeVariables': {'primaryColor': '#0f3460', 'primaryTextColor': '#ffffff', 'primaryBorderColor': '#e94560', 'lineColor': '#a0a8c0', 'secondaryColor': '#1a1a2e', 'tertiaryColor': '#16213e', 'clusterBkg': '#16213e', 'clusterBorder': '#e94560', 'edgeLabelBackground': '#1a1a2e', 'fontFamily': 'inherit'}}}%%
+flowchart TD
+    CRON(["GitHub Actions\n06:00 UTC · daily"])
+
+    SSB[("SSB Open API\n32 curated tables")]
+
+    subgraph GEN["generate_post.R"]
+        P1["Phase 1 · Discovery\nClaude Haiku · tool-use loop\nbrowse, sample, finalize spec"]
+        P2["Phase 2 · Generation\nClaude Sonnet · 16k tokens\nwrite complete .qmd post"]
+        REV["Reviewer pass\nClaude Haiku\npatch 7 bug categories"]
+        P1 --> P2 --> REV
+    end
+
+    EP[("error_patterns.md\nlearning log")]
+
+    RENDER["quarto render\nfull site build"]
+
+    subgraph FIX["fix_post.R"]
+        DET["scan freeze JSON\nfor ## Error blocks"]
+        PATCH["Claude Haiku\nfix · re-render post"]
+        DET --> PATCH
+    end
+
+    DEPLOY["GitHub Pages\nsimbje.github.io"]
+
+    CRON --> P1
+    P1 <-->|"metadata + data samples"| SSB
+    EP -->|"known pitfalls"| P2
+    REV -->|"index.qmd"| RENDER
+    RENDER --> DET
+    PATCH -->|"record pattern"| EP
+    RENDER --> DEPLOY
+    PATCH --> DEPLOY
+```
+
 ## The self-improving part
 
 The error log is the part I underestimated. When a post breaks — a plot fails to render, a column name is wrong, a missing `print()` call produces no output — the fix script doesn't just patch that day's post. It appends a description of the mistake to `error_patterns.md`, which is injected into every future generation prompt.
