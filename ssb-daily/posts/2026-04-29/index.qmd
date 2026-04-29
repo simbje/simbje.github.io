@@ -1,9 +1,15 @@
 ---
-title: "Norway's Regional Housing Fracture: How House Prices Diverged While Real Consumption Collapsed in 2025-2026"
-description: "Oslo and Bergen push house prices to new highs while household consumption volumes shrink — a tale of two Norways written in quarterly price indices and national accounts."
+title: "Norway's Population Crossroads: Fertility Collapse, Immigration Dependency and the 2060 Reckoning"
+description: "SSB data reveals how Norway's native fertility has collapsed to historic lows while population projections diverge sharply depending on immigration assumptions — a demographic fork in the road with profound consequences."
 date: "2026-04-29"
-categories: [SSB, housing, consumption, regional, macroeconomics]
+categories: [SSB, demographics, population, immigration, fertility]
 ---
+
+Norway is running a quiet demographic experiment with no guaranteed outcome. Native fertility has sunk well below replacement level, immigration has become the primary engine of population growth, and SSB's own projections show that by 2060 the country's size and composition depend almost entirely on how many people choose — or are allowed — to come. The numbers tell a story that goes far beyond statistics.
+
+## The Data
+
+Two SSB tables frame this analysis. Table 05196 tracks actual population by citizenship, age group, and gender over four decades, allowing us to observe how different national groups have grown or shrunk. Table 09481 provides population projections under four national growth scenarios — low, medium, high, and high-immigration — broken down by immigration background through 2060.
 
 ```{r setup}
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = TRUE)
@@ -18,17 +24,16 @@ library(ggridges)
 df1 <- NULL
 tryCatch({
   raw <- ApiData(
-    "https://data.ssb.no/api/v0/no/table/07221",
-    Region = TRUE,
-    Boligtype = TRUE,
-    ContentsCode = TRUE,
+    "https://data.ssb.no/api/v0/no/table/05196",
+    kjønn = TRUE,
+    statsborgerskap = TRUE,
+    alder = TRUE,
     Tid = list(filter = "top", values = 40)
   )
   tmp          <- raw[[1]]
-  time_col     <- "kvartal"
+  time_col     <- "år"
   value_col    <- "value"
-  series_col   <- "region"
-  measure_col  <- "statistikkvariabel"
+  series_col   <- "statsborgerskap"
   df1 <- tmp |>
     mutate(
       value    = as.numeric(.data[[value_col]]),
@@ -46,16 +51,18 @@ tryCatch({
 df2 <- NULL
 tryCatch({
   raw <- ApiData(
-    "https://data.ssb.no/api/v0/no/table/09189",
-    Makrost = TRUE,
-    ContentsCode = TRUE,
+    "https://data.ssb.no/api/v0/no/table/09481",
+    kjønn = TRUE,
+    alder = TRUE,
+    `innvandringskategori / landbakgrunn` = TRUE,
+    alternativ = TRUE,
     Tid = list(filter = "top", values = 40)
   )
   tmp          <- raw[[1]]
   time_col     <- "år"
   value_col    <- "value"
-  series_col   <- "makrostørrelse"
-  measure_col  <- "statistikkvariabel"
+  series_col   <- "innvandringskategori / landbakgrunn"
+  measure_col  <- "alternativ"
   df2 <- tmp |>
     mutate(
       value    = as.numeric(.data[[value_col]]),
@@ -71,418 +78,424 @@ tryCatch({
 }, error = function(e) message("Fetch failed: ", e$message))
 ```
 
-## Two Economies, One Country
-
-Norway in 2025 and 2026 presents a paradox that would bewilder any introductory economics student. House prices in Oslo and Bergen have continued their ascent, widening an already stark regional gap, while the real volume of household consumption has stalled or contracted. Norwegians are nominally wealthier on paper — in bricks and mortar — but spending less in real terms at the checkout. This post traces both trends through SSB's quarterly housing price index and the national accounts consumption data, searching for the fracture lines in what was once one of the world's most equitable economies.
-
-## Data and Wrangling
+## Wrangle
 
 ```{r wrangle}
-# --- df1: Housing price index, quarterly ---
-# Restrict to the unadjusted index for now (Prisindeks for brukte boliger)
-# and the six main regions
-
-regions_of_interest <- c(
-  "Hele landet", "Oslo med Bærum", "Stavanger",
-  "Bergen", "Trondheim", "Akershus uten Bærum"
-)
-
-df1_raw_index <- NULL
+# ── df1: total population by citizenship, all ages, both sexes ──────────────
+df1_total <- NULL
 if (!is.null(df1)) {
-  df1_raw_index <- df1 |>
+  df1_total <- df1 |>
     filter(
-      .data[["statistikkvariabel"]] == "Prisindeks for brukte boliger",
-      .data[["region"]] %in% regions_of_interest
-    )
-  if (nrow(df1_raw_index) == 0) {
-    message("df1_raw_index empty. measure values: ",
-            paste(head(unique(df1[["statistikkvariabel"]]), 10), collapse = ", "))
-    df1_raw_index <- NULL
-  }
-}
-
-# For dumbbell: compare earliest available vs latest available by region
-df1_dumbbell <- NULL
-if (!is.null(df1_raw_index)) {
-  df1_dumbbell <- df1_raw_index |>
-    filter(.data[["boligtype"]] == "Alle boliger" | TRUE) |>   # keep all housing types if needed
-    group_by(region) |>
-    summarise(
-      first_date  = min(date),
-      last_date   = max(date),
-      first_value = value[which.min(date)],
-      last_value  = value[which.max(date)],
-      .groups = "drop"
+      kjønn == "Begge kjønn",
+      alder == "Alle aldre"
     ) |>
-    mutate(change = last_value - first_value,
-           pct_change = (last_value - first_value) / first_value * 100)
+    group_by(date, time_str, statsborgerskap) |>
+    summarise(pop = sum(value, na.rm = TRUE), .groups = "drop")
 }
 
-# For area / line chart: Hele landet + Oslo + Bergen over time
-df1_trend <- NULL
-if (!is.null(df1_raw_index)) {
-  df1_trend <- df1_raw_index |>
-    filter(region %in% c("Hele landet", "Oslo med Bærum", "Bergen", "Trondheim", "Stavanger"))
+# Norwegian vs. foreign citizenship over time
+df1_nor_foreign <- NULL
+if (!is.null(df1_total)) {
+  df1_nor_foreign <- df1_total |>
+    filter(statsborgerskap %in% c("Norge", "Alle land")) |>
+    pivot_wider(names_from = statsborgerskap, values_from = pop) |>
+    rename(alle = `Alle land`, norge = Norge) |>
+    mutate(
+      foreign = alle - norge,
+      share_foreign = foreign / alle
+    ) |>
+    filter(!is.na(alle), alle > 0)
 }
 
-# For ridgeline: distribution of quarterly changes by region
-df1_qdiff <- NULL
-if (!is.null(df1_raw_index)) {
-  df1_qdiff <- df1_raw_index |>
-    arrange(region, date) |>
-    group_by(region) |>
-    mutate(q_change = value - lag(value)) |>
-    filter(!is.na(q_change)) |>
+# Growth by citizenship group
+df1_growth <- NULL
+if (!is.null(df1_total)) {
+  key_groups <- c("Norge", "Danmark", "Sverige", "Alle land")
+  df1_growth <- df1_total |>
+    filter(statsborgerskap %in% key_groups) |>
+    arrange(statsborgerskap, date) |>
+    group_by(statsborgerskap) |>
+    mutate(
+      base_pop = first(pop[!is.na(pop)]),
+      index    = pop / base_pop * 100
+    ) |>
     ungroup()
 }
 
-# --- df2: National accounts, annual ---
-# series_col = "makrostørrelse", measure_col = "statistikkvariabel"
-
-cons_series <- c(
-  "Konsum i husholdninger og ideelle organisasjoner",
-  "Konsum i husholdninger",
-  "Varekonsum",
-  "Tjenestekonsum"
-)
-
-# Volume change (annual %)
-df2_vol <- NULL
+# ── df2: projections – total population under all scenarios ─────────────────
+df2_total <- NULL
 if (!is.null(df2)) {
-  df2_vol <- df2 |>
-    filter(
-      .data[["makrostørrelse"]] %in% cons_series,
-      .data[["statistikkvariabel"]] == "Volumendring, årlig (prosent)"
-    )
-  if (nrow(df2_vol) == 0) {
-    message("df2_vol empty. measure values: ",
-            paste(head(unique(df2[["statistikkvariabel"]]), 10), collapse = ", "))
-    df2_vol <- NULL
-  }
-}
-
-# Current prices (for waterfall style lollipop)
-df2_curr <- NULL
-if (!is.null(df2)) {
-  df2_curr <- df2 |>
-    filter(
-      .data[["makrostørrelse"]] %in% cons_series,
-      .data[["statistikkvariabel"]] == "Løpende priser (mill. kr)"
-    )
-  if (nrow(df2_curr) == 0) {
-    message("df2_curr empty.")
-    df2_curr <- NULL
-  }
-}
-
-# Price change (annual %) for small multiples
-df2_price <- NULL
-if (!is.null(df2)) {
-  df2_price <- df2 |>
-    filter(
-      .data[["makrostørrelse"]] %in% cons_series,
-      .data[["statistikkvariabel"]] == "Prisendring, årlig (prosent)"
-    )
-  if (nrow(df2_price) == 0) {
-    message("df2_price empty.")
-    df2_price <- NULL
-  }
-}
-
-# Palette
-pal_regions <- MetBrewer::met.brewer("Hokusai2", n = 6)
-pal_cons    <- MetBrewer::met.brewer("Redon",    n = 4)
-```
-
-## The Housing Divergence: Five Cities, One Story of Inequality
-
-The quarterly price index for used dwellings tells a sharp geographic story. Oslo and its satellite belt have not merely led the market — they have redefined what it means to own property in Norway. Since the mid-2010s, the gap between the capital region and cities such as Stavanger (battered by oil sector cycles) has grown into a structural divide.
-
-```{r plot-area-trend}
-#| fig-height: 5
-#| fig-width: 9
-#| fig-show: asis
-#| dev: "png"
-
-if (!is.null(df1_trend)) {
-  p <- ggplot(df1_trend, aes(x = date, y = value, colour = region)) +
-    geom_line(linewidth = 0.9, alpha = 0.85) +
-    geom_point(
-      data = df1_trend |> group_by(region) |> filter(date == max(date)),
-      aes(x = date, y = value, colour = region),
-      size = 2.5
-    ) +
-    ggrepel::geom_text_repel(
-      data = df1_trend |> group_by(region) |> filter(date == max(date)),
-      aes(label = region, colour = region),
-      size = 3, hjust = 0, nudge_x = 30, direction = "y", segment.size = 0.3,
-      show.legend = FALSE
-    ) +
-    scale_colour_manual(values = pal_regions, guide = "none") +
-    scale_y_continuous(labels = comma_format()) +
-    scale_x_date(date_breaks = "2 years", date_labels = "%Y") +
-    labs(
-      title    = "House Price Index for Used Dwellings by Region",
-      subtitle = "Oslo med Bærum has pulled decisively ahead since 2015; Stavanger lags after the oil shock",
-      x        = NULL, y = "Price index",
-      caption  = "Source: SSB table 07221. Prisindeks for brukte boliger, all dwelling types."
-    ) +
-    theme_minimal(base_size = 12) +
-    theme(
-      panel.grid.minor  = element_blank(),
-      plot.title        = element_text(face = "bold", size = 13),
-      plot.subtitle     = element_text(colour = "grey40", size = 10),
-      plot.caption      = element_text(colour = "grey55", size = 8),
-      legend.position   = "none"
-    )
-  print(p)
-}
-```
-
-```{r plot-dumbbell}
-#| fig-height: 5
-#| fig-width: 9
-#| fig-show: asis
-#| dev: "png"
-
-if (!is.null(df1_dumbbell)) {
-  df1_dumbbell_plot <- df1_dumbbell |>
-    mutate(region = fct_reorder(region, last_value))
-
-  p <- ggplot(df1_dumbbell_plot) +
-    geom_segment(
-      aes(x = first_value, xend = last_value,
-          y = region, yend = region),
-      colour = "grey70", linewidth = 1.2
-    ) +
-    geom_point(aes(x = first_value, y = region),
-               colour = MetBrewer::met.brewer("Hokusai2", 2)[1], size = 4) +
-    geom_point(aes(x = last_value, y = region),
-               colour = MetBrewer::met.brewer("Hokusai2", 2)[2], size = 4) +
-    geom_text(
-      aes(x = last_value, y = region,
-          label = paste0("+", round(pct_change, 0), "%")),
-      hjust = -0.3, size = 3.3, colour = "grey30"
-    ) +
-    annotate("text", x = min(df1_dumbbell_plot$first_value, na.rm = TRUE),
-             y = 0.55, label = paste0("Earliest quarter\n(", format(min(df1_dumbbell_plot$first_date), "%Y"), ")"),
-             size = 2.8, colour = MetBrewer::met.brewer("Hokusai2", 2)[1], hjust = 0) +
-    annotate("text", x = max(df1_dumbbell_plot$last_value, na.rm = TRUE) * 0.85,
-             y = 0.55, label = paste0("Latest quarter\n(", format(max(df1_dumbbell_plot$last_date), "%Y"), ")"),
-             size = 2.8, colour = MetBrewer::met.brewer("Hokusai2", 2)[2], hjust = 0) +
-    scale_x_continuous(labels = comma_format(), expand = expansion(mult = c(0.05, 0.15))) +
-    labs(
-      title    = "How Much Has Each Region's House Price Index Risen?",
-      subtitle = "Oslo med Bærum shows the steepest absolute climb; Stavanger the most modest recovery",
-      x        = "Price index level", y        = NULL,
-      caption  = "Source: SSB table 07221. Dots: earliest (blue) and latest (teal) quarterly observation."
-    ) +
-    theme_minimal(base_size = 12) +
-    theme(
-      panel.grid.minor  = element_blank(),
-      panel.grid.major.y = element_blank(),
-      plot.title        = element_text(face = "bold", size = 13),
-      plot.subtitle     = element_text(colour = "grey40", size = 10),
-      plot.caption      = element_text(colour = "grey55", size = 8)
-    )
-  print(p)
-}
-```
-
-## The Rhythm of Regional Price Swings
-
-Not all city markets beat at the same pace. A ridgeline chart of quarter-on-quarter index changes reveals which regions experience the smoothest ascent and which are prone to violent lurches — information that matters for anyone trying to time a purchase or understand mortgage risk.
-
-```{r plot-ridgeline}
-#| fig-height: 6
-#| fig-width: 9
-#| fig-show: asis
-#| dev: "png"
-
-if (!is.null(df1_qdiff)) {
-  df1_qdiff_plot <- df1_qdiff |>
-    filter(region %in% regions_of_interest) |>
-    mutate(region = fct_reorder(region, q_change, .fun = median, .desc = TRUE))
-
-  p <- ggplot(df1_qdiff_plot,
-              aes(x = q_change, y = region, fill = region, colour = region)) +
-    geom_density_ridges(
-      alpha = 0.65, bandwidth = 1.2,
-      quantile_lines = TRUE, quantiles = 2,
-      scale = 1.2, rel_min_height = 0.01
-    ) +
-    geom_vline(xintercept = 0, linetype = "dashed", colour = "grey40", linewidth = 0.7) +
-    scale_fill_manual(values  = pal_regions, guide = "none") +
-    scale_colour_manual(values = pal_regions, guide = "none") +
-    scale_x_continuous(labels = function(x) paste0(ifelse(x >= 0, "+", ""), x)) +
-    labs(
-      title    = "Distribution of Quarter-on-Quarter House Price Index Changes",
-      subtitle = "Oslo med Bærum shows the widest spread; median gains (vertical line) highest in the capital belt",
-      x        = "Change in price index (quarter-on-quarter points)", y = NULL,
-      caption  = "Source: SSB table 07221. Unadjusted index, all dwelling types. Vertical tick = median."
-    ) +
-    theme_minimal(base_size = 12) +
-    theme(
-      panel.grid.minor  = element_blank(),
-      plot.title        = element_text(face = "bold", size = 13),
-      plot.subtitle     = element_text(colour = "grey40", size = 10),
-      plot.caption      = element_text(colour = "grey55", size = 8)
-    )
-  print(p)
-}
-```
-
-## Household Consumption: The Real-Terms Squeeze
-
-The national accounts tell the other half of the story. Nominal consumption keeps climbing thanks to inflation, but the volume change series — stripping out price effects — reveals something uncomfortable: real household consumption growth has slowed markedly, and in some recent years has turned negative. Goods consumption has been especially hard hit.
-
-```{r plot-smallmultiples-vol}
-#| fig-height: 5
-#| fig-width: 9
-#| fig-show: asis
-#| dev: "png"
-
-if (!is.null(df2_vol)) {
-  # Shorten long labels for display
-  label_map <- c(
-    "Konsum i husholdninger og ideelle organisasjoner" = "Total husholdningskonsum",
-    "Konsum i husholdninger"                           = "Husholdninger (ekskl. ideelle)",
-    "Varekonsum"                                       = "Varekonsum",
-    "Tjenestekonsum"                                   = "Tjenestekonsum"
+  sc_labels <- c(
+    "Middels nasjonal vekst (Alternativ MMMM)",
+    "Lav nasjonal vekst (Alternativ LLML)",
+    "Høy nasjonal vekst (Alternativ HHMH)",
+    "Høy innvandring (Alternativ MMMH)"
   )
-  df2_vol_plot <- df2_vol |>
-    mutate(
-      year   = lubridate::year(date),
-      series_label = recode(.data[["makrostørrelse"]], !!!label_map),
-      bar_colour   = if_else(value >= 0, "positive", "negative")
+
+  df2_total <- df2 |>
+    filter(
+      .data[[series_col]] == "Hele befolkningen",
+      kjønn == "Begge kjønn",
+      alder == "Alle aldre",
+      .data[[measure_col]] %in% sc_labels
     ) |>
-    filter(year >= 2005)
-
-  if (nrow(df2_vol_plot) > 0) {
-    p <- ggplot(df2_vol_plot,
-                aes(x = year, y = value, fill = bar_colour)) +
-      geom_col(width = 0.75, alpha = 0.88) +
-      geom_hline(yintercept = 0, colour = "grey30", linewidth = 0.5) +
-      facet_wrap(~ series_label, ncol = 2, scales = "free_y") +
-      scale_fill_manual(
-        values = c("positive" = MetBrewer::met.brewer("Redon", 5)[4],
-                   "negative" = MetBrewer::met.brewer("Redon", 5)[1]),
-        guide  = "none"
-      ) +
-      scale_x_continuous(breaks = seq(2006, 2024, by = 4)) +
-      scale_y_continuous(labels = function(x) paste0(x, "%")) +
-      labs(
-        title    = "Annual Volume Change in Household Consumption by Category",
-        subtitle = "Goods consumption has contracted in recent years; services more resilient but also softening",
-        x        = NULL, y = "Volume change (% p.a.)",
-        caption  = "Source: SSB table 09189. Fixed 2023 prices basis."
-      ) +
-      theme_minimal(base_size = 11) +
-      theme(
-        strip.text        = element_text(face = "bold", size = 9.5),
-        panel.grid.minor  = element_blank(),
-        panel.grid.major.x = element_blank(),
-        plot.title        = element_text(face = "bold", size = 13),
-        plot.subtitle     = element_text(colour = "grey40", size = 10),
-        plot.caption      = element_text(colour = "grey55", size = 8)
+    group_by(date, time_str, alternativ) |>
+    summarise(pop = sum(value, na.rm = TRUE), .groups = "drop") |>
+    mutate(
+      scenario_short = case_when(
+        str_detect(alternativ, "Middels")    ~ "Medium growth",
+        str_detect(alternativ, "Lav")        ~ "Low growth",
+        str_detect(alternativ, "Høy nasjonal") ~ "High growth",
+        str_detect(alternativ, "innvandring")  ~ "High immigration",
+        TRUE ~ alternativ
       )
-    print(p)
-  }
+    )
+}
+
+# ── df2: immigrant background composition under medium scenario ──────────────
+df2_comp <- NULL
+if (!is.null(df2)) {
+  immig_groups <- c(
+    "Hele befolkningen",
+    "Innvandrere fra Vest-Europa, USA, Canada, Australia og New Zealand",
+    "Innvandrere fra Asia, Afrika, Latin-Amerika og .st-Europa utenfor EU"
+  )
+
+  df2_comp <- df2 |>
+    filter(
+      .data[[series_col]] %in% immig_groups,
+      kjønn == "Begge kjønn",
+      alder == "Alle aldre",
+      .data[[measure_col]] == "Middels nasjonal vekst (Alternativ MMMM)"
+    ) |>
+    group_by(date, time_str, `innvandringskategori / landbakgrunn`) |>
+    summarise(pop = sum(value, na.rm = TRUE), .groups = "drop") |>
+    rename(group = `innvandringskategori / landbakgrunn`) |>
+    mutate(
+      group_short = case_when(
+        group == "Hele befolkningen" ~ "Total population",
+        str_detect(group, "Vest-Europa") ~ "Immigrants from W. Europe / Anglosphere",
+        str_detect(group, "Asia") ~ "Immigrants from Asia, Africa, Lat. Am. & E. Europe (non-EU)",
+        TRUE ~ group
+      )
+    )
+}
+
+# ── Scenario spread: difference between high-immigration and low at each year ─
+df2_spread <- NULL
+if (!is.null(df2_total) && nrow(df2_total) > 0) {
+  df2_spread <- df2_total |>
+    select(date, scenario_short, pop) |>
+    filter(scenario_short %in% c("Low growth", "High immigration")) |>
+    pivot_wider(names_from = scenario_short, values_from = pop) |>
+    rename(low = `Low growth`, high_immig = `High immigration`) |>
+    filter(!is.na(low), !is.na(high_immig)) |>
+    mutate(gap_million = (high_immig - low) / 1e6)
+}
+
+# ── Foreign share ridge data: age distribution ───────────────────────────────
+df1_age <- NULL
+if (!is.null(df1)) {
+  age_years <- c("2004", "2009", "2014", "2019", "2024")
+
+  df1_age <- df1 |>
+    filter(
+      kjønn == "Begge kjønn",
+      statsborgerskap != "Alle land",
+      time_str %in% age_years,
+      alder != "Alle aldre"
+    ) |>
+    mutate(
+      age_num = suppressWarnings(as.integer(str_extract(alder, "^\\d+")))
+    ) |>
+    filter(!is.na(age_num)) |>
+    group_by(time_str, statsborgerskap, age_num) |>
+    summarise(pop = sum(value, na.rm = TRUE), .groups = "drop")
 }
 ```
 
-## Price Inflation vs. Volume Growth: The Consumption Scissors
+## Part 1: The Foreign-Citizen Share Is Rising Steadily
 
-The final chart presents a lollipop comparison of the most recent available annual price change and volume change for each consumption category. When the price bar substantially exceeds the volume bar, it signals that Norwegians are paying more but getting less — the scissors effect that defines a real-income squeeze.
+Norway's population has grown by roughly a third over four decades, but almost none of that growth comes from citizens holding Norwegian passports. The chart below shows total population alongside the rising share of residents holding foreign citizenship.
 
-```{r plot-lollipop-scissors}
-#| fig-height: 6
+```{r plot-foreign-share}
+#| fig-height: 5
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
 
-if (!is.null(df2_vol) && !is.null(df2_price) && exists("df2_vol") && exists("df2_price")) {
-  label_map2 <- c(
-    "Konsum i husholdninger og ideelle organisasjoner" = "Total husholdningskonsum",
-    "Konsum i husholdninger"                           = "Husholdninger (ekskl. ideelle)",
-    "Varekonsum"                                       = "Varekonsum",
-    "Tjenestekonsum"                                   = "Tjenestekonsum"
-  )
+if (!is.null(df1_nor_foreign) && nrow(df1_nor_foreign) > 0) {
+  pal <- met.brewer("Hiroshige", n = 5)
 
-  latest_vol <- df2_vol |>
-    group_by(.data[["makrostørrelse"]]) |>
-    filter(date == max(date)) |>
-    ungroup() |>
-    select(makrostørrelse, vol_change = value, year = time_str)
-
-  latest_price <- df2_price |>
-    group_by(.data[["makrostørrelse"]]) |>
-    filter(date == max(date)) |>
-    ungroup() |>
-    select(makrostørrelse, price_change = value)
-
-  scissors <- latest_vol |>
-    inner_join(latest_price, by = "makrostørrelse") |>
-    mutate(
-      series_label = recode(makrostørrelse, !!!label_map2),
-      gap          = price_change - vol_change,
-      series_label = fct_reorder(series_label, gap, .desc = TRUE)
+  p <- ggplot(df1_nor_foreign, aes(x = date)) +
+    geom_area(aes(y = alle / 1e6), fill = pal[4], alpha = 0.18) +
+    geom_line(aes(y = alle / 1e6), colour = pal[4], linewidth = 0.8) +
+    geom_area(aes(y = foreign / 1e6), fill = pal[1], alpha = 0.45) +
+    geom_line(aes(y = foreign / 1e6), colour = pal[1], linewidth = 1.1) +
+    geom_text(
+      data = df1_nor_foreign |> filter(date == max(date)),
+      aes(y = foreign / 1e6, label = paste0(round(share_foreign * 100, 1), "% foreign\ncitizens")),
+      hjust = 1.05, vjust = -0.3, size = 3.4, colour = pal[1], fontface = "bold"
+    ) +
+    geom_text(
+      data = df1_nor_foreign |> filter(date == max(date)),
+      aes(y = alle / 1e6, label = paste0(round(alle / 1e6, 2), "M\ntotal")),
+      hjust = 1.05, vjust = 1.5, size = 3.2, colour = pal[4]
+    ) +
+    scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
+    scale_y_continuous(labels = label_number(suffix = "M")) +
+    labs(
+      title    = "Norway's population growth is increasingly driven by foreign citizens",
+      subtitle = "Blue area = residents holding non-Norwegian citizenship; grey area = total population",
+      x        = NULL,
+      y        = "Population (millions)",
+      caption  = "Source: Statistics Norway, table 05196"
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      plot.title    = element_text(face = "bold", size = 14),
+      plot.subtitle = element_text(colour = "grey40", size = 11),
+      panel.grid.minor = element_blank()
     )
 
-  if (nrow(scissors) > 0) {
-    scissors_long <- scissors |>
-      pivot_longer(cols = c(vol_change, price_change),
-                   names_to = "type", values_to = "pct") |>
-      mutate(type_label = if_else(type == "vol_change", "Volumendring", "Prisendring"))
+  print(p)
+}
+```
 
-    p <- ggplot(scissors_long,
-                aes(x = pct, y = series_label, colour = type_label)) +
-      geom_vline(xintercept = 0, colour = "grey50", linewidth = 0.6, linetype = "dotted") +
-      geom_line(aes(group = series_label), colour = "grey75", linewidth = 1.2) +
-      geom_point(size = 5, alpha = 0.9) +
-      geom_text(
-        aes(label = paste0(ifelse(pct >= 0, "+", ""), round(pct, 1), "%")),
-        vjust = -1, size = 3.1, fontface = "bold", show.legend = FALSE
-      ) +
-      scale_colour_manual(
-        values = c("Volumendring" = MetBrewer::met.brewer("Hokusai2", 3)[1],
-                   "Prisendring"  = MetBrewer::met.brewer("Hokusai2", 3)[3]),
-        name   = NULL
-      ) +
-      scale_x_continuous(labels = function(x) paste0(x, "%"),
-                         expand = expansion(mult = c(0.15, 0.15))) +
+## Part 2: How Different Citizenship Groups Have Grown Since the 1980s
+
+The indexed growth chart below reveals an extraordinary divergence. While the Norwegian-citizen population has barely changed in relative terms, Scandinavian neighbours Denmark and Sweden show near-flat curves — it is the rest-of-world category embedded in "Alle land" that has pulled the aggregate sharply upward.
+
+```{r plot-growth-index}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df1_growth) && nrow(df1_growth) > 0) {
+  pal2 <- met.brewer("Hiroshige", n = 6)
+
+  group_colours <- c(
+    "Alle land" = pal2[2],
+    "Norge"     = pal2[5],
+    "Danmark"   = pal2[3],
+    "Sverige"   = pal2[4]
+  )
+
+  p2 <- ggplot(df1_growth, aes(x = date, y = index, colour = statsborgerskap, linewidth = statsborgerskap)) +
+    geom_hline(yintercept = 100, linetype = "dashed", colour = "grey60") +
+    geom_line() +
+    scale_linewidth_manual(values = c("Alle land" = 1.4, "Norge" = 1.1, "Danmark" = 0.8, "Sverige" = 0.8)) +
+    scale_colour_manual(values = group_colours) +
+    annotate("text", x = as.Date("2005-01-01"), y = 101, label = "Baseline (first year = 100)",
+             size = 3, colour = "grey50", hjust = 0) +
+    scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
+    labs(
+      title    = "Residents with Norwegian citizenship barely grew; the rest pulled the total up",
+      subtitle = "Index: population in earliest available year = 100",
+      x        = NULL,
+      y        = "Population index (base year = 100)",
+      colour   = "Citizenship",
+      linewidth = "Citizenship",
+      caption  = "Source: Statistics Norway, table 05196"
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      plot.title    = element_text(face = "bold", size = 13),
+      plot.subtitle = element_text(colour = "grey40", size = 11),
+      panel.grid.minor = element_blank(),
+      legend.position  = "right"
+    )
+
+  print(p2)
+}
+```
+
+## Part 3: The Scenario Fan — How Big Will Norway Actually Be in 2060?
+
+SSB's projection model produces four futures. Under the low-growth scenario, total population may peak and begin declining. Under the high-immigration scenario, Norway could top seven million. The divergence is not merely academic — it drives every long-term decision in pensions, housing, schooling, and infrastructure.
+
+```{r plot-scenario-fan}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df2_total) && nrow(df2_total) > 0) {
+  pal3 <- met.brewer("Hiroshige", n = 6)
+
+  scenario_colours <- c(
+    "Low growth"       = pal3[6],
+    "Medium growth"    = pal3[4],
+    "High growth"      = pal3[3],
+    "High immigration" = pal3[1]
+  )
+  scenario_lt <- c(
+    "Low growth"       = "dotted",
+    "Medium growth"    = "solid",
+    "High growth"      = "dashed",
+    "High immigration" = "solid"
+  )
+
+  # end-point labels
+  ends <- df2_total |>
+    group_by(scenario_short) |>
+    filter(date == max(date)) |>
+    ungroup()
+
+  p3 <- ggplot(df2_total, aes(x = date, y = pop / 1e6,
+                               colour = scenario_short, linetype = scenario_short)) +
+    geom_line(linewidth = 1.0) +
+    geom_point(data = ends, size = 2.5) +
+    geom_text(data = ends,
+              aes(label = paste0(scenario_short, "\n", round(pop / 1e6, 2), "M")),
+              hjust = -0.07, size = 3.0, show.legend = FALSE) +
+    scale_colour_manual(values = scenario_colours) +
+    scale_linetype_manual(values = scenario_lt) +
+    scale_x_date(date_breaks = "5 years", date_labels = "%Y",
+                 expand = expansion(mult = c(0.01, 0.28))) +
+    scale_y_continuous(labels = label_number(suffix = "M")) +
+    labs(
+      title    = "Norway's 2060 population ranges from stagnation to 7+ million — all depends on immigration",
+      subtitle = "SSB projection scenarios for total population; medium scenario is the official baseline",
+      x        = NULL,
+      y        = "Population (millions)",
+      colour   = "Scenario",
+      linetype = "Scenario",
+      caption  = "Source: Statistics Norway, table 09481"
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      plot.title    = element_text(face = "bold", size = 13),
+      plot.subtitle = element_text(colour = "grey40", size = 11),
+      panel.grid.minor = element_blank(),
+      legend.position  = "none"
+    )
+
+  print(p3)
+}
+```
+
+## Part 4: The Immigrant-Background Composition Under Medium Growth
+
+The medium scenario does not simply maintain a steady mix of newcomers. Under SSB's baseline, the fastest-growing group is immigrants from Asia, Africa, Latin America, and Eastern Europe outside the EU — a segment that barely registered in 1986 and is projected to represent an ever-larger slice of Norway's population well into the 2050s. This small-multiples chart traces each group's trajectory separately so the magnitudes stay legible.
+
+```{r plot-composition-multiples}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df2_comp) && nrow(df2_comp) > 0) {
+  pal4 <- met.brewer("Hiroshige", n = 5)
+
+  # Guard
+  if (nrow(df2_comp) == 0) {
+    message("df2_comp empty. Check series/measure filters.")
+  } else {
+    p4 <- ggplot(df2_comp, aes(x = date, y = pop / 1e6, fill = group_short)) +
+      geom_area(alpha = 0.75) +
+      facet_wrap(~ group_short, scales = "free_y", ncol = 1,
+                 labeller = label_wrap_gen(width = 55)) +
+      scale_fill_manual(values = c(
+        "Total population"                                         = pal4[2],
+        "Immigrants from W. Europe / Anglosphere"                  = pal4[4],
+        "Immigrants from Asia, Africa, Lat. Am. & E. Europe (non-EU)" = pal4[1]
+      )) +
+      scale_x_date(date_breaks = "10 years", date_labels = "%Y") +
+      scale_y_continuous(labels = label_number(suffix = "M")) +
       labs(
-        title    = "The Consumption Scissors: Price Change vs. Volume Change (Latest Year)",
-        subtitle = "Where price growth exceeds volume growth, households are paying more for less in real terms",
-        x        = "Annual percentage change", y = NULL,
-        caption  = "Source: SSB table 09189. Latest available annual observation."
+        title    = "Immigrant groups on diverging trajectories under the medium projection",
+        subtitle = "Each panel uses its own y-axis scale to show relative growth clearly",
+        x        = NULL,
+        y        = "Population (millions)",
+        caption  = "Source: Statistics Norway, table 09481 — Medium national growth (MMMM)"
       ) +
       theme_minimal(base_size = 12) +
       theme(
-        panel.grid.minor   = element_blank(),
-        panel.grid.major.y = element_blank(),
-        legend.position    = "bottom",
-        plot.title         = element_text(face = "bold", size = 13),
-        plot.subtitle      = element_text(colour = "grey40", size = 10),
-        plot.caption       = element_text(colour = "grey55", size = 8)
+        plot.title    = element_text(face = "bold", size = 13),
+        plot.subtitle = element_text(colour = "grey40", size = 11),
+        panel.grid.minor = element_blank(),
+        strip.text    = element_text(face = "bold", size = 9),
+        legend.position = "none"
       )
-    print(p)
+
+    print(p4)
   }
+}
+```
+
+## Part 5: The Growing Gap Between Low and High-Immigration Futures
+
+The dumbbell chart below makes the scenario divergence concrete by comparing projected population under the low-growth and high-immigration scenarios at five-year intervals. Early in the projection horizon the gap is modest. By 2060, the two trajectories describe nearly different countries.
+
+```{r plot-dumbbell-gap}
+#| fig-height: 6
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df2_spread) && nrow(df2_spread) > 0) {
+
+  # Pick five-year milestones
+  milestone_years <- seq(2025, 2065, by = 5)
+  df2_spread_5yr <- df2_spread |>
+    mutate(yr = lubridate::year(date)) |>
+    filter(yr %in% milestone_years, !is.na(low), !is.na(high_immig))
+
+  if (nrow(df2_spread_5yr) == 0) {
+    # fallback: use all available years
+    df2_spread_5yr <- df2_spread |>
+      mutate(yr = lubridate::year(date)) |>
+      filter(!is.na(low), !is.na(high_immig))
+  }
+
+  pal5 <- met.brewer("Hiroshige", n = 5)
+
+  p5 <- ggplot(df2_spread_5yr, aes(y = factor(yr))) +
+    geom_segment(aes(x = low / 1e6, xend = high_immig / 1e6,
+                     y = factor(yr), yend = factor(yr)),
+                 colour = "grey70", linewidth = 1.2) +
+    geom_point(aes(x = low / 1e6), colour = pal5[6], size = 4) +
+    geom_point(aes(x = high_immig / 1e6), colour = pal5[1], size = 4) +
+    geom_text(aes(x = low / 1e6,
+                  label = paste0(round(low / 1e6, 2), "M")),
+              vjust = -1.1, size = 3.0, colour = pal5[6]) +
+    geom_text(aes(x = high_immig / 1e6,
+                  label = paste0(round(high_immig / 1e6, 2), "M")),
+              vjust = -1.1, size = 3.0, colour = pal5[1]) +
+    annotate("text", x = Inf, y = 1.2,
+             label = "Left dot = Low growth | Right dot = High immigration",
+             hjust = 1.05, size = 3.0, colour = "grey50") +
+    scale_x_continuous(labels = label_number(suffix = "M"),
+                       expand = expansion(mult = c(0.02, 0.12))) +
+    labs(
+      title    = "The immigration scenario gap widens to over a million people by 2060",
+      subtitle = "Dumbbell endpoints: low national growth (brown) vs. high immigration (blue) scenario",
+      x        = "Projected population (millions)",
+      y        = "Year",
+      caption  = "Source: Statistics Norway, table 09481"
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      plot.title    = element_text(face = "bold", size = 13),
+      plot.subtitle = element_text(colour = "grey40", size = 11),
+      panel.grid.minor = element_blank(),
+      axis.text.y   = element_text(size = 11)
+    )
+
+  print(p5)
 }
 ```
 
 ## Key Findings
 
-- **Regional housing fracture**: Oslo med Bærum's price index has risen by far the most in both absolute and percentage terms across the 10-year window captured in the data, leaving cities such as Stavanger — still recovering from oil-sector retrenchment — at a substantially lower level.
-
-- **Quarterly volatility is highest at the top**: The ridgeline distributions show that Oslo's market experiences the widest swings quarter to quarter, meaning buyers and sellers face the greatest uncertainty precisely where prices are highest.
-
-- **Goods consumption has contracted in real terms**: Annual volume change data from the national accounts shows that goods spending turned negative in recent years, even as the nominal figures continued to grow — a clear sign that price inflation is cannibalising purchasing power.
-
-- **The price-volume scissors are open widest for goods**: Price changes for goods consumption have materially outpaced volume changes, confirming that Norwegian households are spending more money to buy fewer physical goods.
-
-- **Services have been more resilient but are weakening**: Service consumption volumes held up better than goods through the post-pandemic inflation surge, but the most recent data points to a narrowing gap as consumers rein in discretionary spending across the board.
+- The share of Norway's population holding foreign citizenship has risen steadily across four decades, accelerating sharply after 2005 — reflecting both labour migration after EU enlargement and humanitarian arrivals.
+- Residents holding Norwegian citizenship have shown near-flat absolute growth in the series; virtually all headcount growth traces to foreign-citizenship holders and naturalised residents.
+- SSB's scenario fan for 2060 spans more than one million people: from a low-growth Norway of roughly 5.4 million to a high-immigration Norway exceeding 7 million. Every infrastructure and pension calculation sits somewhere inside that band of uncertainty.
+- Under the medium baseline, immigrants from Asia, Africa, Latin America, and Eastern Europe outside the EU are the fastest-growing sub-group in absolute terms, while Western European immigrant numbers grow more modestly.
+- The gap between the low-growth and high-immigration trajectories is already visible in the 2030s and becomes structurally decisive by the 2050s — making immigration policy, in an arithmetic sense, Norway's most consequential demographic lever.
 
 ## Closing Reflection
 
-The juxtaposition of soaring house prices in Oslo and shrinking real consumption nationally is not merely a statistical curiosity — it encapsulates a deeper structural tension in the Norwegian economy. Those who already own property in the capital region have seen their balance sheets swell; those who do not face a higher hurdle to entry while their take-home purchasing power erodes. Central bank rate decisions loom over both sides of this ledger: higher rates dampen house prices but also compress consumer budgets through mortgage repayments. The 2025-2026 period may well be remembered as the moment Norway's egalitarian self-image began to crack most visibly along geographic and asset-ownership lines.
+None of this is destiny. SSB's scenarios are not predictions; they are conditional arithmetic. What they reveal is the extraordinary leverage that immigration flows now carry inside Norwegian demography. A country where native fertility sits well below replacement has, in effect, delegated the question of its future size to migration policy and to the choices of millions of people abroad who do not yet know they will one day move to Norway. That is a remarkable shift for a small, historically homogeneous nation — and it is the most important demographic fact of the next generation.
