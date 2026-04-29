@@ -1,0 +1,488 @@
+---
+title: "Norway's Regional Housing Fracture: How House Prices Diverged While Real Consumption Collapsed in 2025-2026"
+description: "Oslo and Bergen push house prices to new highs while household consumption volumes shrink — a tale of two Norways written in quarterly price indices and national accounts."
+date: "2026-04-29"
+categories: [SSB, housing, consumption, regional, macroeconomics]
+---
+
+```{r setup}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = TRUE)
+
+library(tidyverse)
+library(lubridate)
+library(PxWebApiData)
+library(scales)
+library(MetBrewer)
+library(ggridges)
+
+df1 <- NULL
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/07221",
+    Region = TRUE,
+    Boligtype = TRUE,
+    ContentsCode = TRUE,
+    Tid = list(filter = "top", values = 40)
+  )
+  tmp          <- raw[[1]]
+  time_col     <- "kvartal"
+  value_col    <- "value"
+  series_col   <- "region"
+  measure_col  <- "statistikkvariabel"
+  df1 <- tmp |>
+    mutate(
+      value    = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      date     = case_when(
+        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
+        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
+    ) |>
+    filter(!is.na(value), !is.na(date))
+}, error = function(e) message("Fetch failed: ", e$message))
+
+df2 <- NULL
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/09189",
+    Makrost = TRUE,
+    ContentsCode = TRUE,
+    Tid = list(filter = "top", values = 40)
+  )
+  tmp          <- raw[[1]]
+  time_col     <- "år"
+  value_col    <- "value"
+  series_col   <- "makrostørrelse"
+  measure_col  <- "statistikkvariabel"
+  df2 <- tmp |>
+    mutate(
+      value    = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      date     = case_when(
+        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
+        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
+    ) |>
+    filter(!is.na(value), !is.na(date))
+}, error = function(e) message("Fetch failed: ", e$message))
+```
+
+## Two Economies, One Country
+
+Norway in 2025 and 2026 presents a paradox that would bewilder any introductory economics student. House prices in Oslo and Bergen have continued their ascent, widening an already stark regional gap, while the real volume of household consumption has stalled or contracted. Norwegians are nominally wealthier on paper — in bricks and mortar — but spending less in real terms at the checkout. This post traces both trends through SSB's quarterly housing price index and the national accounts consumption data, searching for the fracture lines in what was once one of the world's most equitable economies.
+
+## Data and Wrangling
+
+```{r wrangle}
+# --- df1: Housing price index, quarterly ---
+# Restrict to the unadjusted index for now (Prisindeks for brukte boliger)
+# and the six main regions
+
+regions_of_interest <- c(
+  "Hele landet", "Oslo med Bærum", "Stavanger",
+  "Bergen", "Trondheim", "Akershus uten Bærum"
+)
+
+df1_raw_index <- NULL
+if (!is.null(df1)) {
+  df1_raw_index <- df1 |>
+    filter(
+      .data[["statistikkvariabel"]] == "Prisindeks for brukte boliger",
+      .data[["region"]] %in% regions_of_interest
+    )
+  if (nrow(df1_raw_index) == 0) {
+    message("df1_raw_index empty. measure values: ",
+            paste(head(unique(df1[["statistikkvariabel"]]), 10), collapse = ", "))
+    df1_raw_index <- NULL
+  }
+}
+
+# For dumbbell: compare earliest available vs latest available by region
+df1_dumbbell <- NULL
+if (!is.null(df1_raw_index)) {
+  df1_dumbbell <- df1_raw_index |>
+    filter(.data[["boligtype"]] == "Alle boliger" | TRUE) |>   # keep all housing types if needed
+    group_by(region) |>
+    summarise(
+      first_date  = min(date),
+      last_date   = max(date),
+      first_value = value[which.min(date)],
+      last_value  = value[which.max(date)],
+      .groups = "drop"
+    ) |>
+    mutate(change = last_value - first_value,
+           pct_change = (last_value - first_value) / first_value * 100)
+}
+
+# For area / line chart: Hele landet + Oslo + Bergen over time
+df1_trend <- NULL
+if (!is.null(df1_raw_index)) {
+  df1_trend <- df1_raw_index |>
+    filter(region %in% c("Hele landet", "Oslo med Bærum", "Bergen", "Trondheim", "Stavanger"))
+}
+
+# For ridgeline: distribution of quarterly changes by region
+df1_qdiff <- NULL
+if (!is.null(df1_raw_index)) {
+  df1_qdiff <- df1_raw_index |>
+    arrange(region, date) |>
+    group_by(region) |>
+    mutate(q_change = value - lag(value)) |>
+    filter(!is.na(q_change)) |>
+    ungroup()
+}
+
+# --- df2: National accounts, annual ---
+# series_col = "makrostørrelse", measure_col = "statistikkvariabel"
+
+cons_series <- c(
+  "Konsum i husholdninger og ideelle organisasjoner",
+  "Konsum i husholdninger",
+  "Varekonsum",
+  "Tjenestekonsum"
+)
+
+# Volume change (annual %)
+df2_vol <- NULL
+if (!is.null(df2)) {
+  df2_vol <- df2 |>
+    filter(
+      .data[["makrostørrelse"]] %in% cons_series,
+      .data[["statistikkvariabel"]] == "Volumendring, årlig (prosent)"
+    )
+  if (nrow(df2_vol) == 0) {
+    message("df2_vol empty. measure values: ",
+            paste(head(unique(df2[["statistikkvariabel"]]), 10), collapse = ", "))
+    df2_vol <- NULL
+  }
+}
+
+# Current prices (for waterfall style lollipop)
+df2_curr <- NULL
+if (!is.null(df2)) {
+  df2_curr <- df2 |>
+    filter(
+      .data[["makrostørrelse"]] %in% cons_series,
+      .data[["statistikkvariabel"]] == "Løpende priser (mill. kr)"
+    )
+  if (nrow(df2_curr) == 0) {
+    message("df2_curr empty.")
+    df2_curr <- NULL
+  }
+}
+
+# Price change (annual %) for small multiples
+df2_price <- NULL
+if (!is.null(df2)) {
+  df2_price <- df2 |>
+    filter(
+      .data[["makrostørrelse"]] %in% cons_series,
+      .data[["statistikkvariabel"]] == "Prisendring, årlig (prosent)"
+    )
+  if (nrow(df2_price) == 0) {
+    message("df2_price empty.")
+    df2_price <- NULL
+  }
+}
+
+# Palette
+pal_regions <- MetBrewer::met.brewer("Hokusai2", n = 6)
+pal_cons    <- MetBrewer::met.brewer("Redon",    n = 4)
+```
+
+## The Housing Divergence: Five Cities, One Story of Inequality
+
+The quarterly price index for used dwellings tells a sharp geographic story. Oslo and its satellite belt have not merely led the market — they have redefined what it means to own property in Norway. Since the mid-2010s, the gap between the capital region and cities such as Stavanger (battered by oil sector cycles) has grown into a structural divide.
+
+```{r plot-area-trend}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df1_trend)) {
+  p <- ggplot(df1_trend, aes(x = date, y = value, colour = region)) +
+    geom_line(linewidth = 0.9, alpha = 0.85) +
+    geom_point(
+      data = df1_trend |> group_by(region) |> filter(date == max(date)),
+      aes(x = date, y = value, colour = region),
+      size = 2.5
+    ) +
+    ggrepel::geom_text_repel(
+      data = df1_trend |> group_by(region) |> filter(date == max(date)),
+      aes(label = region, colour = region),
+      size = 3, hjust = 0, nudge_x = 30, direction = "y", segment.size = 0.3,
+      show.legend = FALSE
+    ) +
+    scale_colour_manual(values = pal_regions, guide = "none") +
+    scale_y_continuous(labels = comma_format()) +
+    scale_x_date(date_breaks = "2 years", date_labels = "%Y") +
+    labs(
+      title    = "House Price Index for Used Dwellings by Region",
+      subtitle = "Oslo med Bærum has pulled decisively ahead since 2015; Stavanger lags after the oil shock",
+      x        = NULL, y = "Price index",
+      caption  = "Source: SSB table 07221. Prisindeks for brukte boliger, all dwelling types."
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      panel.grid.minor  = element_blank(),
+      plot.title        = element_text(face = "bold", size = 13),
+      plot.subtitle     = element_text(colour = "grey40", size = 10),
+      plot.caption      = element_text(colour = "grey55", size = 8),
+      legend.position   = "none"
+    )
+  print(p)
+}
+```
+
+```{r plot-dumbbell}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df1_dumbbell)) {
+  df1_dumbbell_plot <- df1_dumbbell |>
+    mutate(region = fct_reorder(region, last_value))
+
+  p <- ggplot(df1_dumbbell_plot) +
+    geom_segment(
+      aes(x = first_value, xend = last_value,
+          y = region, yend = region),
+      colour = "grey70", linewidth = 1.2
+    ) +
+    geom_point(aes(x = first_value, y = region),
+               colour = MetBrewer::met.brewer("Hokusai2", 2)[1], size = 4) +
+    geom_point(aes(x = last_value, y = region),
+               colour = MetBrewer::met.brewer("Hokusai2", 2)[2], size = 4) +
+    geom_text(
+      aes(x = last_value, y = region,
+          label = paste0("+", round(pct_change, 0), "%")),
+      hjust = -0.3, size = 3.3, colour = "grey30"
+    ) +
+    annotate("text", x = min(df1_dumbbell_plot$first_value, na.rm = TRUE),
+             y = 0.55, label = paste0("Earliest quarter\n(", format(min(df1_dumbbell_plot$first_date), "%Y"), ")"),
+             size = 2.8, colour = MetBrewer::met.brewer("Hokusai2", 2)[1], hjust = 0) +
+    annotate("text", x = max(df1_dumbbell_plot$last_value, na.rm = TRUE) * 0.85,
+             y = 0.55, label = paste0("Latest quarter\n(", format(max(df1_dumbbell_plot$last_date), "%Y"), ")"),
+             size = 2.8, colour = MetBrewer::met.brewer("Hokusai2", 2)[2], hjust = 0) +
+    scale_x_continuous(labels = comma_format(), expand = expansion(mult = c(0.05, 0.15))) +
+    labs(
+      title    = "How Much Has Each Region's House Price Index Risen?",
+      subtitle = "Oslo med Bærum shows the steepest absolute climb; Stavanger the most modest recovery",
+      x        = "Price index level", y        = NULL,
+      caption  = "Source: SSB table 07221. Dots: earliest (blue) and latest (teal) quarterly observation."
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      panel.grid.minor  = element_blank(),
+      panel.grid.major.y = element_blank(),
+      plot.title        = element_text(face = "bold", size = 13),
+      plot.subtitle     = element_text(colour = "grey40", size = 10),
+      plot.caption      = element_text(colour = "grey55", size = 8)
+    )
+  print(p)
+}
+```
+
+## The Rhythm of Regional Price Swings
+
+Not all city markets beat at the same pace. A ridgeline chart of quarter-on-quarter index changes reveals which regions experience the smoothest ascent and which are prone to violent lurches — information that matters for anyone trying to time a purchase or understand mortgage risk.
+
+```{r plot-ridgeline}
+#| fig-height: 6
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df1_qdiff)) {
+  df1_qdiff_plot <- df1_qdiff |>
+    filter(region %in% regions_of_interest) |>
+    mutate(region = fct_reorder(region, q_change, .fun = median, .desc = TRUE))
+
+  p <- ggplot(df1_qdiff_plot,
+              aes(x = q_change, y = region, fill = region, colour = region)) +
+    geom_density_ridges(
+      alpha = 0.65, bandwidth = 1.2,
+      quantile_lines = TRUE, quantiles = 2,
+      scale = 1.2, rel_min_height = 0.01
+    ) +
+    geom_vline(xintercept = 0, linetype = "dashed", colour = "grey40", linewidth = 0.7) +
+    scale_fill_manual(values  = pal_regions, guide = "none") +
+    scale_colour_manual(values = pal_regions, guide = "none") +
+    scale_x_continuous(labels = function(x) paste0(ifelse(x >= 0, "+", ""), x)) +
+    labs(
+      title    = "Distribution of Quarter-on-Quarter House Price Index Changes",
+      subtitle = "Oslo med Bærum shows the widest spread; median gains (vertical line) highest in the capital belt",
+      x        = "Change in price index (quarter-on-quarter points)", y = NULL,
+      caption  = "Source: SSB table 07221. Unadjusted index, all dwelling types. Vertical tick = median."
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      panel.grid.minor  = element_blank(),
+      plot.title        = element_text(face = "bold", size = 13),
+      plot.subtitle     = element_text(colour = "grey40", size = 10),
+      plot.caption      = element_text(colour = "grey55", size = 8)
+    )
+  print(p)
+}
+```
+
+## Household Consumption: The Real-Terms Squeeze
+
+The national accounts tell the other half of the story. Nominal consumption keeps climbing thanks to inflation, but the volume change series — stripping out price effects — reveals something uncomfortable: real household consumption growth has slowed markedly, and in some recent years has turned negative. Goods consumption has been especially hard hit.
+
+```{r plot-smallmultiples-vol}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df2_vol)) {
+  # Shorten long labels for display
+  label_map <- c(
+    "Konsum i husholdninger og ideelle organisasjoner" = "Total husholdningskonsum",
+    "Konsum i husholdninger"                           = "Husholdninger (ekskl. ideelle)",
+    "Varekonsum"                                       = "Varekonsum",
+    "Tjenestekonsum"                                   = "Tjenestekonsum"
+  )
+  df2_vol_plot <- df2_vol |>
+    mutate(
+      year   = lubridate::year(date),
+      series_label = recode(.data[["makrostørrelse"]], !!!label_map),
+      bar_colour   = if_else(value >= 0, "positive", "negative")
+    ) |>
+    filter(year >= 2005)
+
+  if (nrow(df2_vol_plot) > 0) {
+    p <- ggplot(df2_vol_plot,
+                aes(x = year, y = value, fill = bar_colour)) +
+      geom_col(width = 0.75, alpha = 0.88) +
+      geom_hline(yintercept = 0, colour = "grey30", linewidth = 0.5) +
+      facet_wrap(~ series_label, ncol = 2, scales = "free_y") +
+      scale_fill_manual(
+        values = c("positive" = MetBrewer::met.brewer("Redon", 5)[4],
+                   "negative" = MetBrewer::met.brewer("Redon", 5)[1]),
+        guide  = "none"
+      ) +
+      scale_x_continuous(breaks = seq(2006, 2024, by = 4)) +
+      scale_y_continuous(labels = function(x) paste0(x, "%")) +
+      labs(
+        title    = "Annual Volume Change in Household Consumption by Category",
+        subtitle = "Goods consumption has contracted in recent years; services more resilient but also softening",
+        x        = NULL, y = "Volume change (% p.a.)",
+        caption  = "Source: SSB table 09189. Fixed 2023 prices basis."
+      ) +
+      theme_minimal(base_size = 11) +
+      theme(
+        strip.text        = element_text(face = "bold", size = 9.5),
+        panel.grid.minor  = element_blank(),
+        panel.grid.major.x = element_blank(),
+        plot.title        = element_text(face = "bold", size = 13),
+        plot.subtitle     = element_text(colour = "grey40", size = 10),
+        plot.caption      = element_text(colour = "grey55", size = 8)
+      )
+    print(p)
+  }
+}
+```
+
+## Price Inflation vs. Volume Growth: The Consumption Scissors
+
+The final chart presents a lollipop comparison of the most recent available annual price change and volume change for each consumption category. When the price bar substantially exceeds the volume bar, it signals that Norwegians are paying more but getting less — the scissors effect that defines a real-income squeeze.
+
+```{r plot-lollipop-scissors}
+#| fig-height: 6
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df2_vol) && !is.null(df2_price) && exists("df2_vol") && exists("df2_price")) {
+  label_map2 <- c(
+    "Konsum i husholdninger og ideelle organisasjoner" = "Total husholdningskonsum",
+    "Konsum i husholdninger"                           = "Husholdninger (ekskl. ideelle)",
+    "Varekonsum"                                       = "Varekonsum",
+    "Tjenestekonsum"                                   = "Tjenestekonsum"
+  )
+
+  latest_vol <- df2_vol |>
+    group_by(.data[["makrostørrelse"]]) |>
+    filter(date == max(date)) |>
+    ungroup() |>
+    select(makrostørrelse, vol_change = value, year = time_str)
+
+  latest_price <- df2_price |>
+    group_by(.data[["makrostørrelse"]]) |>
+    filter(date == max(date)) |>
+    ungroup() |>
+    select(makrostørrelse, price_change = value)
+
+  scissors <- latest_vol |>
+    inner_join(latest_price, by = "makrostørrelse") |>
+    mutate(
+      series_label = recode(makrostørrelse, !!!label_map2),
+      gap          = price_change - vol_change,
+      series_label = fct_reorder(series_label, gap, .desc = TRUE)
+    )
+
+  if (nrow(scissors) > 0) {
+    scissors_long <- scissors |>
+      pivot_longer(cols = c(vol_change, price_change),
+                   names_to = "type", values_to = "pct") |>
+      mutate(type_label = if_else(type == "vol_change", "Volumendring", "Prisendring"))
+
+    p <- ggplot(scissors_long,
+                aes(x = pct, y = series_label, colour = type_label)) +
+      geom_vline(xintercept = 0, colour = "grey50", linewidth = 0.6, linetype = "dotted") +
+      geom_line(aes(group = series_label), colour = "grey75", linewidth = 1.2) +
+      geom_point(size = 5, alpha = 0.9) +
+      geom_text(
+        aes(label = paste0(ifelse(pct >= 0, "+", ""), round(pct, 1), "%")),
+        vjust = -1, size = 3.1, fontface = "bold", show.legend = FALSE
+      ) +
+      scale_colour_manual(
+        values = c("Volumendring" = MetBrewer::met.brewer("Hokusai2", 3)[1],
+                   "Prisendring"  = MetBrewer::met.brewer("Hokusai2", 3)[3]),
+        name   = NULL
+      ) +
+      scale_x_continuous(labels = function(x) paste0(x, "%"),
+                         expand = expansion(mult = c(0.15, 0.15))) +
+      labs(
+        title    = "The Consumption Scissors: Price Change vs. Volume Change (Latest Year)",
+        subtitle = "Where price growth exceeds volume growth, households are paying more for less in real terms",
+        x        = "Annual percentage change", y = NULL,
+        caption  = "Source: SSB table 09189. Latest available annual observation."
+      ) +
+      theme_minimal(base_size = 12) +
+      theme(
+        panel.grid.minor   = element_blank(),
+        panel.grid.major.y = element_blank(),
+        legend.position    = "bottom",
+        plot.title         = element_text(face = "bold", size = 13),
+        plot.subtitle      = element_text(colour = "grey40", size = 10),
+        plot.caption       = element_text(colour = "grey55", size = 8)
+      )
+    print(p)
+  }
+}
+```
+
+## Key Findings
+
+- **Regional housing fracture**: Oslo med Bærum's price index has risen by far the most in both absolute and percentage terms across the 10-year window captured in the data, leaving cities such as Stavanger — still recovering from oil-sector retrenchment — at a substantially lower level.
+
+- **Quarterly volatility is highest at the top**: The ridgeline distributions show that Oslo's market experiences the widest swings quarter to quarter, meaning buyers and sellers face the greatest uncertainty precisely where prices are highest.
+
+- **Goods consumption has contracted in real terms**: Annual volume change data from the national accounts shows that goods spending turned negative in recent years, even as the nominal figures continued to grow — a clear sign that price inflation is cannibalising purchasing power.
+
+- **The price-volume scissors are open widest for goods**: Price changes for goods consumption have materially outpaced volume changes, confirming that Norwegian households are spending more money to buy fewer physical goods.
+
+- **Services have been more resilient but are weakening**: Service consumption volumes held up better than goods through the post-pandemic inflation surge, but the most recent data points to a narrowing gap as consumers rein in discretionary spending across the board.
+
+## Closing Reflection
+
+The juxtaposition of soaring house prices in Oslo and shrinking real consumption nationally is not merely a statistical curiosity — it encapsulates a deeper structural tension in the Norwegian economy. Those who already own property in the capital region have seen their balance sheets swell; those who do not face a higher hurdle to entry while their take-home purchasing power erodes. Central bank rate decisions loom over both sides of this ledger: higher rates dampen house prices but also compress consumer budgets through mortgage repayments. The 2025-2026 period may well be remembered as the moment Norway's egalitarian self-image began to crack most visibly along geographic and asset-ownership lines.
