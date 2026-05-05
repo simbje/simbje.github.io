@@ -725,9 +725,15 @@ BUG 1 — HARDCODED SSB PARAMETER CODES
   Tid = list(filter="top", values=N) is always correct — never change it.
   Only fix inside ApiData() calls — leave filter() and mutate() alone.
 
-BUG 2 — MISSING NULL GUARD ON PLOT CHUNK
-  Wrong: p <- ggplot(df, ...) without if (!is.null(df)) { }
-  Fix: Wrap the entire plot in if (!is.null(df)) { ... }
+BUG 2 — MISSING OR INCOMPLETE GUARD ON PLOT CHUNK
+  Wrong: p <- ggplot(df, ...) without guard, or if (!is.null(df)) without nrow check
+  Fix: Wrap the entire plot in if (!is.null(df) && nrow(df) > 0) { ... }
+  Also upgrade any existing if (!is.null(df)) guards to add && nrow(df) > 0.
+
+BUG 8 — EMPTY DATA FRAME FROM ApiData()
+  After every df <- ...ApiData(...) call, add an empty-data guard:
+    if (is.null(df) || nrow(df) == 0) { message("No data returned"); df <- NULL }
+  This ensures downstream null guards in plot chunks catch the empty case.
 
 BUG 3 — MISSING print() ON GGPLOT OBJECT
   Wrong: ggplot(df, aes(x, y)) + geom_line()
