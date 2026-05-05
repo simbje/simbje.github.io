@@ -1,11 +1,11 @@
 ---
-title: "Norway's 2026 Construction-Energy Divide: How Building Drives Fail While Petroleum Consumption Fractures by Sector"
-description: "Residential construction has collapsed across dwelling types while petroleum product sales reveal a deepening fragmentation in how Norway's economy consumes energy — two signals pointing to structural stress beneath the surface."
+title: "Norway's Growth Paradox: GDP Surges in Oil and Finance While Household Consumption Collapses"
+description: "Norwegian national accounts reveal a deepening split between booming industrial output and stagnating household spending, exposing the structural fragility beneath the headline growth numbers."
 date: "2026-05-05"
-categories: [SSB, construction, energy, regional, housing]
+categories: [SSB, national accounts, consumption, industry, GDP]
 ---
 
-Norway built its modern prosperity on two pillars: a vigorous housing market that absorbed growing urban populations, and an energy-intensive economy powered by petroleum products sold across agriculture, transport, and industry. In 2026, cracks are spreading through both. New dwelling construction has dropped sharply across virtually every building type, and the monthly flow of petroleum products to different buyer groups tells a fragmented, unsettling story about how Norwegian consumption patterns are rewiring themselves. Together, the two datasets offer a rare double-lens on an economy under structural pressure.
+Norway is a country that looks prosperous in aggregate but feels increasingly strained at the household level. The national accounts tell two stories simultaneously: industrial sectors — led by petroleum extraction and capital-intensive manufacturing — are posting record gross product values, while real household consumption across goods and services has been grinding lower. This post traces that divergence through four decades of Statistics Norway data.
 
 ## Data
 
@@ -22,15 +22,16 @@ library(ggridges)
 df1 <- NULL
 tryCatch({
   raw <- ApiData(
-    "https://data.ssb.no/api/v0/no/table/06265",
-    Region = TRUE,
-    Bygningstype = TRUE,
+    "https://data.ssb.no/api/v0/no/table/09170",
+    næring = TRUE,
+    statistikkvariabel = TRUE,
     Tid = list(filter = "top", values = 40)
   )
   tmp          <- raw[[1]]
   time_col     <- "år"
   value_col    <- "value"
-  series_col   <- "bygningstype"
+  series_col   <- "næring"
+  measure_col  <- "statistikkvariabel"
   df1 <- tmp |>
     mutate(
       value    = as.numeric(.data[[value_col]]),
@@ -43,22 +44,23 @@ tryCatch({
       )
     ) |>
     filter(!is.na(value), !is.na(date))
-  if (is.null(df1) || nrow(df1) == 0) { message("No data returned for table 06265"); df1 <- NULL }
 }, error = function(e) message("Fetch failed: ", e$message))
+
+if (is.null(df1) || nrow(df1) == 0) { message("No data returned for df1"); df1 <- NULL }
 
 df2 <- NULL
 tryCatch({
   raw <- ApiData(
-    "https://data.ssb.no/api/v0/no/table/11174",
-    Region = TRUE,
-    Kjopegrupper = TRUE,
-    PetroleumProd = TRUE,
+    "https://data.ssb.no/api/v0/no/table/09189",
+    makrostørrelse = TRUE,
+    statistikkvariabel = TRUE,
     Tid = list(filter = "top", values = 40)
   )
   tmp          <- raw[[1]]
-  time_col     <- "måned"
+  time_col     <- "år"
   value_col    <- "value"
-  series_col   <- "kjøpegruppe"
+  series_col   <- "makrostørrelse"
+  measure_col  <- "statistikkvariabel"
   df2 <- tmp |>
     mutate(
       value    = as.numeric(.data[[value_col]]),
@@ -71,351 +73,460 @@ tryCatch({
       )
     ) |>
     filter(!is.na(value), !is.na(date))
-  if (is.null(df2) || nrow(df2) == 0) { message("No data returned for table 11174"); df2 <- NULL }
 }, error = function(e) message("Fetch failed: ", e$message))
+
+if (is.null(df2) || nrow(df2) == 0) { message("No data returned for df2"); df2 <- NULL }
 ```
 
 ## Wrangling
 
 ```{r wrangle}
-# --- df1: Construction starts/completions by building type, national totals ---
-# Identify the stat column (contains what is being measured: starts vs completions)
+# ── df1: Gross product by industry at constant 2023 prices ──────────────────
+df1_fixed <- NULL
 if (!is.null(df1)) {
-  # Inspect available columns beyond time and series
-  df1_cols <- names(df1)
-  
-  # The dataset typically has a "statistikkvariabel" column distinguishing
-  # igangsatte (starts) vs fullforte (completions)
-  stat_col <- df1_cols[!df1_cols %in% c("år", "value", "bygningstype", "region",
-                                         "time_str", "date", "value")]
-  stat_col <- stat_col[nchar(stat_col) > 0][1]
-  
-  # Summarise nationally across all regions, for starts only if distinguishable
-  df1_nat <- df1 |>
-    group_by(date, time_str, .data[[series_col]]) |>
-    summarise(total = sum(value, na.rm = TRUE), .groups = "drop") |>
-    rename(bygningstype = .data[[series_col]]) |>
-    filter(total > 0)
-  
-  # Year column
-  df1_nat <- df1_nat |>
-    mutate(year = year(date))
-  
-  # Lollipop: latest year vs five years prior — change by building type
-  years_avail <- sort(unique(df1_nat$year))
-  yr_latest   <- max(years_avail)
-  yr_prior    <- yr_latest - 5
-  
-  df1_dumbbell <- df1_nat |>
-    filter(year %in% c(yr_prior, yr_latest)) |>
-    group_by(bygningstype, year) |>
-    summarise(total = sum(total, na.rm = TRUE), .groups = "drop") |>
-    pivot_wider(names_from = year, values_from = total,
-                names_prefix = "yr_") |>
-    rename(yr_old = paste0("yr_", yr_prior),
-           yr_new = paste0("yr_", yr_latest)) |>
-    filter(!is.na(yr_old), !is.na(yr_new)) |>
-    mutate(
-      change_pct = (yr_new - yr_old) / yr_old * 100,
-      direction  = if_else(change_pct >= 0, "Increase", "Decrease")
+  df1_fixed <- df1 |>
+    filter(
+      statistikkvariabel == "Bruttoprodukt i basisverdi. Faste 2023-priser (mill. kr)",
+      næring %in% c(
+        "Totalt for næringer",
+        "Jordbruk og skogbruk",
+        "Fiske, fangst og akvakultur",
+        "Bergverksdrift, Utvinning av råolje og naturgass, inkl. tjenester",
+        "Industri"
+      )
     ) |>
-    arrange(change_pct)
-  
-  # Area chart: total completions across all types over time
-  df1_area <- df1_nat |>
-    group_by(year) |>
-    summarise(total = sum(total, na.rm = TRUE), .groups = "drop")
-  
-  # Small multiples: each building type trend
-  df1_types <- df1_nat |>
-    group_by(year, bygningstype) |>
-    summarise(total = sum(total, na.rm = TRUE), .groups = "drop")
+    rename(industry = næring, year = år)
 }
 
-# --- df2: Petroleum sales by buyer group, monthly, national ---
-if (!is.null(df2)) {
-  series_col2 <- "kjøpegruppe"
-  
-  df2_nat <- df2 |>
-    group_by(date, time_str, .data[[series_col2]]) |>
-    summarise(total = sum(value, na.rm = TRUE), .groups = "drop") |>
-    rename(kjøpegruppe = .data[[series_col2]]) |>
-    filter(total > 0)
-  
-  df2_nat <- df2_nat |>
+# ── df1: index relative to first available year ──────────────────────────────
+df1_indexed <- NULL
+if (!is.null(df1_fixed)) {
+  base_year <- df1_fixed |>
+    group_by(industry) |>
+    slice_min(date, n = 1) |>
+    select(industry, base_value = value)
+
+  df1_indexed <- df1_fixed |>
+    left_join(base_year, by = "industry") |>
+    mutate(index = 100 * value / base_value)
+}
+
+# ── df1: growth over last decade (fixed prices) ──────────────────────────────
+df1_growth <- NULL
+if (!is.null(df1_fixed)) {
+  years_avail <- sort(unique(df1_fixed$year))
+  yr_now   <- tail(years_avail, 1)
+  yr_10ago <- years_avail[max(1, length(years_avail) - 10)]
+
+  df1_growth <- df1_fixed |>
+    filter(year %in% c(yr_10ago, yr_now), næring != "Totalt for næringer") |>
+    select(industry = næring, year, value) |>
+    pivot_wider(names_from = year, values_from = value) |>
+    rename(val_start = 2, val_end = 3) |>
     mutate(
-      year  = year(date),
-      month = month(date)
+      pct_change = 100 * (val_end - val_start) / val_start,
+      yr_start   = yr_10ago,
+      yr_end     = yr_now
+    ) |>
+    arrange(desc(pct_change))
+}
+
+# ── df2: household consumption volume change ─────────────────────────────────
+df2_vol <- NULL
+if (!is.null(df2)) {
+  df2_vol <- df2 |>
+    filter(
+      statistikkvariabel == "Volumendring, årlig (prosent)",
+      makrostørrelse %in% c(
+        "Konsum i husholdninger og ideelle organisasjoner",
+        "Konsum i husholdninger",
+        "Varekonsum",
+        "Tjenestekonsum"
+      )
+    ) |>
+    rename(category = makrostørrelse, year = år) |>
+    mutate(
+      label_short = case_when(
+        category == "Konsum i husholdninger og ideelle organisasjoner" ~ "Total husholdninger",
+        category == "Konsum i husholdninger"                           ~ "Husholdninger",
+        category == "Varekonsum"                                        ~ "Varekonsum",
+        category == "Tjenestekonsum"                                    ~ "Tjenestekonsum",
+        TRUE ~ category
+      )
     )
-  
-  # Heatmap: monthly values by buyer group (recent 3 years, national total)
-  yr_max2 <- max(df2_nat$year)
-  
-  df2_heat <- df2_nat |>
-    filter(year >= yr_max2 - 2,
-           kjøpegruppe != "Alle kjøpegrupper") |>
-    group_by(kjøpegruppe, year, month) |>
-    summarise(total = sum(total, na.rm = TRUE), .groups = "drop") |>
-    mutate(month_label = month.abb[month])
-  
-  # Ridgeline: distribution of monthly sales by buyer group
-  df2_ridge <- df2_nat |>
-    filter(kjøpegruppe != "Alle kjøpegrupper",
-           year >= yr_max2 - 4) |>
-    group_by(kjøpegruppe, date, year, month) |>
-    summarise(total = sum(total, na.rm = TRUE), .groups = "drop")
-  
-  # Lollipop: average monthly sales in latest available year by buyer group
-  df2_lollipop <- df2_nat |>
-    filter(year == yr_max2,
-           kjøpegruppe != "Alle kjøpegrupper") |>
-    group_by(kjøpegruppe) |>
-    summarise(avg_monthly = mean(total, na.rm = TRUE), .groups = "drop") |>
-    arrange(avg_monthly)
+}
+
+# ── df2: current vs fixed price levels for total household consumption ────────
+df2_levels <- NULL
+if (!is.null(df2)) {
+  df2_levels <- df2 |>
+    filter(
+      makrostørrelse == "Konsum i husholdninger og ideelle organisasjoner",
+      statistikkvariabel %in% c(
+        "Løpende priser (mill. kr)",
+        "Faste 2023-priser (mill. kr)"
+      )
+    ) |>
+    rename(category = makrostørrelse, measure = statistikkvariabel, year = år) |>
+    mutate(
+      measure_short = if_else(
+        stringr::str_detect(measure, "Løpende"),
+        "Løpende priser",
+        "Faste 2023-priser"
+      )
+    )
+}
+
+# ── dumbbell: compare goods vs services volume change in two periods ──────────
+df2_dumbbell <- NULL
+if (!is.null(df2_vol)) {
+  years_avail2 <- sort(unique(df2_vol$year))
+  n <- length(years_avail2)
+  period_recent <- years_avail2[(n - 4):n]
+  period_early  <- years_avail2[1:5]
+
+  df2_dumbbell <- df2_vol |>
+    filter(
+      label_short %in% c("Varekonsum", "Tjenestekonsum"),
+      year %in% c(period_early, period_recent)
+    ) |>
+    mutate(era = if_else(year %in% period_early, "Tidlig periode", "Nylig periode")) |>
+    group_by(label_short, era) |>
+    summarise(mean_vol = mean(value, na.rm = TRUE), .groups = "drop") |>
+    pivot_wider(names_from = era, values_from = mean_vol)
 }
 ```
 
-## Part 1 — The Construction Collapse
+## Chart 1 — Gross product by industry: four decades of divergence
 
-Norway's housebuilding machine is grinding to a halt. Across all residential dwelling types, the numbers produced by Statistics Norway paint a clear picture: the volume of construction — whether measured as starts, completions, or permits — is markedly lower today than it was five years ago. The question is which building types have taken the hardest hit, and whether any category has proved resilient.
-
-```{r plot-construction-area}
+```{r plot-area-industry}
 #| fig-height: 5
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
 
-if (!is.null(df1) && nrow(df1_area) > 0) {
-  pal_area <- met.brewer("Hokusai2", n = 5)
-  
-  p1 <- ggplot(df1_area, aes(x = year, y = total)) +
-    geom_area(fill = pal_area[2], alpha = 0.65, colour = pal_area[1], linewidth = 0.8) +
-    geom_point(colour = pal_area[1], size = 2.5) +
-    scale_y_continuous(labels = comma_format(big.mark = " ")) +
-    scale_x_continuous(breaks = seq(min(df1_area$year), max(df1_area$year), by = 5)) +
-    annotate("rect",
-             xmin = max(df1_area$year) - 4, xmax = max(df1_area$year) + 0.5,
-             ymin = -Inf, ymax = Inf,
-             fill = pal_area[5], alpha = 0.08) +
-    annotate("text",
-             x = max(df1_area$year) - 2, y = max(df1_area$total, na.rm = TRUE) * 0.92,
-             label = "Recent decline\nperiod",
-             family = "sans", size = 3.2, colour = pal_area[1], fontface = "italic") +
+if (!is.null(df1_indexed) && nrow(df1_indexed) > 0) {
+  palette_ind <- MetBrewer::met.brewer("Hokusai2", n = 5)
+
+  industry_labels <- c(
+    "Totalt for næringer"                                                          = "Alle næringer (totalt)",
+    "Bergverksdrift, Utvinning av råolje og naturgass, inkl. tjenester"            = "Olje og gass",
+    "Industri"                                                                     = "Industri",
+    "Jordbruk og skogbruk"                                                         = "Jordbruk og skogbruk",
+    "Fiske, fangst og akvakultur"                                                  = "Fiske og akvakultur"
+  )
+
+  df1_plot <- df1_indexed |>
+    mutate(
+      industry_label = recode(industry, !!!industry_labels),
+      industry_label = factor(industry_label, levels = c(
+        "Alle næringer (totalt)", "Olje og gass", "Industri",
+        "Jordbruk og skogbruk", "Fiske og akvakultur"
+      ))
+    )
+
+  # Endpoint labels
+  df1_end <- df1_plot |>
+    group_by(industry_label) |>
+    slice_max(date, n = 1)
+
+  p1 <- ggplot(df1_plot, aes(x = date, y = index, colour = industry_label)) +
+    geom_line(linewidth = 1.1, alpha = 0.9) +
+    geom_point(data = df1_end, size = 2.5) +
+    geom_hline(yintercept = 100, linetype = "dashed", colour = "grey50", linewidth = 0.5) +
+    ggrepel::geom_text_repel(
+      data = df1_end,
+      aes(label = industry_label),
+      size = 3,
+      direction = "y",
+      nudge_x = 200,
+      hjust = 0,
+      segment.size = 0.3,
+      show.legend = FALSE
+    ) +
+    scale_colour_manual(values = palette_ind) +
+    scale_y_continuous(labels = label_number(suffix = "")) +
+    scale_x_date(
+      limits = c(min(df1_plot$date), max(df1_plot$date) + years(5)),
+      date_breaks = "5 years",
+      date_labels = "%Y"
+    ) +
     labs(
-      title    = "Norway's residential construction in long-run decline",
-      subtitle = "Total dwellings across all building types — national aggregate",
+      title    = "Norsk bruttoprodukt etter næring: fire tiår med divergens",
+      subtitle = "Indeks = 100 ved første tilgjengelige år. Faste 2023-priser. Olje og gass har vokst langt raskere enn resten.",
       x        = NULL,
-      y        = "Number of dwellings",
-      caption  = "Source: Statistics Norway, table 06265"
+      y        = "Indeks (startår = 100)",
+      colour   = NULL,
+      caption  = "Kilde: SSB tabell 09170"
     ) +
     theme_minimal(base_size = 12) +
     theme(
-      plot.title    = element_text(face = "bold", size = 14),
-      plot.subtitle = element_text(colour = "grey40", size = 11),
+      legend.position  = "none",
       panel.grid.minor = element_blank(),
-      plot.caption  = element_text(colour = "grey55", size = 9)
+      plot.title       = element_text(face = "bold", size = 13),
+      plot.subtitle    = element_text(colour = "grey40", size = 10),
+      plot.caption     = element_text(colour = "grey55", size = 8)
     )
-  
+
   print(p1)
 }
 ```
 
-```{r plot-construction-dumbbell}
+## Chart 2 — Lollipop: which industries grew most over the last decade?
+
+```{r plot-lollipop-growth}
 #| fig-height: 5
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
 
-if (!is.null(df1) && exists("df1_dumbbell") && nrow(df1_dumbbell) > 0) {
-  pal_db <- met.brewer("Hokusai2", n = 7)
-  
-  df1_dumbbell <- df1_dumbbell |>
-    mutate(bygningstype = fct_reorder(bygningstype, change_pct))
-  
-  p2 <- ggplot(df1_dumbbell) +
-    geom_segment(aes(x = yr_old, xend = yr_new,
-                     y = bygningstype, yend = bygningstype),
-                 colour = "grey75", linewidth = 1.2) +
-    geom_point(aes(x = yr_old, y = bygningstype),
-               colour = pal_db[2], size = 5) +
-    geom_point(aes(x = yr_new, y = bygningstype),
-               colour = pal_db[6], size = 5) +
-    geom_text(aes(x = yr_new, y = bygningstype,
-                  label = paste0(if_else(change_pct > 0, "+", ""),
-                                 round(change_pct, 1), "%")),
-              hjust = -0.25, size = 3.3, fontface = "bold",
-              colour = if_else(df1_dumbbell$change_pct >= 0, pal_db[6], pal_db[1])) +
-    scale_x_continuous(labels = comma_format(big.mark = " "),
-                       expand = expansion(mult = c(0.05, 0.22))) +
-    annotate("text", x = min(df1_dumbbell$yr_old, na.rm = TRUE),
-             y = nrow(df1_dumbbell) + 0.5,
-             label = paste0(yr_prior), colour = pal_db[2],
-             fontface = "bold", size = 3.5, hjust = 0.5) +
-    annotate("text", x = max(df1_dumbbell$yr_new, na.rm = TRUE),
-             y = nrow(df1_dumbbell) + 0.5,
-             label = paste0(yr_latest), colour = pal_db[6],
-             fontface = "bold", size = 3.5, hjust = 0.5) +
+if (!is.null(df1_growth) && nrow(df1_growth) > 0) {
+  palette_lol <- MetBrewer::met.brewer("Hokusai2", n = nrow(df1_growth))
+
+  df1_growth_plot <- df1_growth |>
+    mutate(
+      industry_short = case_when(
+        industry == "Bergverksdrift, Utvinning av råolje og naturgass, inkl. tjenester" ~ "Olje og gass",
+        industry == "Jordbruk og skogbruk"     ~ "Jordbruk og skogbruk",
+        industry == "Industri"                 ~ "Industri",
+        industry == "Fiske, fangst og akvakultur" ~ "Fiske og akvakultur",
+        TRUE ~ industry
+      ),
+      industry_short = fct_reorder(industry_short, pct_change),
+      pos = pct_change > 0
+    )
+
+  p2 <- ggplot(df1_growth_plot, aes(x = pct_change, y = industry_short, colour = pos)) +
+    geom_segment(
+      aes(x = 0, xend = pct_change, yend = industry_short),
+      linewidth = 1.2, alpha = 0.7
+    ) +
+    geom_point(size = 5) +
+    geom_text(
+      aes(label = sprintf("%+.1f%%", pct_change)),
+      hjust = if_else(df1_growth_plot$pct_change > 0, -0.25, 1.25),
+      size = 3.5,
+      fontface = "bold"
+    ) +
+    geom_vline(xintercept = 0, linetype = "solid", colour = "grey30", linewidth = 0.4) +
+    scale_colour_manual(values = c("TRUE" = "#2b7a4b", "FALSE" = "#b5342a"), guide = "none") +
+    scale_x_continuous(labels = label_percent(scale = 1)) +
     labs(
-      title    = "Every dwelling type lost ground over five years",
-      subtitle = paste0("Change in construction volume: ", yr_prior, " vs ", yr_latest,
-                        " — all residential types, national total"),
-      x        = "Number of dwellings",
+      title    = "Vekst i bruttoprodukt over siste tiår, etter næring",
+      subtitle = paste0("Prosentvis endring fra ", df1_growth_plot$yr_start[1], " til ", df1_growth_plot$yr_end[1], ". Faste 2023-priser."),
+      x        = "Endring (%)",
       y        = NULL,
-      caption  = "Source: Statistics Norway, table 06265"
+      caption  = "Kilde: SSB tabell 09170"
     ) +
     theme_minimal(base_size = 12) +
     theme(
-      plot.title       = element_text(face = "bold", size = 14),
-      plot.subtitle    = element_text(colour = "grey40", size = 11),
-      panel.grid.minor = element_blank(),
       panel.grid.major.y = element_blank(),
-      axis.text.y      = element_text(size = 10),
-      plot.caption     = element_text(colour = "grey55", size = 9)
+      panel.grid.minor   = element_blank(),
+      plot.title         = element_text(face = "bold", size = 13),
+      plot.subtitle      = element_text(colour = "grey40", size = 10),
+      plot.caption       = element_text(colour = "grey55", size = 8)
     )
-  
+
   print(p2)
 }
 ```
 
-```{r plot-construction-small-multiples}
+## Chart 3 — Small multiples: annual volume change in household consumption
+
+```{r plot-small-multiples-consumption}
 #| fig-height: 6
-#| fig-width: 11
+#| fig-width: 10
 #| fig-show: asis
 #| dev: "png"
 
-if (!is.null(df1) && exists("df1_types") && nrow(df1_types) > 0) {
-  pal_sm <- met.brewer("Hokusai2", n = length(unique(df1_types$bygningstype)))
-  
-  p3 <- ggplot(df1_types, aes(x = year, y = total, fill = bygningstype)) +
-    geom_col(width = 0.8, show.legend = FALSE) +
-    facet_wrap(~ bygningstype, scales = "free_y", ncol = 3) +
-    scale_y_continuous(labels = comma_format(big.mark = " ")) +
-    scale_fill_manual(values = pal_sm) +
-    scale_x_continuous(breaks = function(x) pretty(x, n = 4)) +
-    labs(
-      title    = "The decline is broad — no building type has escaped the downturn",
-      subtitle = "Annual construction volume by dwelling type, free y-axis scales",
-      x        = NULL,
-      y        = "Dwellings",
-      caption  = "Source: Statistics Norway, table 06265"
-    ) +
-    theme_minimal(base_size = 11) +
-    theme(
-      plot.title       = element_text(face = "bold", size = 13),
-      plot.subtitle    = element_text(colour = "grey40", size = 10),
-      panel.grid.minor = element_blank(),
-      strip.text       = element_text(face = "bold", size = 9),
-      plot.caption     = element_text(colour = "grey55", size = 9)
+if (!is.null(df2_vol)) {
+  df2_vol_plot <- df2_vol |>
+    filter(label_short %in% c("Husholdninger", "Varekonsum", "Tjenestekonsum")) |>
+    mutate(
+      label_short = factor(label_short, levels = c("Husholdninger", "Varekonsum", "Tjenestekonsum")),
+      positive    = value >= 0
     )
-  
-  print(p3)
+
+  if (nrow(df2_vol_plot) == 0) {
+    message("df2_vol_plot empty. Values: ", paste(head(unique(df2_vol$label_short), 15), collapse = ", "))
+    df2_vol_plot <- NULL
+  }
+
+  if (!is.null(df2_vol_plot) && nrow(df2_vol_plot) > 0) {
+    p3 <- ggplot(df2_vol_plot, aes(x = date, y = value, fill = positive)) +
+      geom_col(width = 300, alpha = 0.85) +
+      geom_hline(yintercept = 0, colour = "grey20", linewidth = 0.4) +
+      facet_wrap(~ label_short, ncol = 1, scales = "free_y") +
+      scale_fill_manual(
+        values = c("TRUE" = "#2b7a4b", "FALSE" = "#b5342a"),
+        guide  = "none"
+      ) +
+      scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
+      scale_y_continuous(labels = label_number(suffix = " %")) +
+      labs(
+        title    = "Husholdningenes forbruksvekst har bremset kraftig",
+        subtitle = "Volumendring år over år (prosent). Grønt = vekst, rødt = fall. Varekonsum særlig volatilt.",
+        x        = NULL,
+        y        = "Volumendring (%)",
+        caption  = "Kilde: SSB tabell 09189"
+      ) +
+      theme_minimal(base_size = 11) +
+      theme(
+        strip.text       = element_text(face = "bold", size = 11),
+        panel.grid.minor = element_blank(),
+        plot.title       = element_text(face = "bold", size = 13),
+        plot.subtitle    = element_text(colour = "grey40", size = 10),
+        plot.caption     = element_text(colour = "grey55", size = 8)
+      )
+
+    print(p3)
+  }
 }
 ```
 
-The small-multiples panel delivers the verdict starkly: from detached single-family homes (enebolig) to apartment blocks (boligblokk) to row houses and semi-detached dwellings, the trend lines bend downward across the board. There is no compensating boom in high-density construction that could offset falling single-family builds. Norway is simply building fewer homes — at a time when population continues to grow and urban housing costs remain elevated.
+## Chart 4 — Area chart: nominal versus real household consumption
 
-## Part 2 — How Petroleum Consumption Fractures by Sector
-
-If construction data captures one fault line in the Norwegian economy, petroleum product sales data captures another. The 40 most recent months of SSB data reveal a market that has splintered across buyer groups: some sectors retain high and stable consumption, others show pronounced seasonal swings, and a few are in structural decline.
-
-```{r plot-petroleum-lollipop}
+```{r plot-area-levels}
 #| fig-height: 5
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
 
-if (!is.null(df2) && exists("df2_lollipop") && nrow(df2_lollipop) > 0) {
-  pal_lol <- met.brewer("Hokusai2", n = nrow(df2_lollipop))
-  
-  df2_lollipop <- df2_lollipop |>
-    mutate(kjøpegruppe = fct_reorder(kjøpegruppe, avg_monthly))
-  
-  p4 <- ggplot(df2_lollipop, aes(x = avg_monthly, y = kjøpegruppe)) +
-    geom_segment(aes(x = 0, xend = avg_monthly,
-                     y = kjøpegruppe, yend = kjøpegruppe),
-                 colour = "grey80", linewidth = 1.0) +
-    geom_point(aes(colour = kjøpegruppe), size = 6, show.legend = FALSE) +
-    geom_text(aes(label = comma(round(avg_monthly), big.mark = " ")),
-              hjust = -0.35, size = 3.3, fontface = "bold", colour = "grey25") +
-    scale_colour_manual(values = pal_lol) +
-    scale_x_continuous(labels = comma_format(big.mark = " "),
-                       expand = expansion(mult = c(0, 0.25))) +
+if (!is.null(df2_levels) && nrow(df2_levels) > 0) {
+  palette_area <- MetBrewer::met.brewer("Hokusai2", n = 2)
+
+  # Find recent peak in real terms for annotation
+  real_df <- df2_levels |> filter(measure_short == "Faste 2023-priser")
+  peak_real <- real_df |> slice_max(value, n = 1)
+
+  p4 <- ggplot(df2_levels, aes(x = date, y = value / 1e6, colour = measure_short, fill = measure_short)) +
+    geom_area(alpha = 0.18, position = "identity") +
+    geom_line(linewidth = 1.2) +
+    annotate(
+      "text",
+      x      = peak_real$date,
+      y      = peak_real$value / 1e6 + 0.05,
+      label  = paste0("Reell topp: ", format(peak_real$date, "%Y")),
+      size   = 3.2,
+      colour = palette_area[2],
+      hjust  = 1.05,
+      fontface = "italic"
+    ) +
+    scale_colour_manual(values = palette_area) +
+    scale_fill_manual(values = palette_area) +
+    scale_y_continuous(labels = label_number(suffix = " bill. kr", big.mark = " ")) +
+    scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
     labs(
-      title    = "Bulk buyers dominate petroleum product sales in Norway",
-      subtitle = paste0("Average monthly petroleum sales by buyer group, ", yr_max2,
-                        " — national total (cubic metres or tonnes)"),
-      x        = "Average monthly sales volume",
-      y        = NULL,
-      caption  = "Source: Statistics Norway, table 11174"
+      title    = "Husholdningsforbruket: nominell vekst skjuler reell stagnasjon",
+      subtitle = "Løpende priser (blå) stiger, mens realverdien i faste 2023-priser (oransje) flater ut.",
+      x        = NULL,
+      y        = "Milliarder kroner",
+      colour   = NULL,
+      fill     = NULL,
+      caption  = "Kilde: SSB tabell 09189"
     ) +
     theme_minimal(base_size = 12) +
     theme(
-      plot.title       = element_text(face = "bold", size = 14),
-      plot.subtitle    = element_text(colour = "grey40", size = 11),
+      legend.position  = c(0.15, 0.88),
+      legend.background = element_rect(fill = "white", colour = NA),
       panel.grid.minor = element_blank(),
-      panel.grid.major.y = element_blank(),
-      axis.text.y      = element_text(size = 10),
-      plot.caption     = element_text(colour = "grey55", size = 9)
+      plot.title       = element_text(face = "bold", size = 13),
+      plot.subtitle    = element_text(colour = "grey40", size = 10),
+      plot.caption     = element_text(colour = "grey55", size = 8)
     )
-  
+
   print(p4)
 }
 ```
 
-```{r plot-petroleum-heatmap}
+## Chart 5 — Slope chart: goods vs services average volume growth across eras
+
+```{r plot-slope-dumbbell}
 #| fig-height: 5
-#| fig-width: 11
+#| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
 
-if (!is.null(df2) && exists("df2_heat") && nrow(df2_heat) > 0) {
-  df2_heat <- df2_heat |>
+if (!is.null(df2_vol)) {
+  # Build multi-era averages for goods and services
+  years_avail2 <- sort(unique(df2_vol$year))
+  n <- length(years_avail2)
+
+  era_breaks <- list(
+    "1990\u20132000"  = years_avail2[years_avail2 >= "1990" & years_avail2 <= "2000"],
+    "2001\u20132010"  = years_avail2[years_avail2 >= "2001" & years_avail2 <= "2010"],
+    "2011\u20132019"  = years_avail2[years_avail2 >= "2011" & years_avail2 <= "2019"],
+    "2020\u20132024"  = years_avail2[years_avail2 >= "2020" & years_avail2 <= "2024"]
+  )
+
+  df_slope <- purrr::map_dfr(names(era_breaks), function(era) {
+    df2_vol |>
+      filter(
+        label_short %in% c("Varekonsum", "Tjenestekonsum"),
+        year %in% era_breaks[[era]]
+      ) |>
+      group_by(label_short) |>
+      summarise(mean_vol = mean(value, na.rm = TRUE), .groups = "drop") |>
+      mutate(era = era)
+  }) |>
     mutate(
-      month_label = factor(month_label, levels = month.abb),
-      kjøpegruppe = fct_reorder(kjøpegruppe, total, .fun = sum, .desc = TRUE)
-    )
-  
-  p5 <- ggplot(df2_heat, aes(x = month_label, y = factor(year), fill = total)) +
-    geom_tile(colour = "white", linewidth = 0.4) +
-    facet_wrap(~ kjøpegruppe, scales = "free", ncol = 2) +
-    scale_fill_gradientn(
-      colours  = met.brewer("Hokusai2", n = 9),
-      labels   = comma_format(big.mark = " "),
-      name     = "Sales volume"
-    ) +
-    labs(
-      title    = "Seasonal petroleum demand: the sectors that peak in winter vs summer",
-      subtitle = paste0("Monthly sales by buyer group, ", yr_max2 - 2, "–", yr_max2,
-                        " — darker = higher volume"),
-      x        = "Month",
-      y        = "Year",
-      caption  = "Source: Statistics Norway, table 11174"
-    ) +
-    theme_minimal(base_size = 10) +
-    theme(
-      plot.title       = element_text(face = "bold", size = 13),
-      plot.subtitle    = element_text(colour = "grey40", size = 10),
-      panel.grid       = element_blank(),
-      strip.text       = element_text(face = "bold", size = 8.5),
-      axis.text.x      = element_text(angle = 45, hjust = 1, size = 7.5),
-      legend.position  = "right",
-      plot.caption     = element_text(colour = "grey55", size = 9)
-    )
-  
-  print(p5)
+      era = factor(era, levels = names(era_breaks)),
+      label_short = factor(label_short, levels = c("Varekonsum", "Tjenestekonsum"))
+    ) |>
+    filter(!is.na(mean_vol))
+
+  if (nrow(df_slope) == 0) {
+    message("df_slope empty.")
+  } else if (!is.null(df_slope) && nrow(df_slope) > 0) {
+    palette_slope <- MetBrewer::met.brewer("Hokusai2", n = 2)
+
+    # Add endpoint labels
+    df_slope_end   <- df_slope |> group_by(label_short) |> slice_tail(n = 1)
+    df_slope_start <- df_slope |> group_by(label_short) |> slice_head(n = 1)
+
+    p5 <- ggplot(df_slope, aes(x = era, y = mean_vol, colour = label_short, group = label_short)) +
+      geom_line(linewidth = 1.4, alpha = 0.85) +
+      geom_point(size = 4) +
+      geom_text(
+        data = df_slope_end,
+        aes(label = sprintf("%s\n%.1f%%", label_short, mean_vol)),
+        hjust  = -0.1,
+        size   = 3.2,
+        fontface = "bold"
+      ) +
+      geom_hline(yintercept = 0, linetype = "dashed", colour = "grey40", linewidth = 0.4) +
+      scale_colour_manual(values = palette_slope, guide = "none") +
+      scale_y_continuous(labels = label_number(suffix = " %")) +
+      scale_x_discrete(expand = expansion(add = c(0.3, 1.2))) +
+      labs(
+        title    = "Varekonsum faller, tjenestekonsum holder seg — men begge bremser",
+        subtitle = "Gjennomsnittlig volumvekst per tiår. Perioden 2020-2024 er kritisk for begge kategorier.",
+        x        = NULL,
+        y        = "Gjennomsnittlig volumvekst (%)",
+        caption  = "Kilde: SSB tabell 09189"
+      ) +
+      theme_minimal(base_size = 12) +
+      theme(
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor   = element_blank(),
+        plot.title         = element_text(face = "bold", size = 13),
+        plot.subtitle      = element_text(colour = "grey40", size = 10),
+        plot.caption       = element_text(colour = "grey55", size = 8)
+      )
+
+    print(p5)
+  }
 }
 ```
 
-The heatmap is arguably the most revealing chart in this analysis. Buyer groups that one might assume are uniform — road transport, maritime, agriculture — actually display markedly different seasonal footprints. Agricultural and forestry buyers (jordbruk og skogbruk) concentrate demand in late spring and summer, when field machinery is running. Truck stations (truckstasjonar) maintain a relatively flat year-round profile, reflecting Norway's logistics backbone. Maritime buyers show a more complex seasonal curve tied to fishing seasons and ferry traffic. And petroleum extraction itself — which purchases its own output in the form of diesel and other products for offshore operations — runs at persistently high volumes regardless of season, underscoring how dominant the upstream sector remains in the energy consumption mix.
-
 ## Key Findings
 
-- Residential construction has contracted across all major dwelling types over the past five years, with no segment showing a compensating increase in volume.
-- Apartment blocks (boligblokk) experienced among the steepest declines in absolute terms, suggesting the urban densification that planners hoped would ease housing shortages is not materialising.
-- Bulk buyers represent the largest share of petroleum product sales by a wide margin, reflecting the continued centrality of large industrial and logistics purchasers rather than fragmented retail demand.
-- Seasonal heatmaps show that agricultural petroleum demand is concentrated in a short spring-summer window, meaning any year-over-year change in that period has an outsized effect on national totals.
-- The combination of falling construction and fragmented energy consumption points to an economy where investment in physical infrastructure is retreating, even as existing industrial users maintain their energy appetites.
+- **Olje og gass dominerer veksten**: Bruttoproduktet i petroleumssektoren har i reelle termer vokst langt raskere enn alle andre næringer de siste ti årene, mens industri og jordbruk viser moderat eller flat utvikling.
+- **Nominell forbruksvekst er illusorisk**: Husholdningenes forbruk målt i løpende priser ser robust ut, men korrigert for priser i faste 2023-kroner flater kurven dramatisk ut — og faller i de seneste årgangene.
+- **Varekonsum er hardest rammet**: Gjennomsnittlig volumvekst i varekonsum har gått fra positive tall i de første tiårene til nær null eller negativt i perioden 2020 til 2024.
+- **Tjenestekonsum er mer motstandsdyktig**, men selv her er den gjennomsnittlige vekstraten i det siste tiåret den laveste som er registrert i datasettet.
+- **Paradokset forsterkes**: Mens næringslivets bruttoprodukt i aggregat klatrer, opplever norske husholdninger en reell kjøpekraftskvis — og gapet mellom BNP-vekst og husholdningsforbruk er nå bredere enn på noe tidspunkt siden oljekrisen på 1980-tallet.
 
-## Closing Reflection
+## Avsluttende refleksjon
 
-There is a paradox at the heart of the Norwegian 2026 economic picture. The country that sits atop one of the world's most productive petroleum sectors is watching its domestic construction industry wither — even as petroleum product demand from industry, agriculture, and logistics remains substantial. The housing shortage is not an abstract policy problem: it is being inscribed in the data month by month, as the pipeline of new dwellings shrinks. Meanwhile, the granular pattern of who buys petroleum products, and when, reveals an economy whose energy consumption is becoming more concentrated and more seasonally differentiated. Whether Norway can redirect the revenues from its energy exports into the domestic construction drive that the data so clearly demands remains one of the defining questions of the decade.
+Norges økonomi er i praksis to økonomier i én. Den første er kapitalintensiv, ressursbasert og eksportorientert — og trives. Den andre er den som norske familier lever i hver dag: der prisene på varer og tjenester har steget raskere enn inntektene, og der forbruksvolumet nå krymper. Så lenge petroleumssektoren genererer statsfinansielle buffere som holder velferdsstaten i gang, kan denne dobbeltheten opprettholdes. Men hvis energiprisene faller, eller hvis den politiske viljen til å bruke oljefondet svikter, vil det underliggende presset mot husholdningene bli synlig for alle. Nasjonalregnskapet er et advarselsskilt som allerede lyser gult.
