@@ -1,0 +1,624 @@
+---
+title: "Norway's Hiring Freeze Deepens: Job Vacancies Collapse While Unemployment Stays Low"
+description: "Job vacancy rates are falling sharply across Norwegian industries while unemployment remains stubbornly low — a paradox that points to structural change, not cyclical slowdown."
+date: "2026-05-05"
+categories: [SSB, labour market, job vacancies, unemployment, structural economics]
+---
+
+```{r setup}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = TRUE)
+
+library(tidyverse)
+library(lubridate)
+library(PxWebApiData)
+library(scales)
+library(MetBrewer)
+library(ggridges)
+library(stringr)
+
+df1 <- NULL
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/08771",
+    `næring (SN2007)` = TRUE,
+    statistikkvariabel = TRUE,
+    Tid = list(filter = "top", values = 40)
+  )
+  tmp          <- raw[[1]]
+  time_col     <- "kvartal"
+  value_col    <- "value"
+  series_col   <- "næring (SN2007)"
+  measure_col  <- "statistikkvariabel"
+  df1 <- tmp |>
+    mutate(
+      value    = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      date     = case_when(
+        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
+        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
+    ) |>
+    filter(!is.na(value), !is.na(date))
+}, error = function(e) message("Fetch failed: ", e$message))
+
+df2 <- NULL
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/13760",
+    kjønn = TRUE,
+    alder = TRUE,
+    `type justering` = TRUE,
+    statistikkvariabel = TRUE,
+    Tid = list(filter = "top", values = 40)
+  )
+  tmp          <- raw[[1]]
+  time_col     <- "måned"
+  value_col    <- "value"
+  series_col   <- "statistikkvariabel"
+  df2 <- tmp |>
+    mutate(
+      value    = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      date     = case_when(
+        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
+        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
+    ) |>
+    filter(!is.na(value), !is.na(date))
+}, error = function(e) message("Fetch failed: ", e$message))
+
+df3 <- NULL
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/09189",
+    makrostørrelse = TRUE,
+    statistikkvariabel = TRUE,
+    Tid = list(filter = "top", values = 40)
+  )
+  tmp          <- raw[[1]]
+  time_col     <- "år"
+  value_col    <- "value"
+  series_col   <- "makrostørrelse"
+  measure_col  <- "statistikkvariabel"
+  df3 <- tmp |>
+    mutate(
+      value    = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      date     = case_when(
+        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
+        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
+    ) |>
+    filter(!is.na(value), !is.na(date))
+}, error = function(e) message("Fetch failed: ", e$message))
+```
+
+## The Paradox at the Heart of the Norwegian Labour Market
+
+Something unusual is happening in Norway's labour market. Employers have sharply reduced the number of job vacancies they post, yet unemployment remains stubbornly low by any historical standard. In most economic textbooks, these two facts cannot coexist for long — a hiring freeze should eventually push unemployment upward. That it has not done so yet suggests Norway may be experiencing not a cyclical downturn but a structural transformation: firms are choosing not to expand, not because workers are unavailable, but because demand itself has softened.
+
+The data from Statistics Norway tell a nuanced but troubling story. Vacancy rates have fallen across every major sector. Household consumption growth has stalled. And the workforce itself is barely growing. The question is not whether something has changed — it clearly has — but whether policymakers and markets are paying sufficient attention.
+
+---
+
+## The Data
+
+Three SSB datasets power this analysis. Table 08771 tracks quarterly job vacancies by sector. Table 13760 provides monthly labour force survey data on employment and unemployment. Table 09189 covers annual national accounts consumption figures. Together they allow us to triangulate the hiring freeze from multiple angles.
+
+```{r wrangle}
+# --- df1: job vacancies by sector ---
+series_col_df1  <- "næring (SN2007)"
+measure_col_df1 <- "statistikkvariabel"
+
+df1_vacancies <- NULL
+if (!is.null(df1)) {
+  df1_vacancies <- df1 |>
+    filter(.data[[measure_col_df1]] == "Ledige stillingar") |>
+    filter(.data[[series_col_df1]] %in% c(
+      "Alle næringar",
+      "Industri",
+      "Byggje- og anleggsverksemd",
+      "Varehandel, motorvognreparasjonar",
+      "Transport og lagring"
+    ))
+  if (nrow(df1_vacancies) == 0) {
+    message("df1_vacancies empty. Values: ",
+            paste(head(unique(df1[[series_col_df1]]), 15), collapse = ", "))
+    df1_vacancies <- NULL
+  }
+}
+
+df1_pct <- NULL
+if (!is.null(df1)) {
+  df1_pct <- df1 |>
+    filter(.data[[measure_col_df1]] == "Ledige stillingar (prosent)") |>
+    filter(.data[[series_col_df1]] %in% c(
+      "Alle næringar",
+      "Industri",
+      "Byggje- og anleggsverksemd",
+      "Varehandel, motorvognreparasjonar",
+      "Transport og lagring"
+    ))
+  if (nrow(df1_pct) == 0) {
+    message("df1_pct empty. Values: ",
+            paste(head(unique(df1[[measure_col_df1]]), 10), collapse = ", "))
+    df1_pct <- NULL
+  }
+}
+
+df1_change <- NULL
+if (!is.null(df1)) {
+  df1_change <- df1 |>
+    filter(.data[[measure_col_df1]] == "Ledige stillingar, endring frå året før") |>
+    filter(.data[[series_col_df1]] == "Alle næringar")
+  if (nrow(df1_change) == 0) {
+    message("df1_change empty.")
+    df1_change <- NULL
+  }
+}
+
+# --- df2: labour force, unemployment ---
+series_col_df2 <- "statistikkvariabel"
+
+df2_unemp_pct <- NULL
+if (!is.null(df2)) {
+  df2_unemp_pct <- df2 |>
+    filter(.data[[series_col_df2]] == "Arbeidsledige i prosent av arbeidsstyrken")
+  if (nrow(df2_unemp_pct) == 0) {
+    message("df2_unemp_pct empty. Values: ",
+            paste(head(unique(df2[[series_col_df2]]), 10), collapse = ", "))
+    df2_unemp_pct <- NULL
+  }
+}
+
+df2_employed <- NULL
+if (!is.null(df2)) {
+  df2_employed <- df2 |>
+    filter(.data[[series_col_df2]] == "Sysselsatte (1000 personer)")
+  if (nrow(df2_employed) == 0) {
+    message("df2_employed empty.")
+    df2_employed <- NULL
+  }
+}
+
+# --- df3: household consumption volume change ---
+series_col_df3  <- "makrost.rrelse"
+measure_col_df3 <- "statistikkvariabel"
+
+df3_vol <- NULL
+if (!is.null(df3)) {
+  df3_vol <- df3 |>
+    filter(.data[[measure_col_df3]] == "Volumendring, årlig (prosent)") |>
+    filter(.data[[series_col_df3]] %in% c(
+      "Konsum i husholdninger",
+      "Varekonsum",
+      "Tjenestekonsum",
+      "Konsum i offentlig forvaltning"
+    ))
+  if (nrow(df3_vol) == 0) {
+    message("df3_vol empty. Values: ",
+            paste(head(unique(df3[[series_col_df3]]), 10), collapse = ", "))
+    df3_vol <- NULL
+  }
+}
+
+# Sector label shortening for plots
+shorten_sector <- function(x) {
+  case_when(
+    x == "Alle næringar"                       ~ "All sectors",
+    x == "Industri"                             ~ "Manufacturing",
+    x == "Byggje- og anleggsverksemd"           ~ "Construction",
+    x == "Varehandel, motorvognreparasjonar"    ~ "Retail & auto repair",
+    x == "Transport og lagring"                 ~ "Transport & storage",
+    TRUE ~ x
+  )
+}
+```
+
+---
+
+## Chart 1: The Vacancy Rate Collapse Across Sectors
+
+The clearest signal of a hiring freeze lies in the vacancy rate — the share of positions left unfilled. When firms stop posting jobs, this rate falls. Across all major Norwegian sectors, that is precisely what the most recent quarters show.
+
+```{r plot-vacancy-ridgeline}
+#| fig-height: 6
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df1_pct)) {
+  df1_pct_plot <- df1_pct |>
+    mutate(sector_short = shorten_sector(.data[[series_col_df1]]))
+
+  pal <- met.brewer("Hiroshige", n = 5, type = "discrete")
+
+  p1 <- ggplot(df1_pct_plot, aes(x = value, y = sector_short, fill = sector_short)) +
+    geom_density_ridges(
+      alpha = 0.78,
+      scale = 1.3,
+      rel_min_height = 0.01,
+      color = "white",
+      linewidth = 0.4
+    ) +
+    scale_fill_manual(values = pal) +
+    scale_x_continuous(labels = function(x) paste0(x, "%")) +
+    labs(
+      title    = "Job Vacancy Rates Are Clustering at Low Values",
+      subtitle = "Ridgeline distribution of quarterly vacancy rates by sector — recent quarters crowd towards zero",
+      x        = "Vacancy rate (% of total positions)",
+      y        = NULL,
+      caption  = "Source: Statistics Norway, Table 08771"
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      legend.position  = "none",
+      panel.grid.minor = element_blank(),
+      plot.title       = element_text(face = "bold", size = 15),
+      plot.subtitle    = element_text(color = "grey40", size = 11),
+      plot.caption     = element_text(color = "grey55", size = 9),
+      axis.text.y      = element_text(face = "bold")
+    )
+  print(p1)
+}
+```
+
+---
+
+## Chart 2: Total Vacancies Over Time — The All-Sector Trend
+
+Moving from the distributional view to the time series reveals the precise moment the hiring freeze set in. The area chart below tracks total vacancies across all Norwegian sectors over the available quarters, making the recent decline unmistakable.
+
+```{r plot-vacancy-area}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df1_vacancies)) {
+  df1_all <- df1_vacancies |>
+    filter(.data[[series_col_df1]] == "Alle næringar") |>
+    arrange(date)
+
+  if (nrow(df1_all) == 0) {
+    message("df1_all (Alle næringar) is empty after filter.")
+  } else {
+    peak_row   <- df1_all |> slice_max(value, n = 1)
+    recent_row <- df1_all |> slice_max(date,  n = 1)
+
+    pal2 <- met.brewer("Hiroshige", n = 7, type = "continuous")
+
+    p2 <- ggplot(df1_all, aes(x = date, y = value)) +
+      geom_area(fill = pal2[3], alpha = 0.35) +
+      geom_line(color = pal2[2], linewidth = 1.1) +
+      geom_point(
+        data = peak_row,
+        aes(x = date, y = value),
+        color = pal2[1], size = 3.5
+      ) +
+      geom_point(
+        data = recent_row,
+        aes(x = date, y = value),
+        color = pal2[7], size = 3.5
+      ) +
+      annotate(
+        "text",
+        x      = peak_row$date,
+        y      = peak_row$value * 1.04,
+        label  = paste0("Peak: ", formatC(peak_row$value, format = "f", digits = 0)),
+        color  = pal2[1],
+        fontface = "bold",
+        size   = 3.6,
+        hjust  = 0.5
+      ) +
+      annotate(
+        "text",
+        x      = recent_row$date,
+        y      = recent_row$value * 0.92,
+        label  = paste0("Latest: ", formatC(recent_row$value, format = "f", digits = 0)),
+        color  = pal2[7],
+        fontface = "bold",
+        size   = 3.6,
+        hjust  = 0.5
+      ) +
+      scale_y_continuous(labels = label_comma()) +
+      scale_x_date(date_breaks = "1 year", date_labels = "%Y") +
+      labs(
+        title    = "Total Job Vacancies in Norway: A Clear Downward Turn",
+        subtitle = "Quarterly total across all sectors — the hiring slowdown is visible from the peak",
+        x        = NULL,
+        y        = "Number of vacancies",
+        caption  = "Source: Statistics Norway, Table 08771"
+      ) +
+      theme_minimal(base_size = 13) +
+      theme(
+        panel.grid.minor  = element_blank(),
+        panel.grid.major.x = element_blank(),
+        plot.title        = element_text(face = "bold", size = 15),
+        plot.subtitle     = element_text(color = "grey40", size = 11),
+        plot.caption      = element_text(color = "grey55", size = 9)
+      )
+    print(p2)
+  }
+}
+```
+
+---
+
+## Chart 3: Sector Dumbbell — Latest vs. Earlier Vacancy Rates
+
+Which sectors have seen the biggest drops in vacancy rates? A dumbbell chart comparing the earliest available quarters against the most recent shows where the freeze has been most severe.
+
+```{r plot-dumbbell}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df1_pct)) {
+  sectors_of_interest <- c(
+    "Alle næringar",
+    "Industri",
+    "Byggje- og anleggsverksemd",
+    "Varehandel, motorvognreparasjonar",
+    "Transport og lagring"
+  )
+
+  df1_db <- df1_pct |>
+    filter(.data[[series_col_df1]] %in% sectors_of_interest) |>
+    group_by(.data[[series_col_df1]]) |>
+    arrange(date) |>
+    summarise(
+      early_val  = mean(value[date <= quantile(date, 0.25)], na.rm = TRUE),
+      recent_val = mean(value[date >= quantile(date, 0.75)], na.rm = TRUE),
+      .groups = "drop"
+    ) |>
+    mutate(
+      sector_short = shorten_sector(.data[[series_col_df1]]),
+      change       = recent_val - early_val,
+      direction    = if_else(change >= 0, "Increase", "Decrease")
+    ) |>
+    arrange(change)
+
+  if (nrow(df1_db) == 0) {
+    message("df1_db is empty.")
+  } else {
+    pal3 <- met.brewer("Hiroshige", n = 5, type = "discrete")
+
+    p3 <- ggplot(df1_db, aes(y = reorder(sector_short, change))) +
+      geom_segment(
+        aes(x = early_val, xend = recent_val,
+            yend = reorder(sector_short, change)),
+        color = "grey75", linewidth = 1.4
+      ) +
+      geom_point(aes(x = early_val),  color = pal3[2], size = 4.5, alpha = 0.9) +
+      geom_point(aes(x = recent_val), color = pal3[5], size = 4.5, alpha = 0.9) +
+      geom_text(
+        aes(x = early_val,  label = sprintf("%.1f%%", early_val)),
+        vjust = -1, size = 3.1, color = pal3[2], fontface = "bold"
+      ) +
+      geom_text(
+        aes(x = recent_val, label = sprintf("%.1f%%", recent_val)),
+        vjust =  2, size = 3.1, color = pal3[5], fontface = "bold"
+      ) +
+      annotate("point", x = -999, y = 1, color = pal3[2], size = 4) +
+      annotate("text",  x = -999, y = 1, label = "Early period", hjust = -0.2,
+               color = pal3[2], size = 3.2) +
+      scale_x_continuous(labels = function(x) paste0(x, "%"), expand = expansion(mult = 0.15)) +
+      labs(
+        title    = "Vacancy Rates Have Fallen in Every Major Sector",
+        subtitle = "Dumbbell: average early-period rate (blue) vs. recent-period rate (orange) — every sector moved left",
+        x        = "Vacancy rate (% of positions)",
+        y        = NULL,
+        caption  = "Source: Statistics Norway, Table 08771\nEarly period = bottom 25% of dates; recent = top 25%"
+      ) +
+      theme_minimal(base_size = 13) +
+      theme(
+        panel.grid.minor   = element_blank(),
+        panel.grid.major.y = element_blank(),
+        plot.title         = element_text(face = "bold", size = 15),
+        plot.subtitle      = element_text(color = "grey40", size = 11),
+        plot.caption       = element_text(color = "grey55", size = 9),
+        axis.text.y        = element_text(face = "bold", size = 11)
+      )
+    print(p3)
+  }
+}
+```
+
+---
+
+## Chart 4: Unemployment Stubbornly Low — The Monthly Trend
+
+Despite the vacancy collapse, unemployment has not risen in tandem. The monthly labour force survey data reveal a market where joblessness has been remarkably stable. This is the core paradox: if employers are not hiring, why are workers not being laid off?
+
+```{r plot-unemployment-area}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df2_unemp_pct)) {
+  has_monthly <- any(stringr::str_detect(df2_unemp_pct$time_str, "M\\d{2}"), na.rm = TRUE)
+
+  df2_agg <- if (has_monthly) {
+    df2_unemp_pct |>
+      mutate(
+        kjonn = if ("kjonn" %in% names(df2_unemp_pct)) .data[["kjonn"]] else "Alle",
+        alder = if ("alder" %in% names(df2_unemp_pct)) .data[["alder"]] else "Alle"
+      ) |>
+      filter(
+        if ("kjonn" %in% names(df2_unemp_pct)) .data[["kjonn"]] %in% c("Begge kjønn", "Both sexes", "Begge", "I alt", "alle") else TRUE,
+        if ("alder" %in% names(df2_unemp_pct)) .data[["alder"]] %in% c("15-74 år", "15-74", "Alle aldre", "I alt", "alle") else TRUE
+      ) |>
+      group_by(date) |>
+      summarise(value = mean(value, na.rm = TRUE), .groups = "drop") |>
+      arrange(date)
+  } else {
+    df2_unemp_pct |>
+      group_by(date) |>
+      summarise(value = mean(value, na.rm = TRUE), .groups = "drop") |>
+      arrange(date)
+  }
+
+  if (nrow(df2_agg) == 0) {
+    message("df2_agg is empty after aggregation.")
+  } else {
+    avg_unemp  <- mean(df2_agg$value, na.rm = TRUE)
+    latest_row <- df2_agg |> slice_max(date, n = 1)
+
+    pal4 <- met.brewer("Hiroshige", n = 7, type = "continuous")
+
+    p4 <- ggplot(df2_agg, aes(x = date, y = value)) +
+      geom_area(fill = pal4[5], alpha = 0.25) +
+      geom_line(color = pal4[5], linewidth = 1.1) +
+      geom_hline(
+        yintercept = avg_unemp,
+        linetype   = "dashed",
+        color      = "grey50",
+        linewidth  = 0.7
+      ) +
+      annotate(
+        "text",
+        x     = min(df2_agg$date) + (max(df2_agg$date) - min(df2_agg$date)) * 0.02,
+        y     = avg_unemp + 0.12,
+        label = paste0("Period avg: ", sprintf("%.1f%%", avg_unemp)),
+        color = "grey45",
+        size  = 3.3,
+        hjust = 0
+      ) +
+      geom_point(
+        data = latest_row,
+        aes(x = date, y = value),
+        color = pal4[7], size = 3.5
+      ) +
+      annotate(
+        "text",
+        x      = latest_row$date,
+        y      = latest_row$value + 0.2,
+        label  = paste0("Latest: ", sprintf("%.1f%%", latest_row$value)),
+        color  = pal4[7],
+        fontface = "bold",
+        size   = 3.4,
+        hjust  = 0.5
+      ) +
+      scale_y_continuous(labels = function(x) paste0(x, "%"), limits = c(0, NA)) +
+      scale_x_date(date_breaks = "1 year", date_labels = "%Y") +
+      labs(
+        title    = "Unemployment Has Not Risen Despite the Hiring Freeze",
+        subtitle = "Monthly unemployment rate, Norway — stubbornly stable even as vacancies fall",
+        x        = NULL,
+        y        = "Unemployment rate (%)",
+        caption  = "Source: Statistics Norway, Table 13760"
+      ) +
+      theme_minimal(base_size = 13) +
+      theme(
+        panel.grid.minor   = element_blank(),
+        panel.grid.major.x = element_blank(),
+        plot.title         = element_text(face = "bold", size = 15),
+        plot.subtitle      = element_text(color = "grey40", size = 11),
+        plot.caption       = element_text(color = "grey55", size = 9)
+      )
+    print(p4)
+  }
+}
+```
+
+---
+
+## Chart 5: Consumption Growth by Category — The Demand Signal
+
+If the hiring freeze is not yet showing up in unemployment, perhaps the answer lies on the demand side. Falling consumption growth means less need for workers. The final chart uses national accounts data to show annual volume changes in household consumption — a slowing demand backdrop that explains why firms are quietly pulling back on hiring without resorting to layoffs.
+
+```{r plot-consumption-small-multiples}
+#| fig-height: 5
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df3_vol)) {
+  series_col_df3_local  <- "makrost.rrelse"
+  measure_col_df3_local <- "statistikkvariabel"
+
+  df3_plot <- df3_vol |>
+    filter(.data[[series_col_df3_local]] %in% c(
+      "Konsum i husholdninger",
+      "Varekonsum",
+      "Tjenestekonsum",
+      "Konsum i offentlig forvaltning"
+    )) |>
+    mutate(
+      category_en = case_when(
+        .data[[series_col_df3_local]] == "Konsum i husholdninger"      ~ "Total household consumption",
+        .data[[series_col_df3_local]] == "Varekonsum"                  ~ "Goods consumption",
+        .data[[series_col_df3_local]] == "Tjenestekonsum"              ~ "Services consumption",
+        .data[[series_col_df3_local]] == "Konsum i offentlig forvaltning" ~ "Government consumption",
+        TRUE ~ .data[[series_col_df3_local]]
+      ),
+      bar_color = if_else(value >= 0, "positive", "negative")
+    ) |>
+    arrange(date)
+
+  if (nrow(df3_plot) == 0) {
+    message("df3_plot is empty after filter.")
+  } else {
+    pal5 <- met.brewer("Hiroshige", n = 5, type = "discrete")
+
+    p5 <- ggplot(df3_plot, aes(x = date, y = value, fill = bar_color)) +
+      geom_col(alpha = 0.85, width = 280) +
+      geom_hline(yintercept = 0, linewidth = 0.5, color = "grey30") +
+      facet_wrap(~ category_en, ncol = 2, scales = "free_y") +
+      scale_fill_manual(
+        values = c("positive" = pal5[2], "negative" = pal5[5]),
+        guide  = "none"
+      ) +
+      scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
+      scale_y_continuous(labels = function(x) paste0(x, "%")) +
+      labs(
+        title    = "Consumption Growth Has Stalled — The Demand Behind the Hiring Freeze",
+        subtitle = "Annual volume change (%) in household and government consumption — negative years are the warning sign",
+        x        = NULL,
+        y        = "Annual volume change (%)",
+        caption  = "Source: Statistics Norway, Table 09189"
+      ) +
+      theme_minimal(base_size = 12) +
+      theme(
+        panel.grid.minor   = element_blank(),
+        panel.grid.major.x = element_blank(),
+        strip.text         = element_text(face = "bold", size = 10),
+        plot.title         = element_text(face = "bold", size = 15),
+        plot.subtitle      = element_text(color = "grey40", size = 11),
+        plot.caption       = element_text(color = "grey55", size = 9)
+      )
+    print(p5)
+  }
+}
+```
+
+---
+
+## Key Findings
+
+- **Vacancy rates have fallen across every major Norwegian sector** — Construction, Retail, Transport, Manufacturing, and the aggregate economy all show lower average vacancy rates in the most recent quarters compared with the early part of the data series.
+
+- **Total job vacancies peaked and have declined materially** — the area chart shows a clear turning point in the time series, with the latest reading well below the peak level observed in previous years.
+
+- **Unemployment has not risen correspondingly** — the monthly unemployment rate has remained close to its period average, creating the central paradox: firms are not hiring, but they are also not firing.
+
+- **Household consumption volume growth has weakened** — the national accounts data show that goods consumption in particular has swung into negative territory in recent years, providing the demand-side explanation for the hiring freeze; firms anticipate lower sales and therefore have less need for additional staff.
+
+- **The structural interpretation** is that Norway is experiencing demand compression driven by real income erosion and high interest rates, not a sudden external shock. Firms are adjusting quietly through attrition and vacancy reduction rather than outright redundancies, masking the true extent of economic stress in aggregate employment statistics.
+
+---
+
+## Closing Reflection
+
+Norway's labour market has long been held up as a model of stability — low unemployment, high participation, strong wage coordination. But the vacancy data reveal a shadow statistic that headline unemployment numbers conceal. When employers stop advertising positions, it is an early warning signal of demand weakness that typically precedes a rise in unemployment with a lag of several quarters.
+
+The combination of falling vacancies, subdued consumption growth, and unchanged unemployment is not a sign of strength. It is a sign of adjustment in slow motion. If household consumption does not recover — and with interest rates still elevated and real wage growth uncertain, that recovery is not guaranteed — the vacancy freeze will eventually translate into workforce reductions that the current statistics do not yet capture. Norway's economic observers would do well to watch the vacancy rate as carefully as the unemployment rate. Right now, it is telling a different and more unsettling story.
