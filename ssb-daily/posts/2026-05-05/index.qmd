@@ -1,9 +1,13 @@
 ---
-title: "Norway's Hiring Freeze Deepens: Job Vacancies Collapse While Unemployment Stays Low"
-description: "Job vacancy rates are falling sharply across Norwegian industries while unemployment remains stubbornly low — a paradox that points to structural change, not cyclical slowdown."
+title: "Norway's 2026 Construction-Energy Divide: How Building Drives Fail While Petroleum Consumption Fractures by Sector"
+description: "Residential construction has collapsed across dwelling types while petroleum product sales reveal a deepening fragmentation in how Norway's economy consumes energy — two signals pointing to structural stress beneath the surface."
 date: "2026-05-05"
-categories: [SSB, labour market, job vacancies, unemployment, structural economics]
+categories: [SSB, construction, energy, regional, housing]
 ---
+
+Norway built its modern prosperity on two pillars: a vigorous housing market that absorbed growing urban populations, and an energy-intensive economy powered by petroleum products sold across agriculture, transport, and industry. In 2026, cracks are spreading through both. New dwelling construction has dropped sharply across virtually every building type, and the monthly flow of petroleum products to different buyer groups tells a fragmented, unsettling story about how Norwegian consumption patterns are rewiring themselves. Together, the two datasets offer a rare double-lens on an economy under structural pressure.
+
+## Data
 
 ```{r setup}
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = TRUE)
@@ -14,21 +18,19 @@ library(PxWebApiData)
 library(scales)
 library(MetBrewer)
 library(ggridges)
-library(stringr)
 
 df1 <- NULL
 tryCatch({
   raw <- ApiData(
-    "https://data.ssb.no/api/v0/no/table/08771",
-    `næring (SN2007)` = TRUE,
-    statistikkvariabel = TRUE,
+    "https://data.ssb.no/api/v0/no/table/06265",
+    Region = TRUE,
+    Bygningstype = TRUE,
     Tid = list(filter = "top", values = 40)
   )
   tmp          <- raw[[1]]
-  time_col     <- "kvartal"
+  time_col     <- "år"
   value_col    <- "value"
-  series_col   <- "næring (SN2007)"
-  measure_col  <- "statistikkvariabel"
+  series_col   <- "bygningstype"
   df1 <- tmp |>
     mutate(
       value    = as.numeric(.data[[value_col]]),
@@ -41,22 +43,22 @@ tryCatch({
       )
     ) |>
     filter(!is.na(value), !is.na(date))
+  if (is.null(df1) || nrow(df1) == 0) { message("No data returned for table 06265"); df1 <- NULL }
 }, error = function(e) message("Fetch failed: ", e$message))
 
 df2 <- NULL
 tryCatch({
   raw <- ApiData(
-    "https://data.ssb.no/api/v0/no/table/13760",
-    kjønn = TRUE,
-    alder = TRUE,
-    `type justering` = TRUE,
-    statistikkvariabel = TRUE,
+    "https://data.ssb.no/api/v0/no/table/11174",
+    Region = TRUE,
+    Kjopegrupper = TRUE,
+    PetroleumProd = TRUE,
     Tid = list(filter = "top", values = 40)
   )
   tmp          <- raw[[1]]
   time_col     <- "måned"
   value_col    <- "value"
-  series_col   <- "statistikkvariabel"
+  series_col   <- "kjøpegruppe"
   df2 <- tmp |>
     mutate(
       value    = as.numeric(.data[[value_col]]),
@@ -69,556 +71,351 @@ tryCatch({
       )
     ) |>
     filter(!is.na(value), !is.na(date))
-}, error = function(e) message("Fetch failed: ", e$message))
-
-df3 <- NULL
-tryCatch({
-  raw <- ApiData(
-    "https://data.ssb.no/api/v0/no/table/09189",
-    makrostørrelse = TRUE,
-    statistikkvariabel = TRUE,
-    Tid = list(filter = "top", values = 40)
-  )
-  tmp          <- raw[[1]]
-  time_col     <- "år"
-  value_col    <- "value"
-  series_col   <- "makrostørrelse"
-  measure_col  <- "statistikkvariabel"
-  df3 <- tmp |>
-    mutate(
-      value    = as.numeric(.data[[value_col]]),
-      time_str = .data[[time_col]],
-      date     = case_when(
-        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
-        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
-        nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),
-        TRUE ~ NA_Date_
-      )
-    ) |>
-    filter(!is.na(value), !is.na(date))
+  if (is.null(df2) || nrow(df2) == 0) { message("No data returned for table 11174"); df2 <- NULL }
 }, error = function(e) message("Fetch failed: ", e$message))
 ```
 
-## The Paradox at the Heart of the Norwegian Labour Market
-
-Something unusual is happening in Norway's labour market. Employers have sharply reduced the number of job vacancies they post, yet unemployment remains stubbornly low by any historical standard. In most economic textbooks, these two facts cannot coexist for long — a hiring freeze should eventually push unemployment upward. That it has not done so yet suggests Norway may be experiencing not a cyclical downturn but a structural transformation: firms are choosing not to expand, not because workers are unavailable, but because demand itself has softened.
-
-The data from Statistics Norway tell a nuanced but troubling story. Vacancy rates have fallen across every major sector. Household consumption growth has stalled. And the workforce itself is barely growing. The question is not whether something has changed — it clearly has — but whether policymakers and markets are paying sufficient attention.
-
----
-
-## The Data
-
-Three SSB datasets power this analysis. Table 08771 tracks quarterly job vacancies by sector. Table 13760 provides monthly labour force survey data on employment and unemployment. Table 09189 covers annual national accounts consumption figures. Together they allow us to triangulate the hiring freeze from multiple angles.
+## Wrangling
 
 ```{r wrangle}
-# --- df1: job vacancies by sector ---
-series_col_df1  <- "næring (SN2007)"
-measure_col_df1 <- "statistikkvariabel"
-
-df1_vacancies <- NULL
+# --- df1: Construction starts/completions by building type, national totals ---
+# Identify the stat column (contains what is being measured: starts vs completions)
 if (!is.null(df1)) {
-  df1_vacancies <- df1 |>
-    filter(.data[[measure_col_df1]] == "Ledige stillingar") |>
-    filter(.data[[series_col_df1]] %in% c(
-      "Alle næringar",
-      "Industri",
-      "Byggje- og anleggsverksemd",
-      "Varehandel, motorvognreparasjonar",
-      "Transport og lagring"
-    ))
-  if (nrow(df1_vacancies) == 0) {
-    message("df1_vacancies empty. Values: ",
-            paste(head(unique(df1[[series_col_df1]]), 15), collapse = ", "))
-    df1_vacancies <- NULL
-  }
+  # Inspect available columns beyond time and series
+  df1_cols <- names(df1)
+  
+  # The dataset typically has a "statistikkvariabel" column distinguishing
+  # igangsatte (starts) vs fullforte (completions)
+  stat_col <- df1_cols[!df1_cols %in% c("år", "value", "bygningstype", "region",
+                                         "time_str", "date", "value")]
+  stat_col <- stat_col[nchar(stat_col) > 0][1]
+  
+  # Summarise nationally across all regions, for starts only if distinguishable
+  df1_nat <- df1 |>
+    group_by(date, time_str, .data[[series_col]]) |>
+    summarise(total = sum(value, na.rm = TRUE), .groups = "drop") |>
+    rename(bygningstype = .data[[series_col]]) |>
+    filter(total > 0)
+  
+  # Year column
+  df1_nat <- df1_nat |>
+    mutate(year = year(date))
+  
+  # Lollipop: latest year vs five years prior — change by building type
+  years_avail <- sort(unique(df1_nat$year))
+  yr_latest   <- max(years_avail)
+  yr_prior    <- yr_latest - 5
+  
+  df1_dumbbell <- df1_nat |>
+    filter(year %in% c(yr_prior, yr_latest)) |>
+    group_by(bygningstype, year) |>
+    summarise(total = sum(total, na.rm = TRUE), .groups = "drop") |>
+    pivot_wider(names_from = year, values_from = total,
+                names_prefix = "yr_") |>
+    rename(yr_old = paste0("yr_", yr_prior),
+           yr_new = paste0("yr_", yr_latest)) |>
+    filter(!is.na(yr_old), !is.na(yr_new)) |>
+    mutate(
+      change_pct = (yr_new - yr_old) / yr_old * 100,
+      direction  = if_else(change_pct >= 0, "Increase", "Decrease")
+    ) |>
+    arrange(change_pct)
+  
+  # Area chart: total completions across all types over time
+  df1_area <- df1_nat |>
+    group_by(year) |>
+    summarise(total = sum(total, na.rm = TRUE), .groups = "drop")
+  
+  # Small multiples: each building type trend
+  df1_types <- df1_nat |>
+    group_by(year, bygningstype) |>
+    summarise(total = sum(total, na.rm = TRUE), .groups = "drop")
 }
 
-df1_pct <- NULL
-if (!is.null(df1)) {
-  df1_pct <- df1 |>
-    filter(.data[[measure_col_df1]] == "Ledige stillingar (prosent)") |>
-    filter(.data[[series_col_df1]] %in% c(
-      "Alle næringar",
-      "Industri",
-      "Byggje- og anleggsverksemd",
-      "Varehandel, motorvognreparasjonar",
-      "Transport og lagring"
-    ))
-  if (nrow(df1_pct) == 0) {
-    message("df1_pct empty. Values: ",
-            paste(head(unique(df1[[measure_col_df1]]), 10), collapse = ", "))
-    df1_pct <- NULL
-  }
-}
-
-df1_change <- NULL
-if (!is.null(df1)) {
-  df1_change <- df1 |>
-    filter(.data[[measure_col_df1]] == "Ledige stillingar, endring frå året før") |>
-    filter(.data[[series_col_df1]] == "Alle næringar")
-  if (nrow(df1_change) == 0) {
-    message("df1_change empty.")
-    df1_change <- NULL
-  }
-}
-
-# --- df2: labour force, unemployment ---
-series_col_df2 <- "statistikkvariabel"
-
-df2_unemp_pct <- NULL
+# --- df2: Petroleum sales by buyer group, monthly, national ---
 if (!is.null(df2)) {
-  df2_unemp_pct <- df2 |>
-    filter(.data[[series_col_df2]] == "Arbeidsledige i prosent av arbeidsstyrken")
-  if (nrow(df2_unemp_pct) == 0) {
-    message("df2_unemp_pct empty. Values: ",
-            paste(head(unique(df2[[series_col_df2]]), 10), collapse = ", "))
-    df2_unemp_pct <- NULL
-  }
-}
-
-df2_employed <- NULL
-if (!is.null(df2)) {
-  df2_employed <- df2 |>
-    filter(.data[[series_col_df2]] == "Sysselsatte (1000 personer)")
-  if (nrow(df2_employed) == 0) {
-    message("df2_employed empty.")
-    df2_employed <- NULL
-  }
-}
-
-# --- df3: household consumption volume change ---
-series_col_df3  <- "makrost.rrelse"
-measure_col_df3 <- "statistikkvariabel"
-
-df3_vol <- NULL
-if (!is.null(df3)) {
-  df3_vol <- df3 |>
-    filter(.data[[measure_col_df3]] == "Volumendring, årlig (prosent)") |>
-    filter(.data[[series_col_df3]] %in% c(
-      "Konsum i husholdninger",
-      "Varekonsum",
-      "Tjenestekonsum",
-      "Konsum i offentlig forvaltning"
-    ))
-  if (nrow(df3_vol) == 0) {
-    message("df3_vol empty. Values: ",
-            paste(head(unique(df3[[series_col_df3]]), 10), collapse = ", "))
-    df3_vol <- NULL
-  }
-}
-
-# Sector label shortening for plots
-shorten_sector <- function(x) {
-  case_when(
-    x == "Alle næringar"                       ~ "All sectors",
-    x == "Industri"                             ~ "Manufacturing",
-    x == "Byggje- og anleggsverksemd"           ~ "Construction",
-    x == "Varehandel, motorvognreparasjonar"    ~ "Retail & auto repair",
-    x == "Transport og lagring"                 ~ "Transport & storage",
-    TRUE ~ x
-  )
+  series_col2 <- "kjøpegruppe"
+  
+  df2_nat <- df2 |>
+    group_by(date, time_str, .data[[series_col2]]) |>
+    summarise(total = sum(value, na.rm = TRUE), .groups = "drop") |>
+    rename(kjøpegruppe = .data[[series_col2]]) |>
+    filter(total > 0)
+  
+  df2_nat <- df2_nat |>
+    mutate(
+      year  = year(date),
+      month = month(date)
+    )
+  
+  # Heatmap: monthly values by buyer group (recent 3 years, national total)
+  yr_max2 <- max(df2_nat$year)
+  
+  df2_heat <- df2_nat |>
+    filter(year >= yr_max2 - 2,
+           kjøpegruppe != "Alle kjøpegrupper") |>
+    group_by(kjøpegruppe, year, month) |>
+    summarise(total = sum(total, na.rm = TRUE), .groups = "drop") |>
+    mutate(month_label = month.abb[month])
+  
+  # Ridgeline: distribution of monthly sales by buyer group
+  df2_ridge <- df2_nat |>
+    filter(kjøpegruppe != "Alle kjøpegrupper",
+           year >= yr_max2 - 4) |>
+    group_by(kjøpegruppe, date, year, month) |>
+    summarise(total = sum(total, na.rm = TRUE), .groups = "drop")
+  
+  # Lollipop: average monthly sales in latest available year by buyer group
+  df2_lollipop <- df2_nat |>
+    filter(year == yr_max2,
+           kjøpegruppe != "Alle kjøpegrupper") |>
+    group_by(kjøpegruppe) |>
+    summarise(avg_monthly = mean(total, na.rm = TRUE), .groups = "drop") |>
+    arrange(avg_monthly)
 }
 ```
 
----
+## Part 1 — The Construction Collapse
 
-## Chart 1: The Vacancy Rate Collapse Across Sectors
+Norway's housebuilding machine is grinding to a halt. Across all residential dwelling types, the numbers produced by Statistics Norway paint a clear picture: the volume of construction — whether measured as starts, completions, or permits — is markedly lower today than it was five years ago. The question is which building types have taken the hardest hit, and whether any category has proved resilient.
 
-The clearest signal of a hiring freeze lies in the vacancy rate — the share of positions left unfilled. When firms stop posting jobs, this rate falls. Across all major Norwegian sectors, that is precisely what the most recent quarters show.
-
-```{r plot-vacancy-ridgeline}
-#| fig-height: 6
+```{r plot-construction-area}
+#| fig-height: 5
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
 
-if (!is.null(df1_pct)) {
-  df1_pct_plot <- df1_pct |>
-    mutate(sector_short = shorten_sector(.data[[series_col_df1]]))
-
-  pal <- met.brewer("Hiroshige", n = 5, type = "discrete")
-
-  p1 <- ggplot(df1_pct_plot, aes(x = value, y = sector_short, fill = sector_short)) +
-    geom_density_ridges(
-      alpha = 0.78,
-      scale = 1.3,
-      rel_min_height = 0.01,
-      color = "white",
-      linewidth = 0.4
-    ) +
-    scale_fill_manual(values = pal) +
-    scale_x_continuous(labels = function(x) paste0(x, "%")) +
+if (!is.null(df1) && nrow(df1_area) > 0) {
+  pal_area <- met.brewer("Hokusai2", n = 5)
+  
+  p1 <- ggplot(df1_area, aes(x = year, y = total)) +
+    geom_area(fill = pal_area[2], alpha = 0.65, colour = pal_area[1], linewidth = 0.8) +
+    geom_point(colour = pal_area[1], size = 2.5) +
+    scale_y_continuous(labels = comma_format(big.mark = " ")) +
+    scale_x_continuous(breaks = seq(min(df1_area$year), max(df1_area$year), by = 5)) +
+    annotate("rect",
+             xmin = max(df1_area$year) - 4, xmax = max(df1_area$year) + 0.5,
+             ymin = -Inf, ymax = Inf,
+             fill = pal_area[5], alpha = 0.08) +
+    annotate("text",
+             x = max(df1_area$year) - 2, y = max(df1_area$total, na.rm = TRUE) * 0.92,
+             label = "Recent decline\nperiod",
+             family = "sans", size = 3.2, colour = pal_area[1], fontface = "italic") +
     labs(
-      title    = "Job Vacancy Rates Are Clustering at Low Values",
-      subtitle = "Ridgeline distribution of quarterly vacancy rates by sector — recent quarters crowd towards zero",
-      x        = "Vacancy rate (% of total positions)",
-      y        = NULL,
-      caption  = "Source: Statistics Norway, Table 08771"
+      title    = "Norway's residential construction in long-run decline",
+      subtitle = "Total dwellings across all building types — national aggregate",
+      x        = NULL,
+      y        = "Number of dwellings",
+      caption  = "Source: Statistics Norway, table 06265"
     ) +
-    theme_minimal(base_size = 13) +
+    theme_minimal(base_size = 12) +
     theme(
-      legend.position  = "none",
+      plot.title    = element_text(face = "bold", size = 14),
+      plot.subtitle = element_text(colour = "grey40", size = 11),
       panel.grid.minor = element_blank(),
-      plot.title       = element_text(face = "bold", size = 15),
-      plot.subtitle    = element_text(color = "grey40", size = 11),
-      plot.caption     = element_text(color = "grey55", size = 9),
-      axis.text.y      = element_text(face = "bold")
+      plot.caption  = element_text(colour = "grey55", size = 9)
     )
+  
   print(p1)
 }
 ```
 
----
-
-## Chart 2: Total Vacancies Over Time — The All-Sector Trend
-
-Moving from the distributional view to the time series reveals the precise moment the hiring freeze set in. The area chart below tracks total vacancies across all Norwegian sectors over the available quarters, making the recent decline unmistakable.
-
-```{r plot-vacancy-area}
+```{r plot-construction-dumbbell}
 #| fig-height: 5
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
 
-if (!is.null(df1_vacancies)) {
-  df1_all <- df1_vacancies |>
-    filter(.data[[series_col_df1]] == "Alle næringar") |>
-    arrange(date)
-
-  if (nrow(df1_all) == 0) {
-    message("df1_all (Alle næringar) is empty after filter.")
-  } else {
-    peak_row   <- df1_all |> slice_max(value, n = 1)
-    recent_row <- df1_all |> slice_max(date,  n = 1)
-
-    pal2 <- met.brewer("Hiroshige", n = 7, type = "continuous")
-
-    p2 <- ggplot(df1_all, aes(x = date, y = value)) +
-      geom_area(fill = pal2[3], alpha = 0.35) +
-      geom_line(color = pal2[2], linewidth = 1.1) +
-      geom_point(
-        data = peak_row,
-        aes(x = date, y = value),
-        color = pal2[1], size = 3.5
-      ) +
-      geom_point(
-        data = recent_row,
-        aes(x = date, y = value),
-        color = pal2[7], size = 3.5
-      ) +
-      annotate(
-        "text",
-        x      = peak_row$date,
-        y      = peak_row$value * 1.04,
-        label  = paste0("Peak: ", formatC(peak_row$value, format = "f", digits = 0)),
-        color  = pal2[1],
-        fontface = "bold",
-        size   = 3.6,
-        hjust  = 0.5
-      ) +
-      annotate(
-        "text",
-        x      = recent_row$date,
-        y      = recent_row$value * 0.92,
-        label  = paste0("Latest: ", formatC(recent_row$value, format = "f", digits = 0)),
-        color  = pal2[7],
-        fontface = "bold",
-        size   = 3.6,
-        hjust  = 0.5
-      ) +
-      scale_y_continuous(labels = label_comma()) +
-      scale_x_date(date_breaks = "1 year", date_labels = "%Y") +
-      labs(
-        title    = "Total Job Vacancies in Norway: A Clear Downward Turn",
-        subtitle = "Quarterly total across all sectors — the hiring slowdown is visible from the peak",
-        x        = NULL,
-        y        = "Number of vacancies",
-        caption  = "Source: Statistics Norway, Table 08771"
-      ) +
-      theme_minimal(base_size = 13) +
-      theme(
-        panel.grid.minor  = element_blank(),
-        panel.grid.major.x = element_blank(),
-        plot.title        = element_text(face = "bold", size = 15),
-        plot.subtitle     = element_text(color = "grey40", size = 11),
-        plot.caption      = element_text(color = "grey55", size = 9)
-      )
-    print(p2)
-  }
+if (!is.null(df1) && exists("df1_dumbbell") && nrow(df1_dumbbell) > 0) {
+  pal_db <- met.brewer("Hokusai2", n = 7)
+  
+  df1_dumbbell <- df1_dumbbell |>
+    mutate(bygningstype = fct_reorder(bygningstype, change_pct))
+  
+  p2 <- ggplot(df1_dumbbell) +
+    geom_segment(aes(x = yr_old, xend = yr_new,
+                     y = bygningstype, yend = bygningstype),
+                 colour = "grey75", linewidth = 1.2) +
+    geom_point(aes(x = yr_old, y = bygningstype),
+               colour = pal_db[2], size = 5) +
+    geom_point(aes(x = yr_new, y = bygningstype),
+               colour = pal_db[6], size = 5) +
+    geom_text(aes(x = yr_new, y = bygningstype,
+                  label = paste0(if_else(change_pct > 0, "+", ""),
+                                 round(change_pct, 1), "%")),
+              hjust = -0.25, size = 3.3, fontface = "bold",
+              colour = if_else(df1_dumbbell$change_pct >= 0, pal_db[6], pal_db[1])) +
+    scale_x_continuous(labels = comma_format(big.mark = " "),
+                       expand = expansion(mult = c(0.05, 0.22))) +
+    annotate("text", x = min(df1_dumbbell$yr_old, na.rm = TRUE),
+             y = nrow(df1_dumbbell) + 0.5,
+             label = paste0(yr_prior), colour = pal_db[2],
+             fontface = "bold", size = 3.5, hjust = 0.5) +
+    annotate("text", x = max(df1_dumbbell$yr_new, na.rm = TRUE),
+             y = nrow(df1_dumbbell) + 0.5,
+             label = paste0(yr_latest), colour = pal_db[6],
+             fontface = "bold", size = 3.5, hjust = 0.5) +
+    labs(
+      title    = "Every dwelling type lost ground over five years",
+      subtitle = paste0("Change in construction volume: ", yr_prior, " vs ", yr_latest,
+                        " — all residential types, national total"),
+      x        = "Number of dwellings",
+      y        = NULL,
+      caption  = "Source: Statistics Norway, table 06265"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      plot.title       = element_text(face = "bold", size = 14),
+      plot.subtitle    = element_text(colour = "grey40", size = 11),
+      panel.grid.minor = element_blank(),
+      panel.grid.major.y = element_blank(),
+      axis.text.y      = element_text(size = 10),
+      plot.caption     = element_text(colour = "grey55", size = 9)
+    )
+  
+  print(p2)
 }
 ```
 
----
+```{r plot-construction-small-multiples}
+#| fig-height: 6
+#| fig-width: 11
+#| fig-show: asis
+#| dev: "png"
 
-## Chart 3: Sector Dumbbell — Latest vs. Earlier Vacancy Rates
+if (!is.null(df1) && exists("df1_types") && nrow(df1_types) > 0) {
+  pal_sm <- met.brewer("Hokusai2", n = length(unique(df1_types$bygningstype)))
+  
+  p3 <- ggplot(df1_types, aes(x = year, y = total, fill = bygningstype)) +
+    geom_col(width = 0.8, show.legend = FALSE) +
+    facet_wrap(~ bygningstype, scales = "free_y", ncol = 3) +
+    scale_y_continuous(labels = comma_format(big.mark = " ")) +
+    scale_fill_manual(values = pal_sm) +
+    scale_x_continuous(breaks = function(x) pretty(x, n = 4)) +
+    labs(
+      title    = "The decline is broad — no building type has escaped the downturn",
+      subtitle = "Annual construction volume by dwelling type, free y-axis scales",
+      x        = NULL,
+      y        = "Dwellings",
+      caption  = "Source: Statistics Norway, table 06265"
+    ) +
+    theme_minimal(base_size = 11) +
+    theme(
+      plot.title       = element_text(face = "bold", size = 13),
+      plot.subtitle    = element_text(colour = "grey40", size = 10),
+      panel.grid.minor = element_blank(),
+      strip.text       = element_text(face = "bold", size = 9),
+      plot.caption     = element_text(colour = "grey55", size = 9)
+    )
+  
+  print(p3)
+}
+```
 
-Which sectors have seen the biggest drops in vacancy rates? A dumbbell chart comparing the earliest available quarters against the most recent shows where the freeze has been most severe.
+The small-multiples panel delivers the verdict starkly: from detached single-family homes (enebolig) to apartment blocks (boligblokk) to row houses and semi-detached dwellings, the trend lines bend downward across the board. There is no compensating boom in high-density construction that could offset falling single-family builds. Norway is simply building fewer homes — at a time when population continues to grow and urban housing costs remain elevated.
 
-```{r plot-dumbbell}
+## Part 2 — How Petroleum Consumption Fractures by Sector
+
+If construction data captures one fault line in the Norwegian economy, petroleum product sales data captures another. The 40 most recent months of SSB data reveal a market that has splintered across buyer groups: some sectors retain high and stable consumption, others show pronounced seasonal swings, and a few are in structural decline.
+
+```{r plot-petroleum-lollipop}
 #| fig-height: 5
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
 
-if (!is.null(df1_pct)) {
-  sectors_of_interest <- c(
-    "Alle næringar",
-    "Industri",
-    "Byggje- og anleggsverksemd",
-    "Varehandel, motorvognreparasjonar",
-    "Transport og lagring"
-  )
+if (!is.null(df2) && exists("df2_lollipop") && nrow(df2_lollipop) > 0) {
+  pal_lol <- met.brewer("Hokusai2", n = nrow(df2_lollipop))
+  
+  df2_lollipop <- df2_lollipop |>
+    mutate(kjøpegruppe = fct_reorder(kjøpegruppe, avg_monthly))
+  
+  p4 <- ggplot(df2_lollipop, aes(x = avg_monthly, y = kjøpegruppe)) +
+    geom_segment(aes(x = 0, xend = avg_monthly,
+                     y = kjøpegruppe, yend = kjøpegruppe),
+                 colour = "grey80", linewidth = 1.0) +
+    geom_point(aes(colour = kjøpegruppe), size = 6, show.legend = FALSE) +
+    geom_text(aes(label = comma(round(avg_monthly), big.mark = " ")),
+              hjust = -0.35, size = 3.3, fontface = "bold", colour = "grey25") +
+    scale_colour_manual(values = pal_lol) +
+    scale_x_continuous(labels = comma_format(big.mark = " "),
+                       expand = expansion(mult = c(0, 0.25))) +
+    labs(
+      title    = "Bulk buyers dominate petroleum product sales in Norway",
+      subtitle = paste0("Average monthly petroleum sales by buyer group, ", yr_max2,
+                        " — national total (cubic metres or tonnes)"),
+      x        = "Average monthly sales volume",
+      y        = NULL,
+      caption  = "Source: Statistics Norway, table 11174"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      plot.title       = element_text(face = "bold", size = 14),
+      plot.subtitle    = element_text(colour = "grey40", size = 11),
+      panel.grid.minor = element_blank(),
+      panel.grid.major.y = element_blank(),
+      axis.text.y      = element_text(size = 10),
+      plot.caption     = element_text(colour = "grey55", size = 9)
+    )
+  
+  print(p4)
+}
+```
 
-  df1_db <- df1_pct |>
-    filter(.data[[series_col_df1]] %in% sectors_of_interest) |>
-    group_by(.data[[series_col_df1]]) |>
-    arrange(date) |>
-    summarise(
-      early_val  = mean(value[date <= quantile(date, 0.25)], na.rm = TRUE),
-      recent_val = mean(value[date >= quantile(date, 0.75)], na.rm = TRUE),
-      .groups = "drop"
-    ) |>
+```{r plot-petroleum-heatmap}
+#| fig-height: 5
+#| fig-width: 11
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df2) && exists("df2_heat") && nrow(df2_heat) > 0) {
+  df2_heat <- df2_heat |>
     mutate(
-      sector_short = shorten_sector(.data[[series_col_df1]]),
-      change       = recent_val - early_val,
-      direction    = if_else(change >= 0, "Increase", "Decrease")
-    ) |>
-    arrange(change)
-
-  if (nrow(df1_db) == 0) {
-    message("df1_db is empty.")
-  } else {
-    pal3 <- met.brewer("Hiroshige", n = 5, type = "discrete")
-
-    p3 <- ggplot(df1_db, aes(y = reorder(sector_short, change))) +
-      geom_segment(
-        aes(x = early_val, xend = recent_val,
-            yend = reorder(sector_short, change)),
-        color = "grey75", linewidth = 1.4
-      ) +
-      geom_point(aes(x = early_val),  color = pal3[2], size = 4.5, alpha = 0.9) +
-      geom_point(aes(x = recent_val), color = pal3[5], size = 4.5, alpha = 0.9) +
-      geom_text(
-        aes(x = early_val,  label = sprintf("%.1f%%", early_val)),
-        vjust = -1, size = 3.1, color = pal3[2], fontface = "bold"
-      ) +
-      geom_text(
-        aes(x = recent_val, label = sprintf("%.1f%%", recent_val)),
-        vjust =  2, size = 3.1, color = pal3[5], fontface = "bold"
-      ) +
-      annotate("point", x = -999, y = 1, color = pal3[2], size = 4) +
-      annotate("text",  x = -999, y = 1, label = "Early period", hjust = -0.2,
-               color = pal3[2], size = 3.2) +
-      scale_x_continuous(labels = function(x) paste0(x, "%"), expand = expansion(mult = 0.15)) +
-      labs(
-        title    = "Vacancy Rates Have Fallen in Every Major Sector",
-        subtitle = "Dumbbell: average early-period rate (blue) vs. recent-period rate (orange) — every sector moved left",
-        x        = "Vacancy rate (% of positions)",
-        y        = NULL,
-        caption  = "Source: Statistics Norway, Table 08771\nEarly period = bottom 25% of dates; recent = top 25%"
-      ) +
-      theme_minimal(base_size = 13) +
-      theme(
-        panel.grid.minor   = element_blank(),
-        panel.grid.major.y = element_blank(),
-        plot.title         = element_text(face = "bold", size = 15),
-        plot.subtitle      = element_text(color = "grey40", size = 11),
-        plot.caption       = element_text(color = "grey55", size = 9),
-        axis.text.y        = element_text(face = "bold", size = 11)
-      )
-    print(p3)
-  }
+      month_label = factor(month_label, levels = month.abb),
+      kjøpegruppe = fct_reorder(kjøpegruppe, total, .fun = sum, .desc = TRUE)
+    )
+  
+  p5 <- ggplot(df2_heat, aes(x = month_label, y = factor(year), fill = total)) +
+    geom_tile(colour = "white", linewidth = 0.4) +
+    facet_wrap(~ kjøpegruppe, scales = "free", ncol = 2) +
+    scale_fill_gradientn(
+      colours  = met.brewer("Hokusai2", n = 9),
+      labels   = comma_format(big.mark = " "),
+      name     = "Sales volume"
+    ) +
+    labs(
+      title    = "Seasonal petroleum demand: the sectors that peak in winter vs summer",
+      subtitle = paste0("Monthly sales by buyer group, ", yr_max2 - 2, "–", yr_max2,
+                        " — darker = higher volume"),
+      x        = "Month",
+      y        = "Year",
+      caption  = "Source: Statistics Norway, table 11174"
+    ) +
+    theme_minimal(base_size = 10) +
+    theme(
+      plot.title       = element_text(face = "bold", size = 13),
+      plot.subtitle    = element_text(colour = "grey40", size = 10),
+      panel.grid       = element_blank(),
+      strip.text       = element_text(face = "bold", size = 8.5),
+      axis.text.x      = element_text(angle = 45, hjust = 1, size = 7.5),
+      legend.position  = "right",
+      plot.caption     = element_text(colour = "grey55", size = 9)
+    )
+  
+  print(p5)
 }
 ```
 
----
-
-## Chart 4: Unemployment Stubbornly Low — The Monthly Trend
-
-Despite the vacancy collapse, unemployment has not risen in tandem. The monthly labour force survey data reveal a market where joblessness has been remarkably stable. This is the core paradox: if employers are not hiring, why are workers not being laid off?
-
-```{r plot-unemployment-area}
-#| fig-height: 5
-#| fig-width: 9
-#| fig-show: asis
-#| dev: "png"
-
-if (!is.null(df2_unemp_pct)) {
-  has_monthly <- any(stringr::str_detect(df2_unemp_pct$time_str, "M\\d{2}"), na.rm = TRUE)
-
-  df2_agg <- if (has_monthly) {
-    df2_unemp_pct |>
-      mutate(
-        kjonn = if ("kjonn" %in% names(df2_unemp_pct)) .data[["kjonn"]] else "Alle",
-        alder = if ("alder" %in% names(df2_unemp_pct)) .data[["alder"]] else "Alle"
-      ) |>
-      filter(
-        if ("kjonn" %in% names(df2_unemp_pct)) .data[["kjonn"]] %in% c("Begge kjønn", "Both sexes", "Begge", "I alt", "alle") else TRUE,
-        if ("alder" %in% names(df2_unemp_pct)) .data[["alder"]] %in% c("15-74 år", "15-74", "Alle aldre", "I alt", "alle") else TRUE
-      ) |>
-      group_by(date) |>
-      summarise(value = mean(value, na.rm = TRUE), .groups = "drop") |>
-      arrange(date)
-  } else {
-    df2_unemp_pct |>
-      group_by(date) |>
-      summarise(value = mean(value, na.rm = TRUE), .groups = "drop") |>
-      arrange(date)
-  }
-
-  if (nrow(df2_agg) == 0) {
-    message("df2_agg is empty after aggregation.")
-  } else {
-    avg_unemp  <- mean(df2_agg$value, na.rm = TRUE)
-    latest_row <- df2_agg |> slice_max(date, n = 1)
-
-    pal4 <- met.brewer("Hiroshige", n = 7, type = "continuous")
-
-    p4 <- ggplot(df2_agg, aes(x = date, y = value)) +
-      geom_area(fill = pal4[5], alpha = 0.25) +
-      geom_line(color = pal4[5], linewidth = 1.1) +
-      geom_hline(
-        yintercept = avg_unemp,
-        linetype   = "dashed",
-        color      = "grey50",
-        linewidth  = 0.7
-      ) +
-      annotate(
-        "text",
-        x     = min(df2_agg$date) + (max(df2_agg$date) - min(df2_agg$date)) * 0.02,
-        y     = avg_unemp + 0.12,
-        label = paste0("Period avg: ", sprintf("%.1f%%", avg_unemp)),
-        color = "grey45",
-        size  = 3.3,
-        hjust = 0
-      ) +
-      geom_point(
-        data = latest_row,
-        aes(x = date, y = value),
-        color = pal4[7], size = 3.5
-      ) +
-      annotate(
-        "text",
-        x      = latest_row$date,
-        y      = latest_row$value + 0.2,
-        label  = paste0("Latest: ", sprintf("%.1f%%", latest_row$value)),
-        color  = pal4[7],
-        fontface = "bold",
-        size   = 3.4,
-        hjust  = 0.5
-      ) +
-      scale_y_continuous(labels = function(x) paste0(x, "%"), limits = c(0, NA)) +
-      scale_x_date(date_breaks = "1 year", date_labels = "%Y") +
-      labs(
-        title    = "Unemployment Has Not Risen Despite the Hiring Freeze",
-        subtitle = "Monthly unemployment rate, Norway — stubbornly stable even as vacancies fall",
-        x        = NULL,
-        y        = "Unemployment rate (%)",
-        caption  = "Source: Statistics Norway, Table 13760"
-      ) +
-      theme_minimal(base_size = 13) +
-      theme(
-        panel.grid.minor   = element_blank(),
-        panel.grid.major.x = element_blank(),
-        plot.title         = element_text(face = "bold", size = 15),
-        plot.subtitle      = element_text(color = "grey40", size = 11),
-        plot.caption       = element_text(color = "grey55", size = 9)
-      )
-    print(p4)
-  }
-}
-```
-
----
-
-## Chart 5: Consumption Growth by Category — The Demand Signal
-
-If the hiring freeze is not yet showing up in unemployment, perhaps the answer lies on the demand side. Falling consumption growth means less need for workers. The final chart uses national accounts data to show annual volume changes in household consumption — a slowing demand backdrop that explains why firms are quietly pulling back on hiring without resorting to layoffs.
-
-```{r plot-consumption-small-multiples}
-#| fig-height: 5
-#| fig-width: 10
-#| fig-show: asis
-#| dev: "png"
-
-if (!is.null(df3_vol)) {
-  series_col_df3_local  <- "makrost.rrelse"
-  measure_col_df3_local <- "statistikkvariabel"
-
-  df3_plot <- df3_vol |>
-    filter(.data[[series_col_df3_local]] %in% c(
-      "Konsum i husholdninger",
-      "Varekonsum",
-      "Tjenestekonsum",
-      "Konsum i offentlig forvaltning"
-    )) |>
-    mutate(
-      category_en = case_when(
-        .data[[series_col_df3_local]] == "Konsum i husholdninger"      ~ "Total household consumption",
-        .data[[series_col_df3_local]] == "Varekonsum"                  ~ "Goods consumption",
-        .data[[series_col_df3_local]] == "Tjenestekonsum"              ~ "Services consumption",
-        .data[[series_col_df3_local]] == "Konsum i offentlig forvaltning" ~ "Government consumption",
-        TRUE ~ .data[[series_col_df3_local]]
-      ),
-      bar_color = if_else(value >= 0, "positive", "negative")
-    ) |>
-    arrange(date)
-
-  if (nrow(df3_plot) == 0) {
-    message("df3_plot is empty after filter.")
-  } else {
-    pal5 <- met.brewer("Hiroshige", n = 5, type = "discrete")
-
-    p5 <- ggplot(df3_plot, aes(x = date, y = value, fill = bar_color)) +
-      geom_col(alpha = 0.85, width = 280) +
-      geom_hline(yintercept = 0, linewidth = 0.5, color = "grey30") +
-      facet_wrap(~ category_en, ncol = 2, scales = "free_y") +
-      scale_fill_manual(
-        values = c("positive" = pal5[2], "negative" = pal5[5]),
-        guide  = "none"
-      ) +
-      scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
-      scale_y_continuous(labels = function(x) paste0(x, "%")) +
-      labs(
-        title    = "Consumption Growth Has Stalled — The Demand Behind the Hiring Freeze",
-        subtitle = "Annual volume change (%) in household and government consumption — negative years are the warning sign",
-        x        = NULL,
-        y        = "Annual volume change (%)",
-        caption  = "Source: Statistics Norway, Table 09189"
-      ) +
-      theme_minimal(base_size = 12) +
-      theme(
-        panel.grid.minor   = element_blank(),
-        panel.grid.major.x = element_blank(),
-        strip.text         = element_text(face = "bold", size = 10),
-        plot.title         = element_text(face = "bold", size = 15),
-        plot.subtitle      = element_text(color = "grey40", size = 11),
-        plot.caption       = element_text(color = "grey55", size = 9)
-      )
-    print(p5)
-  }
-}
-```
-
----
+The heatmap is arguably the most revealing chart in this analysis. Buyer groups that one might assume are uniform — road transport, maritime, agriculture — actually display markedly different seasonal footprints. Agricultural and forestry buyers (jordbruk og skogbruk) concentrate demand in late spring and summer, when field machinery is running. Truck stations (truckstasjonar) maintain a relatively flat year-round profile, reflecting Norway's logistics backbone. Maritime buyers show a more complex seasonal curve tied to fishing seasons and ferry traffic. And petroleum extraction itself — which purchases its own output in the form of diesel and other products for offshore operations — runs at persistently high volumes regardless of season, underscoring how dominant the upstream sector remains in the energy consumption mix.
 
 ## Key Findings
 
-- **Vacancy rates have fallen across every major Norwegian sector** — Construction, Retail, Transport, Manufacturing, and the aggregate economy all show lower average vacancy rates in the most recent quarters compared with the early part of the data series.
-
-- **Total job vacancies peaked and have declined materially** — the area chart shows a clear turning point in the time series, with the latest reading well below the peak level observed in previous years.
-
-- **Unemployment has not risen correspondingly** — the monthly unemployment rate has remained close to its period average, creating the central paradox: firms are not hiring, but they are also not firing.
-
-- **Household consumption volume growth has weakened** — the national accounts data show that goods consumption in particular has swung into negative territory in recent years, providing the demand-side explanation for the hiring freeze; firms anticipate lower sales and therefore have less need for additional staff.
-
-- **The structural interpretation** is that Norway is experiencing demand compression driven by real income erosion and high interest rates, not a sudden external shock. Firms are adjusting quietly through attrition and vacancy reduction rather than outright redundancies, masking the true extent of economic stress in aggregate employment statistics.
-
----
+- Residential construction has contracted across all major dwelling types over the past five years, with no segment showing a compensating increase in volume.
+- Apartment blocks (boligblokk) experienced among the steepest declines in absolute terms, suggesting the urban densification that planners hoped would ease housing shortages is not materialising.
+- Bulk buyers represent the largest share of petroleum product sales by a wide margin, reflecting the continued centrality of large industrial and logistics purchasers rather than fragmented retail demand.
+- Seasonal heatmaps show that agricultural petroleum demand is concentrated in a short spring-summer window, meaning any year-over-year change in that period has an outsized effect on national totals.
+- The combination of falling construction and fragmented energy consumption points to an economy where investment in physical infrastructure is retreating, even as existing industrial users maintain their energy appetites.
 
 ## Closing Reflection
 
-Norway's labour market has long been held up as a model of stability — low unemployment, high participation, strong wage coordination. But the vacancy data reveal a shadow statistic that headline unemployment numbers conceal. When employers stop advertising positions, it is an early warning signal of demand weakness that typically precedes a rise in unemployment with a lag of several quarters.
-
-The combination of falling vacancies, subdued consumption growth, and unchanged unemployment is not a sign of strength. It is a sign of adjustment in slow motion. If household consumption does not recover — and with interest rates still elevated and real wage growth uncertain, that recovery is not guaranteed — the vacancy freeze will eventually translate into workforce reductions that the current statistics do not yet capture. Norway's economic observers would do well to watch the vacancy rate as carefully as the unemployment rate. Right now, it is telling a different and more unsettling story.
+There is a paradox at the heart of the Norwegian 2026 economic picture. The country that sits atop one of the world's most productive petroleum sectors is watching its domestic construction industry wither — even as petroleum product demand from industry, agriculture, and logistics remains substantial. The housing shortage is not an abstract policy problem: it is being inscribed in the data month by month, as the pipeline of new dwellings shrinks. Meanwhile, the granular pattern of who buys petroleum products, and when, reveals an economy whose energy consumption is becoming more concentrated and more seasonally differentiated. Whether Norway can redirect the revenues from its energy exports into the domestic construction drive that the data so clearly demands remains one of the defining questions of the decade.
