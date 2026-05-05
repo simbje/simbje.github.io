@@ -1,0 +1,14 @@
+httr2
+xml2
+rvest
+jsonlite
+glue
+here
+fs
+tidyverse
+lubridate
+ggplot2
+MetBrewer
+visNetwork
+igraph
+DT

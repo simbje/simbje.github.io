@@ -1,0 +1,75 @@
+name: 🔭 SSRN/arXiv Research Trends Scanner
+
+on:
+  schedule:
+    - cron: '0 8 1,15 * *'   # 08:00 UTC on the 1st and 15th of each month
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: "ssrn-research"
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 🔧 Set up R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.4.0'
+          use-public-rspm: true
+
+      - name: 📦 Cache R packages
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.R_LIBS_USER }}
+          key: ${{ runner.os }}-r-4.4-ssrn-${{ hashFiles('ssrn-research/r-packages.txt') }}
+          restore-keys: ${{ runner.os }}-r-4.4-ssrn-
+
+      - name: 📚 Install R packages
+        run: |
+          Rscript -e "
+            pkgs <- c(
+              'httr2', 'xml2', 'rvest', 'jsonlite', 'glue', 'here', 'fs',
+              'tidyverse', 'lubridate', 'ggplot2', 'MetBrewer',
+              'visNetwork', 'igraph', 'DT'
+            )
+            missing <- pkgs[!pkgs %in% installed.packages()[,'Package']]
+            if (length(missing) > 0) {
+              message('Installing: ', paste(missing, collapse=', '))
+              install.packages(missing,
+                repos = 'https://packagemanager.posit.co/cran/__linux__/noble/latest',
+                quiet = TRUE)
+            } else {
+              message('All packages already installed.')
+            }
+          "
+
+      - name: 🤖 Scan arXiv + SSRN and cluster via Claude
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: Rscript ssrn-research/scan_ssrn.R
+
+      - name: 💾 Commit snapshot
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git stash --include-untracked
+          git pull --rebase origin main
+          git stash pop || true
+          git add ssrn-research/snapshots/
+          if git diff --staged --quiet; then
+            echo "Nothing to commit — no new snapshot."
+          else
+            git commit -m "🔭 Research trends — $(date -u +%Y-%m-%d)"
+            git push
+          fi

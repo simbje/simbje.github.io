@@ -31,6 +31,8 @@ website:
           - text: "Ad Hoc"
           - href: finn-housing/index.qmd
             text: Oslo Housing
+          - href: ssrn-research/index.qmd
+            text: Research Trends
       - text: "SSB Daily"
         href: ssb-daily/index.qmd
       - text: "Risk analysis and Machine Learning"
