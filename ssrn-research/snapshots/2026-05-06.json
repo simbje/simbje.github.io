@@ -1,0 +1,328 @@
+{
+  "run_date": "2026-05-06",
+  "candidates_count": 75,
+  "sources_used": ["arxiv:cs.LG", "arxiv:stat.ML", "arxiv:stat.ME", "arxiv:q-fin.TR", "arxiv:q-fin.MF", "arxiv:q-fin.CP", "arxiv:q-fin.ST", "arxiv:q-fin.GN", "arxiv:stat.AP", "arxiv:q-fin.PM", "arxiv:q-fin.RM", "arxiv:econ.EM", "arxiv:econ.TH", "arxiv:econ.GN"],
+  "bucket_counts": {
+    "data_science": 26,
+    "finance": 25,
+    "social_sciences": 27
+  },
+  "top_papers": {
+    "data_science": [
+      {
+        "id": "arxiv:2605.03517",
+        "rank": 1,
+        "title": "Understanding Self-Supervised Learning via Latent Distribution Matching",
+        "authors": "Fabian A Mikulasch",
+        "url": "https://arxiv.org/abs/2605.03517",
+        "source": "arxiv",
+        "why_trending": "Provides unified theoretical framework explaining diverse SSL methods (contrastive, non-contrastive, predictive) through latent distribution matching—a major step toward understanding self-supervised learning fundamentals.",
+        "topics": [
+          "Self-supervised learning theory",
+          "Representation learning foundations"
+        ]
+      },
+      {
+        "id": "arxiv:2605.03548",
+        "rank": 2,
+        "title": "PerFlow: Physics-Embedded Rectified Flow for Efficient Reconstruction and Uncertainty Quantification of Spatiotemporal Dynamics",
+        "authors": "Hao Zhou",
+        "url": "https://arxiv.org/abs/2605.03548",
+        "source": "arxiv",
+        "why_trending": "Combines physics-embedded diffusion models with sparse PDE reconstruction and uncertainty quantification, addressing key challenges in scientific ML and generative modeling for spatiotemporal dynamics.",
+        "topics": [
+          "Physics-informed generative models",
+          "Uncertainty quantification in ML"
+        ]
+      },
+      {
+        "id": "arxiv:2605.03573",
+        "rank": 3,
+        "title": "Stochastic Schrödinger Diffusion Models for Pure-State Ensemble Generation",
+        "authors": "Jian Xu",
+        "url": "https://arxiv.org/abs/2605.03573",
+        "source": "arxiv",
+        "why_trending": "Extends diffusion models to quantum pure-state ensembles with well-defined reverse-time samplers—a novel contribution at the intersection of quantum ML and generative modeling.",
+        "topics": [
+          "Quantum machine learning",
+          "Generative models on manifolds"
+        ]
+      },
+      {
+        "id": "arxiv:2605.03588",
+        "rank": 4,
+        "title": "Flow Matching on Symmetric Spaces",
+        "authors": "Francesco Ruscelli",
+        "url": "https://arxiv.org/abs/2605.03588",
+        "source": "arxiv",
+        "why_trending": "Develops flow matching on Riemannian symmetric spaces (spheres, hyperbolic spaces, Grassmannians), linearizing geodesic handling and extending generative models to non-Euclidean manifolds.",
+        "topics": [
+          "Generative models on manifolds",
+          "Geometric deep learning"
+        ]
+      },
+      {
+        "id": "arxiv:2605.03534",
+        "rank": 5,
+        "title": "SURE-RAG: Sufficiency and Uncertainty-Aware Evidence Verification for Selective Retrieval-Augmented Generation",
+        "authors": "Jingxi Qiu",
+        "url": "https://arxiv.org/abs/2605.03534",
+        "source": "arxiv",
+        "why_trending": "Addresses evidence verification gap in RAG systems through transparent aggregation of sufficiency signals, improving practical reliability of LLM-based retrieval systems.",
+        "topics": [
+          "LLM grounding and reliability",
+          "Retrieval-augmented generation"
+        ]
+      }
+    ],
+    "finance": [
+      {
+        "id": "arxiv:2605.00493",
+        "rank": 1,
+        "title": "ForesightFlow: An Information Leakage Score Framework for Prediction Markets",
+        "authors": "Maksym Nechepurenko",
+        "url": "https://arxiv.org/abs/2605.00493",
+        "source": "arxiv",
+        "why_trending": "ForesightFlow introduces an Information Leakage Score framework for detecting informed trading on decentralized prediction markets—timely given recent insider-trading scrutiny on Polymarket.",
+        "topics": [
+          "Prediction market microstructure",
+          "Informed trading detection"
+        ]
+      },
+      {
+        "id": "arxiv:2605.03184",
+        "rank": 2,
+        "title": "Single-Period Portfolio Selection via Information Projection",
+        "authors": "Bo-Yu Yang",
+        "url": "https://arxiv.org/abs/2605.03184",
+        "source": "arxiv",
+        "why_trending": "Uses information-theoretic lens to decompose CRRA portfolio returns into Rényi divergence and entropy components, connecting risk aversion to divergence order with operational clarity.",
+        "topics": [
+          "Portfolio theory and optimization",
+          "Information-theoretic finance"
+        ]
+      },
+      {
+        "id": "arxiv:2605.03703",
+        "rank": 3,
+        "title": "Scaling Limits of Bivariate Nearly-Unstable Hawkes Processes and Applications to Rough Volatility",
+        "authors": "Sohaib El Karmi",
+        "url": "https://arxiv.org/abs/2605.03703",
+        "source": "arxiv",
+        "why_trending": "Proves functional limit theorems for nearly-unstable bivariate Hawkes processes with heterogeneous heavy tails, advancing rough volatility modeling with realistic multi-scale dynamics.",
+        "topics": [
+          "Hawkes processes and rough volatility",
+          "Stochastic volatility modeling"
+        ]
+      },
+      {
+        "id": "arxiv:2605.02436",
+        "rank": 4,
+        "title": "Deepening the Secondary Market: Integrating Trade Credit into Market Clearing with the Cycles Protocol",
+        "authors": "Tomaž Fleischman",
+        "url": "https://arxiv.org/abs/2605.02436",
+        "source": "arxiv",
+        "why_trending": "Cycles Protocol integrates trade credit into post-trade settlement via distributed clearing without novation, addressing critical infrastructure gap in secondary market liquidity.",
+        "topics": [
+          "Market infrastructure and settlement",
+          "Trade credit integration"
+        ]
+      },
+      {
+        "id": "arxiv:2605.01384",
+        "rank": 5,
+        "title": "SBCA: Cross-Modal BERT-driven Actor-Critic for Multi-Asset Portfolio Optimization",
+        "authors": "Jinfeng Pan",
+        "url": "https://arxiv.org/abs/2605.01384",
+        "source": "arxiv",
+        "why_trending": "Cross-modal BERT-driven actor-critic (SBCA) fuses price time-series and financial text sentiment for portfolio optimization with practical trading constraints, advancing multi-modal DRL.",
+        "topics": [
+          "Deep reinforcement learning for portfolio allocation",
+          "Multi-modal forecasting"
+        ]
+      }
+    ],
+    "social_sciences": [
+      {
+        "id": "arxiv:2605.03699",
+        "rank": 1,
+        "title": "Doubly Robust Instrumented Difference-in-Differences",
+        "authors": "Jonas Skjold Raaschou-Pedersen",
+        "url": "https://arxiv.org/abs/2605.03699",
+        "source": "arxiv",
+        "why_trending": "Develops doubly robust estimators for local average treatment effects under staggered instrument exposure, extending causal inference tools critical for modern program evaluation.",
+        "topics": [
+          "Causal inference and instrumental variables",
+          "Program evaluation methods"
+        ]
+      },
+      {
+        "id": "arxiv:2605.03767",
+        "rank": 2,
+        "title": "Did US Worker Retraining Reduce Participant Automation Exposure?",
+        "authors": "Julian Jacobs",
+        "url": "https://arxiv.org/abs/2605.03767",
+        "source": "arxiv",
+        "why_trending": "Analyzes 23M WIOA participation records with novel Retrainability Index measuring automation exposure reduction, finding programs primarily deliver wage catch-up rather than task switching.",
+        "topics": [
+          "Labor economics and automation",
+          "Workforce retraining"
+        ]
+      },
+      {
+        "id": "arxiv:2605.03621",
+        "rank": 3,
+        "title": "Going Public: Communication in Collective Decisions",
+        "authors": "Zhicheng Du",
+        "url": "https://arxiv.org/abs/2605.03621",
+        "source": "arxiv",
+        "why_trending": "Proves public communication is weakly dominant over private messaging in principal-agent collective decision settings, with linear payoffs yielding near-deterministic implementation.",
+        "topics": [
+          "Mechanism design and communication",
+          "Information design"
+        ]
+      },
+      {
+        "id": "arxiv:2605.02598",
+        "rank": 4,
+        "title": "What Jobs Can AI Learn? Measuring Exposure by Reinforcement Learning",
+        "authors": "Philip Moreira Tomei",
+        "url": "https://arxiv.org/abs/2605.02598",
+        "source": "arxiv",
+        "why_trending": "Measures AI task-learnability via reinforcement learning post-training rather than current capability overlap, reclassifying occupational automation exposure with forward-looking lens.",
+        "topics": [
+          "AI capability assessment",
+          "Labor economics and automation"
+        ]
+      },
+      {
+        "id": "arxiv:2605.03204",
+        "rank": 5,
+        "title": "Estimating peer effects in noisy, low-rank networks via network smoothing",
+        "authors": "Alex Hayes",
+        "url": "https://arxiv.org/abs/2605.03204",
+        "source": "arxiv",
+        "why_trending": "Proposes network smoothing for peer effect estimation in noisy, low-rank networks, reducing measurement error bias critical for studying social influence and spillovers.",
+        "topics": [
+          "Peer effects and social networks",
+          "Econometric methods"
+        ]
+      }
+    ]
+  },
+  "topics": [
+    {
+      "name": "Self-supervised learning theory and representation learning",
+      "paper_ids": [
+        "arxiv:2605.03517",
+        "arxiv:2605.03520",
+        "arxiv:2605.03578",
+        "arxiv:2605.03636"
+      ],
+      "summary": "Theoretical foundations and practical advances in self-supervised learning, including latent distribution matching frameworks, convex set parametrization, and information plane analysis of learned representations."
+    },
+    {
+      "name": "Physics-informed generative models and uncertainty quantification",
+      "paper_ids": [
+        "arxiv:2605.03548",
+        "arxiv:2605.03542",
+        "arxiv:2605.03608"
+      ],
+      "summary": "Generative and flow-based models incorporating physical constraints for PDE-governed fields, with emphasis on efficient uncertainty quantification and stochastic variational methods."
+    },
+    {
+      "name": "Generative models on manifolds and geometric deep learning",
+      "paper_ids": [
+        "arxiv:2605.03573",
+        "arxiv:2605.03588",
+        "arxiv:2605.03623"
+      ],
+      "summary": "Diffusion and flow matching models on non-Euclidean geometric structures (quantum manifolds, symmetric spaces, cumulative flow maps), extending generative modeling beyond Euclidean domains."
+    },
+    {
+      "name": "LLM grounding, reasoning control, and retrieval systems",
+      "paper_ids": [
+        "arxiv:2605.03514",
+        "arxiv:2605.03534",
+        "arxiv:2605.03609",
+        "arxiv:2605.03596"
+      ],
+      "summary": "Methods for evaluating and controlling LLM reasoning over structured data (graphs, evidence, ethical frameworks) and workspace tasks, addressing reliability and interpretability in LLM applications."
+    },
+    {
+      "name": "Causal inference, econometrics, and program evaluation",
+      "paper_ids": [
+        "arxiv:2605.03699",
+        "arxiv:2605.03204",
+        "arxiv:2605.02311",
+        "arxiv:2605.02414",
+        "arxiv:2605.03997",
+        "arxiv:2605.01665",
+        "arxiv:2605.01923"
+      ],
+      "summary": "Advanced econometric methods for causal identification including doubly robust estimators, peer effects in noisy networks, measurement error handling, and uncertainty quantification in forecast comparisons."
+    },
+    {
+      "name": "Prediction markets, informed trading, and market microstructure",
+      "paper_ids": [
+        "arxiv:2605.00493",
+        "arxiv:2605.00459",
+        "arxiv:2605.02287",
+        "arxiv:2605.02286",
+        "arxiv:2605.04004",
+        "arxiv:2605.01300"
+      ],
+      "summary": "Information leakage detection frameworks for decentralized prediction markets, systematic evaluation of trading signals, and detection of insider trading via deadline-resolved and order-flow analysis."
+    },
+    {
+      "name": "Portfolio optimization and deep reinforcement learning for finance",
+      "paper_ids": [
+        "arxiv:2605.03184",
+        "arxiv:2605.01384",
+        "arxiv:2605.01176",
+        "arxiv:2605.02326",
+        "arxiv:2605.02666",
+        "arxiv:2605.02085",
+        "arxiv:2605.02436"
+      ],
+      "summary": "Modern approaches to portfolio selection using information theory, multi-modal deep RL, decision-focused learning, and risk-aware optimization under uncertainty and constraints."
+    },
+    {
+      "name": "Stochastic volatility, Hawkes processes, and rough volatility",
+      "paper_ids": [
+        "arxiv:2605.03703",
+        "arxiv:2605.03082",
+        "arxiv:2605.02040",
+        "arxiv:2605.00688"
+      ],
+      "summary": "Advanced models of asset price dynamics including nearly-unstable Hawkes processes, rough volatility, Bachelier approximations, and Volterra-based stochastic control."
+    },
+    {
+      "name": "Labor economics, automation exposure, and workforce retraining",
+      "paper_ids": [
+        "arxiv:2605.03767",
+        "arxiv:2605.02598",
+        "arxiv:2605.02680",
+        "arxiv:2605.03210"
+      ],
+      "summary": "Measurement of AI-driven automation exposure through task learnability indices, evaluation of retraining program effectiveness, and economic implications of rising negative earnings and demand-shifting investment."
+    },
+    {
+      "name": "Economic theory, mechanism design, and decision making",
+      "paper_ids": [
+        "arxiv:2605.03621",
+        "arxiv:2605.03307",
+        "arxiv:2605.02681",
+        "arxiv:2605.02756",
+        "arxiv:2605.02776",
+        "arxiv:2605.02817",
+        "arxiv:2605.02865",
+        "arxiv:2605.01715",
+        "arxiv:2605.01763",
+        "arxiv:2605.01850",
+        "arxiv:2605.02354"
+      ],
+      "summary": "Foundational advances in mechanism design (communication regimes, delegated lending), behavioral economics (conformity, complexity), and equilibrium theory with strategic interactions and information asymmetries."
+    }
+  ]
+}
