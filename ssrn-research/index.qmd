@@ -179,15 +179,19 @@ topic_papers <- topics_long |>
             n_papers_total = n(),
             .groups = "drop")
 
+# Always start with a 3-column shell so empty results keep their schema
+empty_edges <- tibble(from = character(), to = character(), weight = integer())
+
 edges <- if (nrow(topic_papers) >= 2) {
   pairs <- combn(topic_papers$name, 2, simplify = FALSE)
-  map_dfr(pairs, function(pr) {
+  result <- map_dfr(pairs, function(pr) {
     a <- topic_papers$papers[[which(topic_papers$name == pr[1])]]
     b <- topic_papers$papers[[which(topic_papers$name == pr[2])]]
     w <- length(intersect(a, b))
-    if (w >= 1) tibble(from = pr[1], to = pr[2], weight = w) else tibble()
+    if (w >= 1) tibble(from = pr[1], to = pr[2], weight = w) else NULL
   })
-} else tibble(from = character(), to = character(), weight = integer())
+  if (is.null(result) || nrow(result) == 0L) empty_edges else result
+} else empty_edges
 
 if (nrow(edges) > 0L) {
   g <- igraph::graph_from_data_frame(
