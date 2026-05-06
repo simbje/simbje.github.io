@@ -3,11 +3,15 @@
 # scan_ssrn.R
 # Bi-weekly research-trends scanner.
 #
-# Phase A (deterministic): pull last 14 days of papers from arXiv (q-fin.*,
-#   stat.ML, cs.LG) and best-effort SSRN. Produces a candidate-paper list.
+# Phase A (deterministic): pull last 14 days of papers from arXiv across three
+#   buckets:
+#     - data_science    (stat.ML, cs.LG, stat.ME, stat.AP)
+#     - finance         (q-fin.*)
+#     - social_sciences (econ.*)
 # Phase B (Claude Haiku tool-use): cluster candidates into ~5-10 named topics
-#   and pick the top-3 most-trending papers. Edges are derived deterministically
-#   in the Quarto page from paper-id intersections — agent does NOT emit edges.
+#   and pick the TOP 5 most-trending papers per bucket.
+#   Edges are derived deterministically in the Quarto page from paper-id
+#   intersections — agent does NOT emit edges.
 #
 # Outputs ssrn-research/snapshots/YYYY-MM-DD.json
 #
@@ -19,12 +23,12 @@
 suppressPackageStartupMessages({
   library(httr2)
   library(xml2)
-  library(rvest)
   library(jsonlite)
   library(lubridate)
   library(dplyr)
   library(stringr)
   library(purrr)
+  library(tidyr)
 })
 
 # ── Args ─────────────────────────────────────────────────────────────────────
@@ -85,30 +89,37 @@ UA <- paste0(
 `%||%` <- function(a, b) if (is.null(a)) b else a
 
 # =============================================================================
-# Phase A — deterministic fetch
+# Phase A — deterministic fetch (arXiv only, three buckets)
 # =============================================================================
 
-# arXiv categories of interest. q-fin.* covers all quantitative finance;
-# stat.ML and cs.LG capture data-science / ML papers that are often
-# applied to finance.
-ARXIV_CATEGORIES <- c(
-  "q-fin.PM", "q-fin.ST", "q-fin.RM", "q-fin.MF",
-  "q-fin.CP", "q-fin.TR", "q-fin.GN", "q-fin.EC",
-  "stat.ML", "cs.LG"
+ARXIV_BUCKETS <- list(
+  data_science    = c("stat.ML", "cs.LG", "stat.ME", "stat.AP"),
+  finance         = c("q-fin.PM", "q-fin.ST", "q-fin.RM", "q-fin.MF",
+                      "q-fin.CP", "q-fin.TR", "q-fin.GN", "q-fin.EC"),
+  social_sciences = c("econ.EM", "econ.GN", "econ.TH")
 )
 
-LOOKBACK_DAYS <- 14L
+# Pretty labels for display
+BUCKET_LABELS <- c(
+  data_science    = "Data Science",
+  finance         = "Finance",
+  social_sciences = "Social Sciences"
+)
 
-fetch_arxiv <- function() {
-  query <- paste0("cat:", ARXIV_CATEGORIES, collapse = "+OR+")
+LOOKBACK_DAYS  <- 14L
+PER_BUCKET_MAX <- 80L  # arXiv max_results per bucket query
+
+fetch_arxiv_bucket <- function(bucket_name, cats) {
+  query <- paste0("cat:", cats, collapse = "+OR+")
   url   <- paste0(
     "http://export.arxiv.org/api/query",
     "?search_query=", query,
     "&sortBy=submittedDate&sortOrder=descending",
-    "&max_results=200"
+    "&max_results=", PER_BUCKET_MAX
   )
 
-  message("Fetching arXiv: ", length(ARXIV_CATEGORIES), " categories, max 200 results...")
+  message("Fetching arXiv [", bucket_name, "]: ", length(cats),
+          " categories, max ", PER_BUCKET_MAX, " results...")
 
   xml <- tryCatch(
     with_retry(function() {
@@ -119,7 +130,7 @@ fetch_arxiv <- function() {
       read_xml(resp_body_string(resp))
     }, max_attempts = 3L, base_wait = 3),
     error = function(e) {
-      message("  arXiv fetch failed: ", e$message)
+      message("  arXiv [", bucket_name, "] fetch failed: ", e$message)
       NULL
     }
   )
@@ -130,16 +141,17 @@ fetch_arxiv <- function() {
   entries <- xml_find_all(xml, ".//a:entry", ns)
   if (length(entries) == 0L) return(tibble())
 
-  cutoff <- TODAY - LOOKBACK_DAYS
+  cutoff   <- TODAY - LOOKBACK_DAYS
+  all_cats <- unlist(ARXIV_BUCKETS)
 
   rows <- map(entries, function(e) {
     id_full   <- xml_text(xml_find_first(e, "a:id", ns))
-    bare_id   <- str_extract(id_full, "(?<=abs/)[^v]+")  # e.g., "2401.12345"
+    bare_id   <- str_extract(id_full, "(?<=abs/)[^v]+")
     title     <- xml_text(xml_find_first(e, "a:title", ns)) |> str_squish()
     summary   <- xml_text(xml_find_first(e, "a:summary", ns)) |> str_squish()
     published <- xml_text(xml_find_first(e, "a:published", ns))
     authors   <- xml_text(xml_find_all(e, "a:author/a:name", ns))
-    cats      <- xml_attr(xml_find_all(e, "a:category", ns), "term")
+    cats_raw  <- xml_attr(xml_find_all(e, "a:category", ns), "term")
     tibble(
       id        = paste0("arxiv:", bare_id),
       title     = title,
@@ -147,61 +159,15 @@ fetch_arxiv <- function() {
       authors   = list(authors),
       date      = as.Date(published),
       source    = "arxiv",
-      category  = paste(intersect(cats, ARXIV_CATEGORIES), collapse = "; "),
-      url       = paste0("https://arxiv.org/abs/", bare_id)
+      category  = paste(intersect(cats_raw, all_cats), collapse = "; "),
+      url       = paste0("https://arxiv.org/abs/", bare_id),
+      bucket    = bucket_name
     )
   }) |> bind_rows()
 
   rows <- rows |> filter(!is.na(date), date >= cutoff)
-  message("  arXiv: ", nrow(rows), " papers in last ", LOOKBACK_DAYS, " days")
-  rows
-}
-
-# Best-effort SSRN fetch. SSRN's Cloudflare is aggressive — one shot, no retries.
-fetch_ssrn <- function() {
-  url <- "https://www.ssrn.com/index.cfm/en/janda/?networkID=203"
-  message("Trying SSRN (best-effort): networkID=203 (Financial Economics Network)...")
-
-  html <- tryCatch({
-    resp <- request(url) |>
-      req_headers("User-Agent" = UA, "Accept-Language" = "en-US,en;q=0.9") |>
-      req_timeout(30) |>
-      req_perform()
-    if (resp_status(resp) >= 400) return(NULL)
-    read_html(resp_body_string(resp))
-  }, error = function(e) {
-    message("  SSRN fetch failed: ", e$message)
-    NULL
-  })
-
-  if (is.null(html)) return(tibble())
-
-  links <- html_elements(html, "a[href*='papers.cfm?abstract_id=']")
-  if (length(links) == 0L) {
-    message("  SSRN: no recognisable paper links — schema likely changed")
-    return(tibble())
-  }
-
-  rows <- map(links, function(a) {
-    href  <- html_attr(a, "href")
-    title <- html_text2(a) |> str_squish()
-    abstract_id <- str_extract(href, "(?<=abstract_id=)\\d+")
-    if (is.na(abstract_id) || nchar(title) < 5) return(NULL)
-    tibble(
-      id        = paste0("ssrn:", abstract_id),
-      title     = title,
-      abstract  = NA_character_,
-      authors   = list(character(0)),
-      date      = NA_Date_,
-      source    = "ssrn",
-      category  = "ssrn:network=203",
-      url       = if (startsWith(href, "http")) href else paste0("https://papers.ssrn.com/sol3/", href)
-    )
-  }) |> compact() |> bind_rows()
-
-  rows <- rows |> distinct(id, .keep_all = TRUE) |> head(30)
-
-  message("  SSRN: ", nrow(rows), " candidate papers")
+  message("  arXiv [", bucket_name, "]: ", nrow(rows),
+          " papers in last ", LOOKBACK_DAYS, " days")
   rows
 }
 
@@ -218,13 +184,17 @@ write_snapshot <- function(payload) {
   message("Snapshot written: ", SNAPSHOT_FILE)
 }
 
+empty_top_papers <- function() {
+  list(data_science = list(), finance = list(), social_sciences = list())
+}
+
 write_stub_snapshot <- function(candidates_count, sources_used, reason) {
   write_snapshot(list(
     run_date         = format(TODAY, "%Y-%m-%d"),
     candidates_count = candidates_count,
     sources_used     = sources_used,
     note             = reason,
-    top_papers       = list(),
+    top_papers       = empty_top_papers(),
     topics           = list()
   ))
 }
@@ -233,35 +203,68 @@ write_stub_snapshot <- function(candidates_count, sources_used, reason) {
 # Phase A driver
 # =============================================================================
 
-arxiv_df <- fetch_arxiv()
-Sys.sleep(3)  # arXiv politeness: 1 req per 3s
-ssrn_df  <- fetch_ssrn()
-
-candidates <- bind_rows(arxiv_df, ssrn_df)
-
-# Cap candidates fed to the LLM. Prioritise q-fin (the user's primary domain),
-# then most-recent. ~80 papers ≈ 25–30k tokens of input — comfortable for Haiku.
-MAX_CANDIDATES <- 80L
-if (nrow(candidates) > MAX_CANDIDATES) {
-  candidates <- candidates |>
-    mutate(qfin_priority = if_else(str_detect(category, "q-fin\\."), 0L, 1L)) |>
-    arrange(qfin_priority, desc(date)) |>
-    select(-qfin_priority) |>
-    head(MAX_CANDIDATES)
-  message("Capped candidates to top ", MAX_CANDIDATES, " (q-fin first, then most-recent).")
+bucket_names <- names(ARXIV_BUCKETS)
+bucket_dfs   <- list()
+for (i in seq_along(bucket_names)) {
+  bn <- bucket_names[[i]]
+  bucket_dfs[[bn]] <- fetch_arxiv_bucket(bn, ARXIV_BUCKETS[[bn]])
+  if (i < length(bucket_names)) Sys.sleep(3)  # arXiv politeness: 1 req per 3s
 }
 
-sources_used <- c(
-  if (nrow(arxiv_df) > 0) paste0("arxiv:", unique(unlist(strsplit(arxiv_df$category, "; ")))) else character(),
-  if (nrow(ssrn_df)  > 0) "ssrn:network=203" else character()
-) |> unique()
+arxiv_df <- bind_rows(bucket_dfs)
 
-message("Total candidates: ", nrow(candidates))
+# A paper can match multiple buckets — collect the union of buckets per id
+candidates <- if (nrow(arxiv_df) == 0L) {
+  tibble()
+} else {
+  arxiv_df |>
+    group_by(id) |>
+    summarise(
+      title    = first(title),
+      abstract = first(abstract),
+      authors  = list(first(authors)[[1]]),
+      date     = first(date),
+      source   = first(source),
+      category = first(category),
+      url      = first(url),
+      buckets  = list(unique(bucket)),
+      .groups  = "drop"
+    ) |>
+    arrange(desc(date))
+}
+
+# Cap candidates fed to the LLM. Since data_science floods the result,
+# stratify the cap to keep finance + social_sciences well represented.
+PER_BUCKET_CAP <- 25L
+if (nrow(candidates) > 0L) {
+  capped <- map_dfr(bucket_names, function(bn) {
+    candidates |>
+      filter(map_lgl(buckets, ~ bn %in% .x)) |>
+      arrange(desc(date)) |>
+      head(PER_BUCKET_CAP)
+  }) |> distinct(id, .keep_all = TRUE)
+  candidates <- capped
+}
+
+# Per-bucket category list for sources_used
+sources_used <- candidates |>
+  mutate(cats_split = strsplit(category, "; ")) |>
+  pull(cats_split) |>
+  unlist() |>
+  unique() |>
+  (\(x) if (length(x) > 0L) paste0("arxiv:", x) else character())()
+
+message("Total deduped candidates: ", nrow(candidates))
 
 if (nrow(candidates) == 0L) {
-  write_stub_snapshot(0L, sources_used, "Both arXiv and SSRN returned no papers")
+  write_stub_snapshot(0L, sources_used, "arXiv returned no papers in any bucket")
   quit(save = "no", status = 0)
 }
+
+bucket_counts <- map_int(bucket_names, ~ sum(map_lgl(candidates$buckets, function(b) .x %in% b)))
+names(bucket_counts) <- bucket_names
+message("Per-bucket counts: ",
+        paste(names(bucket_counts), bucket_counts, sep = "=", collapse = ", "))
 
 if (DRY_RUN) {
   message("DRY-RUN — skipping Phase B agent. Writing Phase-A-only snapshot.")
@@ -270,13 +273,15 @@ if (DRY_RUN) {
     candidates_count = nrow(candidates),
     sources_used     = sources_used,
     note             = "Dry run: Phase A only, no LLM clustering.",
-    top_papers       = list(),
+    top_papers       = empty_top_papers(),
     topics           = list(),
+    bucket_counts    = as.list(bucket_counts),
     candidates_preview = head(
       candidates |>
-        mutate(authors = map_chr(authors, ~ paste(head(.x, 3), collapse = ", "))) |>
-        select(id, title, source, date, url),
-      20
+        mutate(authors_str = map_chr(authors, ~ paste(head(.x, 3), collapse = ", ")),
+               buckets_str = map_chr(buckets, ~ paste(.x, collapse = ", "))) |>
+        select(id, title, source, date, buckets_str, url),
+      30
     )
   ))
   quit(save = "no", status = 0)
@@ -293,24 +298,39 @@ if (nchar(ANTHROPIC_API_KEY) == 0L) {
 # Phase B — Claude Haiku tool-use clustering
 # =============================================================================
 
-# Build the candidate list as a compact text block for the agent
+# Build the candidate list as a compact text block for the agent. Include
+# bucket assignment so the agent knows which top-5 list each paper qualifies for.
 candidate_block <- candidates |>
   mutate(
     authors_str = map_chr(authors, ~ paste(head(.x, 4), collapse = ", ")),
+    buckets_str = map_chr(buckets, ~ paste(.x, collapse = ", ")),
     abs_short   = ifelse(is.na(abstract) | nchar(abstract) == 0,
                          "(abstract not available)",
                          substr(abstract, 1, 600))
   ) |>
   mutate(
     block = sprintf(
-      "[%s] %s\n  Source: %s | Category: %s | Date: %s\n  Authors: %s\n  Abstract: %s\n  URL: %s",
-      id, title, source, category,
+      "[%s] %s\n  Buckets: %s | Category: %s | Date: %s\n  Authors: %s\n  Abstract: %s\n  URL: %s",
+      id, title, buckets_str, category,
       ifelse(is.na(date), "?", as.character(date)),
       authors_str, abs_short, url
     )
   ) |>
   pull(block) |>
   paste(collapse = "\n\n")
+
+paper_item_schema <- list(
+  type = "object",
+  properties = list(
+    id           = list(type = "string"),
+    rank         = list(type = "integer", description = "1 to 5 within the bucket"),
+    why_trending = list(type = "string",
+                        description = "1-2 sentences on why this is notable right now."),
+    topics       = list(type = "array", items = list(type = "string"),
+                        description = "Names of the topic clusters this paper belongs to.")
+  ),
+  required = list("id", "rank", "why_trending", "topics")
+)
 
 AGENT_TOOLS <- list(
   list(
@@ -329,32 +349,31 @@ AGENT_TOOLS <- list(
   list(
     name = "finalize_research_summary",
     description = paste(
-      "Submit the final clustered summary. Provide top_papers (3 most-trending),",
-      "and topics (5-10 named clusters). DO NOT include edges — those are derived",
-      "deterministically from topic paper_ids."
+      "Submit the final clustered summary. Provide top_papers as three lists",
+      "(data_science, finance, social_sciences) with up to 5 papers each, plus",
+      "topics (5-10 named clusters spanning ALL candidates).",
+      "Each top-5 paper MUST have the corresponding bucket in its 'Buckets:' field.",
+      "DO NOT include edges — those are derived deterministically from paper_ids."
     ),
     input_schema = list(
       type = "object",
       properties = list(
         top_papers = list(
-          type = "array",
-          description = "Top 3 most-trending papers with rank, why_trending, and the topic names they belong to.",
-          items = list(
-            type = "object",
-            properties = list(
-              id            = list(type = "string"),
-              rank          = list(type = "integer", description = "1, 2, or 3"),
-              why_trending = list(type = "string",
-                                   description = "1-2 sentences on why this is notable right now."),
-              topics        = list(type = "array", items = list(type = "string"),
-                                   description = "Names of the topic clusters this paper belongs to.")
-            ),
-            required = list("id", "rank", "why_trending", "topics")
-          )
+          type = "object",
+          description = "Three top-5 lists keyed by bucket.",
+          properties = list(
+            data_science    = list(type = "array", items = paper_item_schema,
+                                   description = "Top 5 papers in data science (stat.ML, cs.LG, stat.ME, stat.AP)."),
+            finance         = list(type = "array", items = paper_item_schema,
+                                   description = "Top 5 papers in finance (q-fin.*)."),
+            social_sciences = list(type = "array", items = paper_item_schema,
+                                   description = "Top 5 papers in social sciences (econ.*).")
+          ),
+          required = list("data_science", "finance", "social_sciences")
         ),
         topics = list(
           type  = "array",
-          description = "5-10 named topic clusters covering the candidates.",
+          description = "5-10 named topic clusters spanning ALL candidates (not per-bucket).",
           items = list(
             type = "object",
             properties = list(
@@ -404,21 +423,27 @@ dispatch_tool <- function(tool_name, input) {
 MAX_AGENT_TURNS <- 8L
 
 system_prompt <- paste(
-  "You are a quantitative-research analyst surfacing the most interesting recent",
-  "papers in {data analytics, data science, finance, quantitative finance}.",
+  "You are a research analyst surfacing the most interesting recent papers across",
+  "three buckets:",
+  "  - data_science    (stat.ML, cs.LG, stat.ME, stat.AP)",
+  "  - finance         (q-fin.*)",
+  "  - social_sciences (econ.*)",
   "",
-  "You'll be given a list of candidate papers from arXiv and (optionally) SSRN",
-  "from the last two weeks. Your job:",
-  "  1. Pick the TOP 3 most notable / trending papers.",
-  "  2. Cluster the candidates into 5-10 named topic groups. Use human-readable",
-  "     topic names (e.g. 'transformer-based volatility forecasting',",
-  "     'reinforcement learning for portfolio allocation').",
+  "You'll be given candidate papers from arXiv (last two weeks). Each paper lists",
+  "the bucket(s) it belongs to. Your job:",
+  "  1. Pick the TOP 5 most notable / trending papers PER BUCKET — three lists.",
+  "     A paper can appear in multiple lists if its 'Buckets:' field includes",
+  "     multiple buckets. Each list is ranked 1-5 (1 = most notable).",
+  "     If a bucket has fewer than 5 candidates, return as many as exist.",
+  "  2. Cluster ALL candidates into 5-10 named topic groups (cross-bucket).",
+  "     Use human-readable topic names (e.g. 'transformer-based volatility",
+  "     forecasting', 'reinforcement learning for portfolio allocation').",
   "  3. Each candidate paper should appear in at least one topic. Papers can",
-  "     belong to multiple topics if they span clusters — this is what creates",
-  "     the mind-graph edges (computed deterministically downstream).",
+  "     belong to multiple topics if they span clusters — this drives the",
+  "     mind-graph edges (computed deterministically downstream).",
   "",
-  "When you're ready, call finalize_research_summary with the result. Do NOT",
-  "emit edges — they're derived from paper_ids intersections in post-processing.",
+  "When ready, call finalize_research_summary. Do NOT emit edges — they're",
+  "derived from paper_ids intersections in post-processing.",
   "",
   "Be efficient. Use fetch_paper_abstract sparingly — only if a candidate's",
   "abstract is truly insufficient for classification. Aim to finalize in 1-3",
@@ -430,10 +455,11 @@ user_prompt <- paste0(
   "Run date: ", format(TODAY, "%A, %d %B %Y"), "\n",
   "Lookback: ", LOOKBACK_DAYS, " days\n",
   "Candidate count: ", nrow(candidates), "\n",
-  "Sources: ", paste(sources_used, collapse = ", "), "\n\n",
+  "Per-bucket counts: ",
+  paste(names(bucket_counts), bucket_counts, sep = "=", collapse = ", "), "\n\n",
   "## Candidates\n\n",
   candidate_block, "\n\n",
-  "Now cluster these into 5-10 topics, pick the top 3, and call finalize_research_summary."
+  "Now pick top-5 per bucket, cluster all candidates into 5-10 topics, and call finalize_research_summary."
 )
 
 run_agent <- function() {
@@ -528,7 +554,7 @@ valid_ids <- candidates$id
 enrich_top <- function(tp) {
   pid <- as.character(tp$id)
   row <- candidates |> filter(id == pid)
-  if (nrow(row) == 0L) return(NULL)
+  if (nrow(row) == 0L) return(NULL)  # agent hallucinated id — drop it
   list(
     id            = pid,
     rank          = as.integer(tp$rank),
@@ -552,8 +578,24 @@ clean_topic <- function(t) {
   )
 }
 
-top_papers_clean <- map(agent_result$top_papers, enrich_top) |> compact()
-topics_clean     <- map(agent_result$topics, clean_topic) |> compact()
+clean_bucket_list <- function(lst) {
+  if (is.null(lst)) return(list())
+  out <- map(lst, enrich_top) |> compact()
+  # Re-rank 1..N in case the agent skipped a number or ranked beyond available
+  if (length(out) > 0L) {
+    out <- out[order(map_int(out, ~ as.integer(.x$rank)))]
+    for (i in seq_along(out)) out[[i]]$rank <- i
+  }
+  out
+}
+
+top_papers_clean <- list(
+  data_science    = clean_bucket_list(agent_result$top_papers$data_science),
+  finance         = clean_bucket_list(agent_result$top_papers$finance),
+  social_sciences = clean_bucket_list(agent_result$top_papers$social_sciences)
+)
+
+topics_clean <- map(agent_result$topics, clean_topic) |> compact()
 
 if (length(topics_clean) == 0L) {
   message("Agent returned no usable topics — writing stub snapshot.")
@@ -566,11 +608,14 @@ snapshot <- list(
   run_date         = format(TODAY, "%Y-%m-%d"),
   candidates_count = nrow(candidates),
   sources_used     = sources_used,
+  bucket_counts    = as.list(bucket_counts),
   top_papers       = top_papers_clean,
   topics           = topics_clean
 )
 
 write_snapshot(snapshot)
 message("Done. Topics: ", length(topics_clean),
-        " | Top papers: ", length(top_papers_clean),
+        " | Top papers: ds=", length(top_papers_clean$data_science),
+        ", fin=", length(top_papers_clean$finance),
+        ", soc=", length(top_papers_clean$social_sciences),
         " | Candidates: ", nrow(candidates))

@@ -1,6 +1,6 @@
 ---
 title: "Research Trends Radar"
-description: "Bi-weekly scan of recent research in data analytics, data science, finance, and quantitative finance — top papers, topic timeline, and an interactive mind graph."
+description: "Bi-weekly arXiv scan across data science, finance, and social sciences — top-5 papers per area, topic timeline, and an interactive mind graph."
 date: today
 date-format: long
 categories: [research, ai-agent, finance]
@@ -48,12 +48,22 @@ has_data <- length(snapshots) > 0L &&
 PAL_PRIMARY   <- "#1a1a2e"
 PAL_HIGHLIGHT <- "#e94560"
 PAL_ACCENT    <- "#0f3460"
+
+BUCKETS <- list(
+  data_science    = "Data Science",
+  finance         = "Finance",
+  social_sciences = "Social Sciences"
+)
 ```
 
 ::: {.hero-section}
 ## What is this?
 
-Every two weeks, a Claude AI agent scans recent papers from **arXiv** (`q-fin.*`, `stat.ML`, `cs.LG`) and **SSRN** (best-effort), clusters them into named topics, and surfaces the three most-trending pieces of work.
+Every two weeks, a Claude AI agent scans the last 14 days of arXiv preprints across three areas and surfaces the **top-5 most-trending papers per area**:
+
+- **Data Science** — `stat.ML`, `cs.LG`, `stat.ME`, `stat.AP`
+- **Finance** — `q-fin.*`
+- **Social Sciences** — `econ.*`
 
 The page below reads every snapshot ever produced. The **timeline** shows how topics rise and fall over time. The **mind graph** is built from co-membership — two topics are connected when papers belong to both.
 :::
@@ -67,7 +77,7 @@ cat("```bash\nRscript ssrn-research/scan_ssrn.R --dry-run   # Phase A only\nRscr
 ```{r prep-data, eval = has_data}
 latest <- snapshots[[length(snapshots)]]
 
-# Build a long table of (run_date, topic_name, paper_ids) across all snapshots
+# Long table of (run_date, topic_name, paper_ids) across all snapshots
 topics_long <- map_dfr(snapshots, function(s) {
   topics <- s$topics %||% list()
   if (length(topics) == 0L) return(tibble())
@@ -80,29 +90,42 @@ topics_long <- map_dfr(snapshots, function(s) {
 
 topics_long <- topics_long |>
   mutate(n_papers = lengths(paper_ids))
+
+render_top_paper <- function(p) {
+  authors_txt <- paste(unlist(p$authors %||% list()), collapse = ", ")
+  if (nchar(authors_txt) > 200) authors_txt <- paste0(substr(authors_txt, 1, 200), " ...")
+  topics_txt  <- paste(unlist(p$topics %||% list()), collapse = " · ")
+  cat(sprintf(
+    '\n::: {.project-card}\n#### #%s — [%s](%s)\n**%s**\n\n_%s_\n\n%s\n\n[arXiv](%s)\n:::\n',
+    p$rank, p$title, p$url,
+    authors_txt,
+    topics_txt,
+    p$why_trending,
+    p$url
+  ))
+}
+
+render_bucket_section <- function(bucket_key, bucket_label) {
+  papers <- latest$top_papers[[bucket_key]] %||% list()
+  cat(sprintf("\n## %s — top 5\n\n", bucket_label))
+  if (length(papers) == 0L) {
+    cat(sprintf("_No top-5 picks for %s in the latest snapshot._\n", bucket_label))
+    return(invisible())
+  }
+  for (p in papers) render_top_paper(p)
+}
 ```
 
-## This fortnight's top 3
+```{r top-data-science, eval = has_data, results = "asis"}
+render_bucket_section("data_science", BUCKETS$data_science)
+```
 
-```{r top-3, eval = has_data, results = "asis"}
-tops <- latest$top_papers %||% list()
-if (length(tops) == 0L) {
-  cat("_No top papers in the latest snapshot._\n")
-} else {
-  for (p in tops) {
-    authors_txt <- paste(unlist(p$authors %||% list()), collapse = ", ")
-    if (nchar(authors_txt) > 200) authors_txt <- paste0(substr(authors_txt, 1, 200), " ...")
-    topics_txt  <- paste(unlist(p$topics %||% list()), collapse = " · ")
-    cat(sprintf(
-      '\n::: {.project-card}\n### #%s — [%s](%s)\n**%s**\n\n_%s_\n\n%s\n\n[Source: %s](%s)\n:::\n',
-      p$rank, p$title, p$url,
-      authors_txt,
-      topics_txt,
-      p$why_trending,
-      p$source, p$url
-    ))
-  }
-}
+```{r top-finance, eval = has_data, results = "asis"}
+render_bucket_section("finance", BUCKETS$finance)
+```
+
+```{r top-social-sciences, eval = has_data, results = "asis"}
+render_bucket_section("social_sciences", BUCKETS$social_sciences)
 ```
 
 ## Topic timeline
@@ -147,7 +170,6 @@ ggplot(plot_df, aes(x = run_date, y = name, size = n_papers, color = name)) +
 An interactive force-directed view of the topic landscape. Drag nodes, zoom, hover for details. Colors come from a Louvain community-detection pass on the co-occurrence graph.
 
 ```{r mindgraph, eval = has_data}
-# Build per-topic aggregated paper sets across all snapshots
 topic_papers <- topics_long |>
   unnest(paper_ids) |>
   rename(paper_id = paper_ids) |>
@@ -157,7 +179,6 @@ topic_papers <- topics_long |>
             n_papers_total = n(),
             .groups = "drop")
 
-# Compute edges = paper_id intersection across topic pairs
 edges <- if (nrow(topic_papers) >= 2) {
   pairs <- combn(topic_papers$name, 2, simplify = FALSE)
   map_dfr(pairs, function(pr) {
@@ -168,7 +189,6 @@ edges <- if (nrow(topic_papers) >= 2) {
   })
 } else tibble(from = character(), to = character(), weight = integer())
 
-# Communities (Louvain) — only meaningful if we have edges
 if (nrow(edges) > 0L) {
   g <- igraph::graph_from_data_frame(
     edges, directed = FALSE,
@@ -228,50 +248,26 @@ if (nrow(nodes) == 0L) {
 }
 ```
 
-## Latest run — all top papers
-
-```{r table, eval = has_data}
-papers_df <- map_dfr(latest$top_papers %||% list(), function(p) {
-  tibble(
-    Rank    = p$rank,
-    Title   = sprintf('<a href="%s" target="_blank">%s</a>', p$url, p$title),
-    Authors = paste(unlist(p$authors %||% list()), collapse = ", "),
-    Source  = p$source,
-    Topics  = paste(unlist(p$topics %||% list()), collapse = ", "),
-    Why     = p$why_trending
-  )
-})
-
-if (nrow(papers_df) == 0L) {
-  htmltools::tags$div(class = "alert alert-secondary",
-                      "Latest snapshot has no top-paper picks.")
-} else {
-  DT::datatable(
-    papers_df,
-    escape   = FALSE,
-    rownames = FALSE,
-    options  = list(pageLength = 10, dom = "tip", autoWidth = TRUE),
-    class    = "stripe hover compact"
-  )
-}
-```
-
 ## Methodology & cadence
 
 - **Cadence** — runs on the 1st and 15th of each month at 08:00 UTC via GitHub Actions (`.github/workflows/ssrn-research.yml`). Manual triggers via `workflow_dispatch`.
-- **Phase A (deterministic)** — pulls last 14 days from arXiv (`q-fin.*`, `stat.ML`, `cs.LG`); attempts SSRN (Cloudflare-protected, best-effort).
-- **Phase B (Claude Haiku tool-use)** — clusters candidates into 5–10 named topics and picks the top 3 most-trending. Edges are *not* emitted by the model — they're computed from `paper_ids` intersections to guarantee consistency.
+- **Phase A (deterministic)** — three arXiv queries, one per bucket, each returning the most-recent 80 candidates filtered to the last 14 days.
+- **Phase B (Claude Haiku tool-use)** — picks the top-5 per bucket and clusters all candidates into 5–10 named topics. Edges are *not* emitted by the model — they're computed from `paper_ids` intersections to guarantee consistency.
 - **Snapshots** — one JSON per run in `ssrn-research/snapshots/`. Page reads them all on every render.
 
 ```{r run-summary, eval = has_data, results = "asis"}
 last_n <- min(8, length(snapshots))
 recent <- tail(snapshots, last_n)
 rows <- map_chr(recent, function(s) {
-  sprintf("- **%s** — %d candidates, %d topics, sources: %s",
+  bc <- s$bucket_counts %||% list()
+  bc_str <- if (length(bc) > 0L)
+    paste(names(bc), unlist(bc), sep = "=", collapse = ", ")
+  else "n/a"
+  sprintf("- **%s** — %d candidates (%s), %d topics",
           s$run_date,
           s$candidates_count %||% 0L,
-          length(s$topics %||% list()),
-          paste(unlist(s$sources_used %||% list()), collapse = ", "))
+          bc_str,
+          length(s$topics %||% list()))
 })
 cat("**Last ", last_n, " runs:**\n\n", paste(rows, collapse = "\n"), sep = "")
 ```
