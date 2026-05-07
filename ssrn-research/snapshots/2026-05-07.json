@@ -1,0 +1,315 @@
+{
+  "run_date": "2026-05-07",
+  "candidates_count": 73,
+  "sources_used": ["arxiv:cs.LG", "arxiv:stat.ML", "arxiv:stat.ME", "arxiv:stat.AP", "arxiv:econ.EM", "arxiv:q-fin.MF", "arxiv:econ.GN", "arxiv:q-fin.TR", "arxiv:q-fin.CP", "arxiv:q-fin.ST", "arxiv:q-fin.GN", "arxiv:q-fin.PM", "arxiv:q-fin.RM", "arxiv:econ.TH"],
+  "bucket_counts": {
+    "data_science": 25,
+    "finance": 25,
+    "social_sciences": 27
+  },
+  "top_papers": {
+    "data_science": [
+      {
+        "id": "arxiv:2605.04895",
+        "rank": 1,
+        "title": "Regime-Conditioned Evaluation in Multi-Context Bayesian Optimization",
+        "authors": "Noel Thomas",
+        "url": "https://arxiv.org/abs/2605.04895",
+        "source": "arxiv",
+        "why_trending": "Addresses critical methodological gap in transfer Bayesian optimization by showing that regime-conditioned evaluation reverses algorithm rankings based on budget, directly challenging standard transfer-BO benchmarking practices.",
+        "topics": [
+          "Bayesian Optimization & Algorithm Selection",
+          "Transfer Learning & Domain Adaptation"
+        ]
+      },
+      {
+        "id": "arxiv:2605.04913",
+        "rank": 2,
+        "title": "Rethinking Local Learning: A Cheaper and Faster Recipe for LLM Post-Training",
+        "authors": "Hengyu Shi",
+        "url": "https://arxiv.org/abs/2605.04913",
+        "source": "arxiv",
+        "why_trending": "Proposes LoPT for efficient LLM post-training by decoupling task adaptation from full-depth activation storage, offering substantial computational savings over standard end-to-end approaches.",
+        "topics": [
+          "Large Language Models & Efficient Training",
+          "Neural Network Optimization"
+        ]
+      },
+      {
+        "id": "arxiv:2605.04930",
+        "rank": 3,
+        "title": "When Does Gene Regulatory Network Inference Break? A Controlled Diagnostic Study of Causal and Correlational Methods on Single-Cell Data",
+        "authors": "Miguel Fernandez-de-Retana",
+        "url": "https://arxiv.org/abs/2605.04930",
+        "source": "arxiv",
+        "why_trending": "Provides controlled diagnostic methodology for GRN inference, systematically uncovering why causal methods fail relative to correlation baselines on single-cell data through controlled pathology studies.",
+        "topics": [
+          "Causal Inference & GRN Methods",
+          "High-Dimensional Genomics"
+        ]
+      },
+      {
+        "id": "arxiv:2605.04911",
+        "rank": 4,
+        "title": "Breaking the Quality-Privacy Tradeoff in Tabular Data Generation via In-Context Learning",
+        "authors": "Xinyan Han",
+        "url": "https://arxiv.org/abs/2605.04911",
+        "source": "arxiv",
+        "why_trending": "Breaks quality-privacy tradeoff in tabular data synthesis through in-context learning, addressing the memorization problem that limits small-sample generative modeling.",
+        "topics": [
+          "Generative Models & Privacy",
+          "Tabular Data Synthesis"
+        ]
+      },
+      {
+        "id": "arxiv:2605.04946",
+        "rank": 5,
+        "title": "Training-Time Batch Normalization Reshapes Local Partition Geometry in Piecewise-Affine Networks",
+        "authors": "Xuan Qi",
+        "url": "https://arxiv.org/abs/2605.04946",
+        "source": "arxiv",
+        "why_trending": "Reveals how batch normalization reshapes local partition geometry in piecewise-affine networks, providing theoretical insights into training-time BN effects beyond optimization.",
+        "topics": [
+          "Neural Network Theory & Training",
+          "Deep Learning Architecture"
+        ]
+      }
+    ],
+    "finance": [
+      {
+        "id": "arxiv:2605.04479",
+        "rank": 1,
+        "title": "ESG as Priced Crash Insurance: State-Dependent Tail Risk and Deconfounding Evidence",
+        "authors": "Jiayu Yi",
+        "url": "https://arxiv.org/abs/2605.04479",
+        "source": "arxiv",
+        "why_trending": "Establishes ESG as state-dependent crash insurance using double machine learning for deconfounding, reconciling the ESG alpha puzzle with tail-risk resilience during systemic drawdowns.",
+        "topics": [
+          "ESG & Risk Management",
+          "Machine Learning for Finance"
+        ]
+      },
+      {
+        "id": "arxiv:2605.04004",
+        "rank": 2,
+        "title": "Structural Limits of OHLCV-Based Intraday Signals in MNQ Futures: A Systematic Falsification Study",
+        "authors": "Mathias Mesfin",
+        "url": "https://arxiv.org/abs/2605.04004",
+        "source": "arxiv",
+        "why_trending": "Comprehensive falsification study of OHLCV-based intraday signals across 15 strategy families on MNQ futures, systematically demonstrating the absence of exploitable trading edges under realistic constraints.",
+        "topics": [
+          "High-Frequency Trading & Signal Testing",
+          "Empirical Market Microstructure"
+        ]
+      },
+      {
+        "id": "arxiv:2605.03703",
+        "rank": 3,
+        "title": "Scaling Limits of Bivariate Nearly-Unstable Hawkes Processes and Applications to Rough Volatility",
+        "authors": "Sohaib El Karmi",
+        "url": "https://arxiv.org/abs/2605.03703",
+        "source": "arxiv",
+        "why_trending": "Extends multivariate nearly-unstable Hawkes processes with heterogeneous rough exponents, providing functional limit theorems for coupled stochastic systems relevant to rough volatility modeling.",
+        "topics": [
+          "Stochastic Volatility & Jump Processes",
+          "Mathematical Finance"
+        ]
+      },
+      {
+        "id": "arxiv:2605.02326",
+        "rank": 4,
+        "title": "Large-Scale Asset Selection via Metric Dependence with Enriched High Frequency Information",
+        "authors": "Yangzhou Chen",
+        "url": "https://arxiv.org/abs/2605.02326",
+        "source": "arxiv",
+        "why_trending": "Proposes Metric Dependence Screening for large-scale asset selection using high-frequency object-valued data, incorporating intraday risk dynamics beyond traditional low-dimensional summaries.",
+        "topics": [
+          "Portfolio Construction & Asset Selection",
+          "High-Frequency Data Methods"
+        ]
+      },
+      {
+        "id": "arxiv:2605.03184",
+        "rank": 5,
+        "title": "Single-Period Portfolio Selection via Information Projection",
+        "authors": "Bo-Yu Yang",
+        "url": "https://arxiv.org/abs/2605.03184",
+        "source": "arxiv",
+        "why_trending": "Decomposes portfolio selection under CRRA utility into interpretable information-theoretic components (Rényi divergence and entropy), providing new theoretical lens on risk-aversion coefficients.",
+        "topics": [
+          "Portfolio Optimization & Utility Theory",
+          "Information-Theoretic Finance"
+        ]
+      }
+    ],
+    "social_sciences": [
+      {
+        "id": "arxiv:2605.05127",
+        "rank": 1,
+        "title": "The Demand Externality of Automation",
+        "authors": "Erhan Bayraktar",
+        "url": "https://arxiv.org/abs/2605.05127",
+        "source": "arxiv",
+        "why_trending": "Models automation's demand externality through heterogeneous-agent general equilibrium, reconciling productivity gains with income reallocation in closed-form using HJB-KFE framework.",
+        "topics": [
+          "Automation & Labor Markets",
+          "General Equilibrium & Heterogeneous Agents"
+        ]
+      },
+      {
+        "id": "arxiv:2605.04592",
+        "rank": 2,
+        "title": "Scalable Structural Estimation of Networked Infrastructure: Exact Decomposition for Localized Coordination",
+        "authors": "L. Kaili Diamond",
+        "url": "https://arxiv.org/abs/2605.04592",
+        "source": "arxiv",
+        "why_trending": "Develops block-diagonal decomposition for structural estimation of networked infrastructure, enabling scalable estimation of high-dimensional dynamic programs through exact localized coordination.",
+        "topics": [
+          "Structural Econometrics & Networks",
+          "Computational Economics"
+        ]
+      },
+      {
+        "id": "arxiv:2605.05056",
+        "rank": 3,
+        "title": "MSE-Optimal Difference-in-Differences Estimator",
+        "authors": "Yamato Igarashi",
+        "url": "https://arxiv.org/abs/2605.05056",
+        "source": "arxiv",
+        "why_trending": "Proposes MSE-optimal pre-trend selection for difference-in-differences, addressing bias-variance tradeoff without pre-testing and improving validity under moderate sample sizes.",
+        "topics": [
+          "Causal Inference & Difference-in-Differences",
+          "Econometric Methods"
+        ]
+      },
+      {
+        "id": "arxiv:2605.03767",
+        "rank": 4,
+        "title": "Did US Worker Retraining Reduce Participant Automation Exposure?",
+        "authors": "Julian Jacobs",
+        "url": "https://arxiv.org/abs/2605.03767",
+        "source": "arxiv",
+        "why_trending": "Evaluates US WIOA retraining program across 23M participants using novel Retrainability Index, revealing limited shifts to automation-resilient work despite significant participation.",
+        "topics": [
+          "Automation & Labor Markets",
+          "Policy Evaluation & Labor Policy"
+        ]
+      },
+      {
+        "id": "arxiv:2605.04124",
+        "rank": 5,
+        "title": "Design-Based Variance Estimation for Modern Heterogeneity-Robust Difference-in-Differences Estimators",
+        "authors": "Isaac Gerber",
+        "url": "https://arxiv.org/abs/2605.04124",
+        "source": "arxiv",
+        "why_trending": "Extends modern heterogeneity-robust DiD estimators to complex survey designs, showing design-consistency under stratified-cluster sampling—critical for applied policy evaluation.",
+        "topics": [
+          "Causal Inference & Difference-in-Differences",
+          "Survey Methodology"
+        ]
+      }
+    ]
+  },
+  "topics": [
+    {
+      "name": "Large Language Models & Efficient Training",
+      "paper_ids": [
+        "arxiv:2605.04913",
+        "arxiv:2605.04903",
+        "arxiv:2605.04916",
+        "arxiv:2605.04920"
+      ],
+      "summary": "Papers addressing computational efficiency and novel training paradigms for LLMs, from local-learning post-training to neural architecture generation via code diffs and outcome-level RL for compositional generalization."
+    },
+    {
+      "name": "Causal Inference & Econometric Methods",
+      "paper_ids": [
+        "arxiv:2605.04930",
+        "arxiv:2605.05056",
+        "arxiv:2605.03699",
+        "arxiv:2605.04124",
+        "arxiv:2605.04961"
+      ],
+      "summary": "Papers developing improved causal identification strategies and econometric estimators for controlled experiments and observational data, including GRN inference diagnostics, DiD refinements, and misspecification-robust GMM."
+    },
+    {
+      "name": "Machine Learning for Finance & Portfolio Optimization",
+      "paper_ids": [
+        "arxiv:2605.04479",
+        "arxiv:2605.02326",
+        "arxiv:2605.01384",
+        "arxiv:2605.00420",
+        "arxiv:2605.03184"
+      ],
+      "summary": "Papers applying ML and information-theoretic methods to portfolio construction, asset selection, and trading, including ESG risk management, high-frequency feature engineering, and DRL-based multi-asset optimization."
+    },
+    {
+      "name": "High-Frequency Trading & Market Microstructure",
+      "paper_ids": [
+        "arxiv:2605.04004",
+        "arxiv:2605.01300",
+        "arxiv:2605.02287",
+        "arxiv:2605.05089"
+      ],
+      "summary": "Empirical and theoretical studies of intraday trading signals, informed trading detection, and decentralized finance mechanisms, revealing limits of simple technical indicators and information leakage in prediction markets."
+    },
+    {
+      "name": "Stochastic Modeling & Mathematical Finance",
+      "paper_ids": [
+        "arxiv:2605.03703",
+        "arxiv:2605.02040",
+        "arxiv:2605.00688",
+        "arxiv:2605.03082",
+        "arxiv:2605.01370"
+      ],
+      "summary": "Advances in stochastic process theory, volatility modeling, and option pricing, covering rough Hawkes processes, Volterra models with jumps, Bachelier approximations, and cohomological approaches to arbitrage."
+    },
+    {
+      "name": "Automation, Labor Markets & Economic Policy",
+      "paper_ids": [
+        "arxiv:2605.05127",
+        "arxiv:2605.03767",
+        "arxiv:2605.02598",
+        "arxiv:2605.02680"
+      ],
+      "summary": "Empirical and theoretical studies of technological displacement, worker retraining effectiveness, AI learnability by occupation, and firms' shift toward intangible investment amid automation."
+    },
+    {
+      "name": "Bayesian Optimization & Algorithm Selection",
+      "paper_ids": [
+        "arxiv:2605.04895",
+        "arxiv:2605.04954"
+      ],
+      "summary": "Papers addressing regime-conditioned evaluation and per-instance algorithm selection in black-box optimization, exposing hidden dependencies between budget ratios and algorithm performance rankings."
+    },
+    {
+      "name": "Generative Models & Privacy",
+      "paper_ids": [
+        "arxiv:2605.04911",
+        "arxiv:2605.04882"
+      ],
+      "summary": "Methods for privacy-aware data generation and debiasing in vision-language models, addressing the quality-privacy tradeoff in small-sample regimes and fairness across sensitive attributes."
+    },
+    {
+      "name": "Structural Econometrics & Networks",
+      "paper_ids": [
+        "arxiv:2605.04592",
+        "arxiv:2605.03621",
+        "arxiv:2605.03307",
+        "arxiv:2605.04771"
+      ],
+      "summary": "Papers on scalable structural estimation, networked coordination, decentralized mechanisms, and revealed preference methods for complex economic systems with interdependencies."
+    },
+    {
+      "name": "Neural Networks Theory & Geometry",
+      "paper_ids": [
+        "arxiv:2605.04893",
+        "arxiv:2605.04946",
+        "arxiv:2605.04899",
+        "arxiv:2605.04917",
+        "arxiv:2605.04952"
+      ],
+      "summary": "Theoretical work on attention mechanisms, batch normalization effects, token embedding geometry, Koopman operator liftings, and efficient expert routing in transformer architectures."
+    }
+  ]
+}
