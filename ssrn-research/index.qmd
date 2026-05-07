@@ -56,16 +56,8 @@ BUCKETS <- list(
 )
 ```
 
-::: {.hero-section}
-## What is this?
-
-Every two weeks, a Claude AI agent scans the last 14 days of arXiv preprints across three areas and surfaces the **top-5 most-trending papers per area**:
-
-- **Data Science** — `stat.ML`, `cs.LG`, `stat.ME`, `stat.AP`
-- **Finance** — `q-fin.*`
-- **Social Sciences** — `econ.*`
-
-The page below reads every snapshot ever produced. The **timeline** shows how topics rise and fall over time. The **mind graph** is built from co-membership — two topics are connected when papers belong to both.
+::: {.callout-note appearance="minimal" icon=false}
+A simple overview of trending topics in **data science**, **finance**, and **social sciences** — top-5 arXiv papers per area, refreshed every two weeks.
 :::
 
 ```{r empty-state, eval = !has_data, results = "asis"}
