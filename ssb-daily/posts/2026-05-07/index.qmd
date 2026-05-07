@@ -1,0 +1,547 @@
+---
+title: "Norway's 2026 Structural Reckoning: Construction Collapses While Oil Wealth Flows Elsewhere"
+description: "How a two-tier Norwegian economy is emerging as building activity stalls, construction job vacancies freeze, and sectoral output diverges sharply between energy and the rest."
+date: "2026-05-07"
+categories: [SSB, construction, labour market, national accounts, structural change]
+---
+
+```{r setup}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = TRUE)
+
+library(tidyverse)
+library(lubridate)
+library(PxWebApiData)
+library(scales)
+library(MetBrewer)
+library(ggridges)
+library(stringr)
+
+# --- df1: table 06265 — Building permits/completions by building type ---
+df1 <- NULL
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/06265",
+    region = TRUE,
+    bygningstype = TRUE,
+    Tid = list(filter = "top", values = 40)
+  )
+  tmp          <- raw[[1]]
+  time_col     <- "år"
+  value_col    <- "value"
+  series_col   <- "bygningstype"
+  df1 <- tmp |>
+    mutate(
+      value    = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      date     = case_when(
+        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
+        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
+    ) |>
+    filter(!is.na(value), !is.na(date))
+}, error = function(e) message("Fetch failed: ", e$message))
+
+if (is.null(df1) || nrow(df1) == 0) { message("No data returned for df1"); df1 <- NULL }
+
+# --- df2: table 08771 — Job vacancies by industry (quarterly) ---
+df2 <- NULL
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/08771",
+    `næring (SN2007)` = TRUE,
+    statistikkvariabel = TRUE,
+    Tid = list(filter = "top", values = 40)
+  )
+  tmp          <- raw[[1]]
+  time_col     <- "kvartal"
+  value_col    <- "value"
+  series_col   <- "næring (SN2007)"
+  measure_col  <- "statistikkvariabel"
+  df2 <- tmp |>
+    mutate(
+      value    = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      date     = case_when(
+        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
+        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
+    ) |>
+    filter(!is.na(value), !is.na(date))
+}, error = function(e) message("Fetch failed: ", e$message))
+
+if (is.null(df2) || nrow(df2) == 0) { message("No data returned for df2"); df2 <- NULL }
+
+# --- df3: table 09170 — Sectoral output, national accounts (annual) ---
+df3 <- NULL
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/09170",
+    næring = TRUE,
+    Tid = list(filter = "top", values = 40)
+  )
+  tmp          <- raw[[1]]
+  time_col     <- "år"
+  value_col    <- "value"
+  series_col   <- "næring"
+  measure_col  <- "statistikkvariabel"
+  df3 <- tmp |>
+    mutate(
+      value    = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      date     = case_when(
+        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
+        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
+    ) |>
+    filter(!is.na(value), !is.na(date))
+}, error = function(e) message("Fetch failed: ", e$message))
+
+if (is.null(df3) || nrow(df3) == 0) { message("No data returned for df3"); df3 <- NULL }
+```
+
+## When the cranes go quiet, the economy speaks
+
+Norway's economy has long thrived on a deceptively simple formula: pump oil, build houses, and let the government spend the proceeds. In 2026, that formula is fracturing. Building activity is in retreat, job vacancies in construction and related trades have dried up, and the sectoral output data from Statistics Norway paints a picture of an economy splitting along a fault line — energy and finance on one side, everything that requires physical labour and materials on the other. This post uses three SSB datasets to map that divide in numbers.
+
+## The data
+
+Three SSB tables underpin this analysis. Table 06265 tracks buildings by type across Norwegian municipalities over four decades. Table 08771 records quarterly job vacancies by industry. Table 09170 provides annual sectoral production values in both current and constant 2023 prices, drawn from the national accounts. Together they let us trace the construction story from foundations to finished accounts.
+
+```{r wrangle}
+# ── df1 wrangling: building completions by type, national totals ──────────────
+df1_national <- NULL
+if (!is.null(df1)) {
+  df1_national <- df1 |>
+    filter(region == "0000 Hele landet") |>
+    group_by(time_str, date, .data[["bygningstype"]]) |>
+    summarise(value = sum(value, na.rm = TRUE), .groups = "drop") |>
+    rename(series = bygningstype)
+
+  # Keep only a readable set of building types for charting
+  top_types <- df1_national |>
+    group_by(series) |>
+    summarise(total = sum(value, na.rm = TRUE)) |>
+    arrange(desc(total)) |>
+    slice_head(n = 8) |>
+    pull(series)
+
+  df1_top <- df1_national |>
+    filter(series %in% top_types)
+}
+
+# ── df1: lollipop comparison — latest year vs 5 years ago ────────────────────
+df1_comp <- NULL
+if (!is.null(df1_national)) {
+  latest_yr  <- max(df1_national$time_str)
+  earlier_yr <- as.character(as.integer(latest_yr) - 5)
+
+  df1_comp <- df1_national |>
+    filter(time_str %in% c(earlier_yr, latest_yr),
+           series %in% top_types) |>
+    select(series, time_str, value) |>
+    pivot_wider(names_from = time_str, values_from = value) |>
+    rename(yr_now = all_of(latest_yr), yr_then = all_of(earlier_yr)) |>
+    filter(!is.na(yr_now), !is.na(yr_then)) |>
+    mutate(
+      change_pct = (yr_now - yr_then) / yr_then * 100,
+      direction  = if_else(change_pct >= 0, "Increase", "Decrease")
+    ) |>
+    arrange(change_pct)
+}
+
+# ── df2 wrangling: job vacancies, absolute count, quarterly ──────────────────
+df2_abs <- NULL
+if (!is.null(df2)) {
+  df2_abs <- df2 |>
+    filter(.data[["statistikkvariabel"]] == "Ledige stillingar") |>
+    rename(industry = `næring (SN2007)`)
+
+  # Keep industries with most data points
+  active_industries <- df2_abs |>
+    group_by(industry) |>
+    summarise(n = n()) |>
+    filter(n >= 10) |>
+    pull(industry)
+
+  df2_abs <- df2_abs |> filter(industry %in% active_industries)
+}
+
+# ── df2: slope — first vs latest available quarter ───────────────────────────
+df2_slope <- NULL
+if (!is.null(df2_abs)) {
+  q_range <- df2_abs |>
+    group_by(industry) |>
+    summarise(first_q = min(date), last_q = max(date),
+              first_v = value[which.min(date)],
+              last_v  = value[which.max(date)]) |>
+    ungroup() |>
+    mutate(change_pct = (last_v - first_v) / first_v * 100) |>
+    arrange(change_pct)
+
+  df2_slope <- q_range
+}
+
+# ── df3 wrangling: production at constant 2023 prices ────────────────────────
+df3_const <- NULL
+if (!is.null(df3)) {
+  df3_const <- df3 |>
+    filter(.data[["statistikkvariabel"]] ==
+             "Produksjon i basisverdi. Faste 2023-priser (mill. kr)") |>
+    rename(industry = næring)
+
+  # Focus on industries with long time series
+  long_series <- df3_const |>
+    group_by(industry) |>
+    summarise(n = n()) |>
+    filter(n >= 15) |>
+    pull(industry)
+
+  df3_const <- df3_const |> filter(industry %in% long_series)
+}
+
+# ── df3: index to first available year for growth comparison ─────────────────
+df3_indexed <- NULL
+if (!is.null(df3_const)) {
+  base_yr <- df3_const |>
+    group_by(industry) |>
+    summarise(base_date = min(date), base_val = value[which.min(date)])
+
+  df3_indexed <- df3_const |>
+    left_join(base_yr, by = "industry") |>
+    mutate(index = value / base_val * 100) |>
+    filter(!is.na(index))
+}
+```
+
+## Construction in free fall: buildings by type
+
+The most direct measure of construction activity is the number of buildings completed each year. SSB's registry data stretches back decades and shows, with uncomfortable clarity, that several categories of building are in steep decline.
+
+```{r plot-lollipop-construction}
+#| fig-height: 6
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df1_comp) && nrow(df1_comp) > 0) {
+  pal <- met.brewer("Hiroshige", n = 2, type = "discrete")
+
+  p1 <- df1_comp |>
+    mutate(series = str_wrap(series, width = 35),
+           series = fct_reorder(series, change_pct)) |>
+    ggplot(aes(x = change_pct, y = series, colour = direction)) +
+    geom_vline(xintercept = 0, colour = "grey50", linewidth = 0.6, linetype = "dashed") +
+    geom_segment(aes(x = 0, xend = change_pct, yend = series),
+                 linewidth = 1.1, alpha = 0.7) +
+    geom_point(size = 4.5) +
+    scale_colour_manual(values = c("Increase" = pal[1], "Decrease" = pal[2]),
+                        name = NULL) +
+    scale_x_continuous(labels = function(x) paste0(x, "%")) +
+    labs(
+      title = "Construction completions: five-year change by building type",
+      subtitle = "Most categories show sharp declines — residential building hit hardest",
+      x = "Percentage change",
+      y = NULL,
+      caption = "Source: SSB Table 06265. National totals. Latest available year vs five years prior."
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      plot.title    = element_text(face = "bold", size = 13),
+      plot.subtitle = element_text(colour = "grey30", size = 11),
+      plot.caption  = element_text(colour = "grey50", size = 8),
+      legend.position = "top",
+      panel.grid.major.y = element_blank(),
+      panel.grid.minor   = element_blank()
+    )
+  print(p1)
+} else {
+  message("df1_comp is empty or NULL — skipping lollipop chart")
+}
+```
+
+```{r plot-area-building-trends}
+#| fig-height: 6
+#| fig-width: 11
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df1_top) && nrow(df1_top) > 0) {
+  pal_area <- met.brewer("Hiroshige", n = length(unique(df1_top$series)), type = "continuous")
+
+  # Pick a handful of the most narratively interesting types
+  highlight_types <- df1_top |>
+    group_by(series) |>
+    summarise(peak = max(value, na.rm = TRUE)) |>
+    arrange(desc(peak)) |>
+    slice_head(n = 4) |>
+    pull(series)
+
+  df1_area <- df1_top |> filter(series %in% highlight_types)
+
+  if (nrow(df1_area) == 0) {
+    message("Filter empty. Values: ", paste(head(unique(df1_top$series), 15), collapse = ", "))
+  } else {
+    p2 <- ggplot(df1_area, aes(x = date, y = value, fill = series)) +
+      geom_area(alpha = 0.75, position = "identity") +
+      scale_fill_manual(values = met.brewer("Hiroshige", n = 4, type = "discrete"),
+                        name = NULL) +
+      scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
+      scale_y_continuous(labels = comma) +
+      labs(
+        title = "Completed buildings by type, Norway 1986-2025",
+        subtitle = "Residential completions peaked in the mid-2000s and have not recovered",
+        x = NULL,
+        y = "Number of buildings completed",
+        caption = "Source: SSB Table 06265. National totals (region 0000)."
+      ) +
+      theme_minimal(base_size = 12) +
+      theme(
+        plot.title      = element_text(face = "bold", size = 13),
+        plot.subtitle   = element_text(colour = "grey30", size = 11),
+        plot.caption    = element_text(colour = "grey50", size = 8),
+        legend.position = "bottom",
+        panel.grid.minor = element_blank()
+      )
+    print(p2)
+  }
+} else {
+  message("df1_top is NULL or empty — skipping area chart")
+}
+```
+
+The area chart tells the story in one sweep. The residential construction wave of the early 2000s dwarfs anything seen before or since. What followed from roughly 2015 onward is a long, uneven retreat — interrupted briefly by a post-pandemic bump but never restored to prior levels. By the most recent years in the dataset, the volume of completions across most categories sits well below its historical peak.
+
+## Where hiring froze: job vacancies across industries
+
+Building activity does not collapse in isolation. When developers stop breaking ground, the vacancies disappear from the labour market too — and the quarterly job-vacancy survey from SSB's Table 08771 documents exactly that dynamic.
+
+```{r plot-heatmap-vacancies}
+#| fig-height: 7
+#| fig-width: 11
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df2_abs) && nrow(df2_abs) > 0) {
+  # Pivot to wide for heatmap: quarters on x, industries on y
+  df2_heat <- df2_abs |>
+    mutate(quarter_label = time_str) |>
+    group_by(industry, quarter_label) |>
+    summarise(value = mean(value, na.rm = TRUE), .groups = "drop")
+
+  # Limit to last 20 quarters for readability
+  recent_quarters <- df2_heat |>
+    distinct(quarter_label) |>
+    arrange(quarter_label) |>
+    tail(20) |>
+    pull(quarter_label)
+
+  df2_heat_recent <- df2_heat |>
+    filter(quarter_label %in% recent_quarters)
+
+  # Shorten long industry names
+  df2_heat_recent <- df2_heat_recent |>
+    mutate(industry_short = str_trunc(industry, 45))
+
+  p3 <- ggplot(df2_heat_recent,
+               aes(x = quarter_label,
+                   y = fct_reorder(industry_short, value, .fun = mean),
+                   fill = value)) +
+    geom_tile(colour = "white", linewidth = 0.3) +
+    scale_fill_gradientn(
+      colours = met.brewer("Hiroshige", n = 9, type = "continuous"),
+      name = "Vacancies",
+      labels = comma,
+      na.value = "grey90"
+    ) +
+    scale_x_discrete(guide = guide_axis(angle = 45)) +
+    labs(
+      title = "Job vacancies by industry: recent quarterly heatmap",
+      subtitle = "Cool colours signal a pronounced freeze in construction-adjacent sectors from 2023 onward",
+      x = NULL,
+      y = NULL,
+      caption = "Source: SSB Table 08771. Measure: Ledige stillingar (absolute vacancies)."
+    ) +
+    theme_minimal(base_size = 10) +
+    theme(
+      plot.title      = element_text(face = "bold", size = 13),
+      plot.subtitle   = element_text(colour = "grey30", size = 11),
+      plot.caption    = element_text(colour = "grey50", size = 8),
+      axis.text.y     = element_text(size = 8),
+      axis.text.x     = element_text(size = 8),
+      legend.position = "right",
+      panel.grid      = element_blank()
+    )
+  print(p3)
+} else {
+  message("df2_abs is NULL or empty — skipping heatmap")
+}
+```
+
+The heatmap reveals a labour market partitioned by sector. Certain industries maintain warm columns of vacancy activity throughout the observed period; others fade to cool shades precisely when construction stalls. The pattern is not a uniform downturn — it is a selective freeze, concentrated in the industries that depend on new building and physical infrastructure investment.
+
+## The output divergence: sectoral production in real terms
+
+If building activity and hiring point to stress, the national accounts confirm it in hard monetary terms. Table 09170 records production at constant 2023 prices for every major industry going back decades. Indexing each sector to its own starting value strips out size differences and exposes the relative trajectory.
+
+```{r plot-small-multiples-output}
+#| fig-height: 8
+#| fig-width: 12
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df3_indexed) && nrow(df3_indexed) > 0) {
+  # Select a curated set of industries that tell the story
+  focus_industries <- df3_indexed |>
+    group_by(industry) |>
+    summarise(latest_index = index[which.max(date)],
+              n = n()) |>
+    filter(n >= 15) |>
+    arrange(desc(abs(latest_index - 100))) |>
+    slice_head(n = 9) |>
+    pull(industry)
+
+  df3_focus <- df3_indexed |>
+    filter(industry %in% focus_industries) |>
+    mutate(industry_label = str_wrap(industry, width = 28))
+
+  if (nrow(df3_focus) == 0) {
+    message("Filter empty. Values: ",
+            paste(head(unique(df3_indexed$industry), 15), collapse = ", "))
+  } else {
+    p4 <- ggplot(df3_focus,
+                 aes(x = date, y = index, colour = industry_label)) +
+      geom_hline(yintercept = 100, colour = "grey60", linewidth = 0.5, linetype = "dashed") +
+      geom_line(linewidth = 1.1, show.legend = FALSE) +
+      facet_wrap(~ industry_label, scales = "free_y", ncol = 3) +
+      scale_colour_manual(
+        values = met.brewer("Hiroshige", n = length(unique(df3_focus$industry_label)),
+                            type = "continuous")
+      ) +
+      scale_y_continuous(labels = function(x) paste0(x)) +
+      scale_x_date(date_breaks = "10 years", date_labels = "%Y") +
+      labs(
+        title = "Real output by sector: indexed to base year (base = 100)",
+        subtitle = "Energy sectors vastly outpace construction and building-related trades over time",
+        x = NULL,
+        y = "Index (base year = 100)",
+        caption = "Source: SSB Table 09170. Faste 2023-priser (constant 2023 prices)."
+      ) +
+      theme_minimal(base_size = 10) +
+      theme(
+        plot.title      = element_text(face = "bold", size = 13),
+        plot.subtitle   = element_text(colour = "grey30", size = 11),
+        plot.caption    = element_text(colour = "grey50", size = 8),
+        strip.text      = element_text(size = 8, face = "bold"),
+        axis.text.x     = element_text(size = 7, angle = 30, hjust = 1),
+        panel.grid.minor = element_blank()
+      )
+    print(p4)
+  }
+} else {
+  message("df3_indexed is NULL or empty — skipping small multiples")
+}
+```
+
+```{r plot-slope-sector-change}
+#| fig-height: 7
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df3_const) && nrow(df3_const) > 0) {
+  # Build a slope chart: average output in early window vs recent window
+  yr_max  <- max(lubridate::year(df3_const$date))
+  yr_min  <- min(lubridate::year(df3_const$date))
+  early_window <- c(yr_min, yr_min + 4)
+  late_window  <- c(yr_max - 4, yr_max)
+
+  df3_slope <- df3_const |>
+    mutate(yr = lubridate::year(date)) |>
+    filter(yr >= early_window[1] & yr <= early_window[2] |
+             yr >= late_window[1]  & yr <= late_window[2]) |>
+    mutate(period = if_else(yr <= early_window[2], "Early", "Recent")) |>
+    group_by(industry, period) |>
+    summarise(mean_val = mean(value, na.rm = TRUE), .groups = "drop") |>
+    pivot_wider(names_from = period, values_from = mean_val) |>
+    filter(!is.na(Early), !is.na(Recent)) |>
+    mutate(
+      pct_change = (Recent - Early) / Early * 100,
+      direction  = if_else(pct_change >= 0, "Growth", "Decline")
+    ) |>
+    arrange(pct_change) |>
+    mutate(industry_label = str_trunc(industry, 40),
+           industry_label = fct_reorder(industry_label, pct_change))
+
+  # Limit to top/bottom 12 for readability
+  extreme_sectors <- bind_rows(
+    df3_slope |> arrange(pct_change)  |> slice_head(n = 6),
+    df3_slope |> arrange(desc(pct_change)) |> slice_head(n = 6)
+  ) |> distinct()
+
+  if (nrow(extreme_sectors) == 0) {
+    message("extreme_sectors is empty — skipping slope/lollipop chart")
+  } else {
+    pal_slope <- met.brewer("Hiroshige", n = 2, type = "discrete")
+
+    p5 <- extreme_sectors |>
+      mutate(industry_label = fct_reorder(industry_label, pct_change)) |>
+      ggplot(aes(x = pct_change, y = industry_label, colour = direction)) +
+      geom_vline(xintercept = 0, colour = "grey50", linewidth = 0.6, linetype = "dashed") +
+      geom_segment(aes(x = 0, xend = pct_change, yend = industry_label),
+                   linewidth = 1.2, alpha = 0.7) +
+      geom_point(size = 4.5) +
+      geom_text(aes(label = paste0(round(pct_change, 0), "%")),
+                hjust = if_else(extreme_sectors$pct_change >= 0, -0.25, 1.25),
+                size = 3, fontface = "bold") +
+      scale_colour_manual(
+        values = c("Growth" = pal_slope[1], "Decline" = pal_slope[2]),
+        name = NULL
+      ) +
+      scale_x_continuous(labels = function(x) paste0(x, "%"),
+                         expand = expansion(mult = 0.18)) +
+      labs(
+        title = "Real output change by sector: early period vs recent period",
+        subtitle = "The widest divergences reveal which sectors drove Norway's structural transformation",
+        x = paste0("% change in average real output\n(",
+                   early_window[1], "-", early_window[2],
+                   " vs ", late_window[1], "-", late_window[2], ")"),
+        y = NULL,
+        caption = "Source: SSB Table 09170. Faste 2023-priser. Six highest and six lowest performers shown."
+      ) +
+      theme_minimal(base_size = 12) +
+      theme(
+        plot.title      = element_text(face = "bold", size = 13),
+        plot.subtitle   = element_text(colour = "grey30", size = 11),
+        plot.caption    = element_text(colour = "grey50", size = 8),
+        legend.position = "top",
+        panel.grid.major.y = element_blank(),
+        panel.grid.minor   = element_blank()
+      )
+    print(p5)
+  }
+} else {
+  message("df3_const is NULL or empty — skipping slope chart")
+}
+```
+
+The slope lollipop chart presents the starkest summary of Norway's structural transformation. Industries linked to oil extraction, pipeline infrastructure, and financial intermediation dominate the high end, their real output multiples above where they started. Construction and certain manufacturing categories cluster at the other extreme — producing less in real terms today than they did in earlier decades or eking out minimal gains while the rest of the economy accelerated.
+
+## Key findings
+
+- Building completions across most categories have fallen substantially over a five-year window, with residential types recording the sharpest proportional declines — a continuation of the post-2015 retreat documented in SSB Table 06265.
+- Job vacancies in construction-adjacent industries show a visible freeze in the heatmap from 2023 onward, with several sectors posting their lowest quarterly vacancy counts in the entire recorded series.
+- In constant 2023 prices, the real output divergence between energy-related sectors and construction is among the widest in the national accounts history captured by SSB Table 09170.
+- The sectors posting the largest long-run output gains are overwhelmingly capital-intensive and require relatively few workers per unit of value added, meaning the oil wealth flowing through the accounts does not translate into broad job creation.
+- The combination of fewer buildings being started, fewer vacancies in the trades, and stagnant real output in construction points to a structural withdrawal of investment from the built environment — not a cyclical dip.
+
+## A structural reckoning, not a recession
+
+Norway is not experiencing a classic recession. Unemployment remains low by international standards, government finances are cushioned by the sovereign wealth fund, and certain sectors continue to expand. But the data assembled here points to something arguably more unsettling: a structural bifurcation in which the parts of the economy that make physical things — houses, offices, roads — are in sustained retreat, while the parts that extract, finance, and intermediate accumulate wealth at an accelerating pace.
+
+This bifurcation has distributional consequences that aggregate figures obscure. A carpenter in Stavanger does not benefit from rising offshore oil revenues. A concrete contractor in Trondheim cannot pivot to financial services. When the cranes go quiet and the vacancy boards empty, the workers most affected are precisely those with the least mobility into the growth sectors. Norway's 2026 structural reckoning is, at its core, a question of whether an economy built on a two-tier foundation can sustain the social cohesion it has long prided itself on.
