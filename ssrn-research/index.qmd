@@ -157,10 +157,11 @@ bump_totals <- topics_long |>
   slice_head(n = top_n_bump)
 
 n_bump       <- nrow(bump_totals)
-bump_palette <- if (n_bump <= 12)
+bump_palette <- if (n_bump <= 12) {
   MetBrewer::met.brewer("Cassatt2", max(n_bump, 2L))
-else
+} else {
   colorRampPalette(MetBrewer::met.brewer("Cassatt2", 12L))(n_bump)
+}
 bump_colors <- setNames(as.character(bump_palette), bump_totals$name)
 
 bump_df <- topics_long |>
