@@ -1,0 +1,253 @@
+{
+  "run_date": "2026-05-08",
+  "candidates_count": 49,
+  "sources_used": ["arxiv:cs.LG", "arxiv:q-fin.CP", "arxiv:q-fin.GN", "arxiv:q-fin.RM", "arxiv:q-fin.MF", "arxiv:stat.ML", "arxiv:econ.GN", "arxiv:q-fin.TR", "arxiv:q-fin.ST", "arxiv:stat.AP", "arxiv:q-fin.PM", "arxiv:stat.ME", "arxiv:econ.EM", "arxiv:econ.TH"],
+  "bucket_counts": {
+    "data_science": 0,
+    "finance": 25,
+    "social_sciences": 25
+  },
+  "top_papers": {
+    "data_science": [],
+    "finance": [
+      {
+        "id": "arxiv:2605.05739",
+        "rank": 1,
+        "title": "Multi-Dimensional Behavioral Evaluation of Agentic Stock Prediction Systems Using LLM Judges with Closed-Loop Reinforcement Learning Feedback",
+        "authors": "Mohammad Al Ridhawi",
+        "url": "https://arxiv.org/abs/2605.05739",
+        "source": "arxiv",
+        "why_trending": "First framework to systematically evaluate autonomous trading agents across multiple behavioral dimensions using LLM judges, addressing the black-box nature of aggregate performance metrics.",
+        "topics": [
+          "Agentic AI in Finance",
+          "LLM-Based Evaluation and Reasoning"
+        ]
+      },
+      {
+        "id": "arxiv:2605.06570",
+        "rank": 2,
+        "title": "SNAPO: Smooth Neural Adjoint Policy Optimization for Optimal Control via Differentiable Simulation",
+        "authors": "Dmitri Goloubentsev",
+        "url": "https://arxiv.org/abs/2605.06570",
+        "source": "arxiv",
+        "why_trending": "Scalable neural policy optimization framework that combines differentiable simulation with learned policies, enabling high-dimensional sequential decision problems in portfolio management and energy storage.",
+        "topics": [
+          "Neural Control and Optimization",
+          "Deep Learning for Finance"
+        ]
+      },
+      {
+        "id": "arxiv:2605.06438",
+        "rank": 3,
+        "title": "Neural-Actuarial Longevity Forecasting: Anchoring LSTMs for Explainable Risk Management",
+        "authors": "Davide Rindori",
+        "url": "https://arxiv.org/abs/2605.06438",
+        "source": "arxiv",
+        "why_trending": "Addresses fundamental failures of classical multi-population mortality models through LSTM-based hybrid approach with mean-bias correction, solving persistent unit-root problems in longevity risk.",
+        "topics": [
+          "Deep Learning for Finance",
+          "Time Series and Stochastic Modeling"
+        ]
+      },
+      {
+        "id": "arxiv:2605.06281",
+        "rank": 4,
+        "title": "INEUS: Iterative Neural Solver for High-Dimensional PIDEs",
+        "authors": "Jean-Loup Dupret",
+        "url": "https://arxiv.org/abs/2605.06281",
+        "source": "arxiv",
+        "why_trending": "Novel meshfree neural solver for partial integro-differential equations that efficiently handles nonlocal jump integrals, reducing computational burden for derivatives pricing in jump-diffusion models.",
+        "topics": [
+          "Deep Learning for Finance",
+          "Numerical Methods and PDEs"
+        ]
+      },
+      {
+        "id": "arxiv:2605.06604",
+        "rank": 5,
+        "title": "A Geometry-Aware Residual Correction of Hagan's SABR Implied Volatility Formula",
+        "authors": "Adil Reghai",
+        "url": "https://arxiv.org/abs/2605.06604",
+        "source": "arxiv",
+        "why_trending": "Hybrid methodology preserving analytical SABR structure while augmenting with geometry-aware ML features, representing a pragmatic alternative to full black-box neural replacements of established models.",
+        "topics": [
+          "Deep Learning for Finance",
+          "Volatility and Option Pricing"
+        ]
+      }
+    ],
+    "social_sciences": [
+      {
+        "id": "arxiv:2605.06386",
+        "rank": 1,
+        "title": "Covariate Balancing and Riesz Regression Should Be Guided by the Neyman Orthogonal Score in Debiased Machine Learning",
+        "authors": "Masahiro Kato",
+        "url": "https://arxiv.org/abs/2605.06386",
+        "source": "arxiv",
+        "why_trending": "Proposes that balancing functions in debiased machine learning should be derived from Neyman orthogonal scores rather than covariates alone, with implications for treatment effect heterogeneity estimation.",
+        "topics": [
+          "Causal Inference and Debiased ML",
+          "Econometric Methods"
+        ]
+      },
+      {
+        "id": "arxiv:2605.06411",
+        "rank": 2,
+        "title": "Cascading disruptions in natural gas, fertilizers, and crops drive structural food supply vulnerabilities globally",
+        "authors": "Pavel Kiparisov",
+        "url": "https://arxiv.org/abs/2605.06411",
+        "source": "arxiv",
+        "why_trending": "Integrates bilateral trade in natural gas, fertilizers, and crops into cascading-impact model across 208 countries, revealing fundamental structural vulnerabilities in global food supply chains.",
+        "topics": [
+          "Systems, Networks and Complexity",
+          "Economic Policy and Risk"
+        ]
+      },
+      {
+        "id": "arxiv:2605.05404",
+        "rank": 3,
+        "title": "Causal State-Dependent Local Projections",
+        "authors": "Joel M. David",
+        "url": "https://arxiv.org/abs/2605.05404",
+        "source": "arxiv",
+        "why_trending": "Establishes causal interpretation of state-dependent local projections under linearity condition, enabling valid impulse response analysis in heterogeneous-agent and macro-finance models.",
+        "topics": [
+          "Econometric Methods",
+          "Causal Inference and Debiased ML"
+        ]
+      },
+      {
+        "id": "arxiv:2605.06482",
+        "rank": 4,
+        "title": "Scaling the Queue: Reinforcement Learning for Equitable Call Classification Capacity in NYC Municipal Complaint Systems",
+        "authors": "Irene Aldridge",
+        "url": "https://arxiv.org/abs/2605.06482",
+        "source": "arxiv",
+        "why_trending": "Applies equity-centered reinforcement learning to NYC municipal complaint system, addressing structural racial and income-based service quality disparities through algorithmic optimization.",
+        "topics": [
+          "ML for Fairness and Social Good",
+          "Reinforcement Learning Applications"
+        ]
+      },
+      {
+        "id": "arxiv:2605.05609",
+        "rank": 5,
+        "title": "Optimal Contextual Pricing under Agnostic Non-Lipschitz Demand",
+        "authors": "Jianyu Xu",
+        "url": "https://arxiv.org/abs/2605.05609",
+        "source": "arxiv",
+        "why_trending": "Polynomial-time algorithm for contextual pricing under non-Lipschitz demand with arbitrary discontinuities, achieving optimal Õ(T^{2/3}) regret in a previously hard regime.",
+        "topics": [
+          "Algorithmic Game Theory and Mechanism Design",
+          "Optimal Control and Pricing"
+        ]
+      }
+    ]
+  },
+  "topics": [
+    {
+      "name": "Deep Learning for Finance",
+      "paper_ids": [
+        "arxiv:2605.06570",
+        "arxiv:2605.06438",
+        "arxiv:2605.06281",
+        "arxiv:2605.06604",
+        "arxiv:2605.03703"
+      ],
+      "summary": "Neural and deep learning methods applied to financial problems including derivatives pricing, longevity forecasting, volatility modeling, and rough volatility dynamics."
+    },
+    {
+      "name": "Agentic AI in Finance",
+      "paper_ids": [
+        "arxiv:2605.05739",
+        "arxiv:2605.03310"
+      ],
+      "summary": "Multi-agent LLM systems and autonomous decision-making in trading and financial applications, with focus on coordination, behavioral evaluation, and failure mode analysis."
+    },
+    {
+      "name": "Volatility and Option Pricing",
+      "paper_ids": [
+        "arxiv:2605.06604",
+        "arxiv:2605.05140",
+        "arxiv:2605.02040",
+        "arxiv:2605.03703"
+      ],
+      "summary": "Advanced methods for implied volatility extraction, option pricing approximations, and volatility surface modeling including caplet stripping and SABR corrections."
+    },
+    {
+      "name": "Portfolio Optimization and Risk Management",
+      "paper_ids": [
+        "arxiv:2605.06220",
+        "arxiv:2605.02326",
+        "arxiv:2605.02666",
+        "arxiv:2605.03184",
+        "arxiv:2605.04479"
+      ],
+      "summary": "Portfolio selection, asset allocation, and risk management under various constraints including lambda quantiles, volatility uncertainty, metric dependence screening, and ESG-as-insurance."
+    },
+    {
+      "name": "Market Microstructure and Trading",
+      "paper_ids": [
+        "arxiv:2605.06405",
+        "arxiv:2605.05089",
+        "arxiv:2605.04004",
+        "arxiv:2605.02286",
+        "arxiv:2605.02287"
+      ],
+      "summary": "Market making, basis trading, intraday signals, and informed trading in both traditional and decentralized markets including perpetual DEXs and prediction markets."
+    },
+    {
+      "name": "Causal Inference and Debiased ML",
+      "paper_ids": [
+        "arxiv:2605.06386",
+        "arxiv:2605.05404",
+        "arxiv:2605.03699",
+        "arxiv:2605.05056",
+        "arxiv:2605.05037"
+      ],
+      "summary": "Methodological advances in causal estimation under heterogeneity, including debiased machine learning, orthogonal scores, difference-in-differences, and panel data approaches."
+    },
+    {
+      "name": "Econometric Methods and Statistical Inference",
+      "paper_ids": [
+        "arxiv:2605.04961",
+        "arxiv:2605.06491",
+        "arxiv:2605.05456",
+        "arxiv:2605.03082",
+        "arxiv:2605.02248"
+      ],
+      "summary": "Advanced econometric techniques including GMM under misspecification, two-way heterogeneity inference, impulse response averaging, and Fourier-based statistical analysis."
+    },
+    {
+      "name": "Systems, Networks and Complexity",
+      "paper_ids": [
+        "arxiv:2605.06411",
+        "arxiv:2605.05376",
+        "arxiv:2605.03703"
+      ],
+      "summary": "Analysis of complex interconnected systems including supply chain cascades, distance matrix dynamics, and multivariate Hawkes processes with applications to systemic risk."
+    },
+    {
+      "name": "ML for Fairness and Social Good",
+      "paper_ids": [
+        "arxiv:2605.06482",
+        "arxiv:2605.05609",
+        "arxiv:2605.05898",
+        "arxiv:2605.06451",
+        "arxiv:2605.05578"
+      ],
+      "summary": "Machine learning and algorithmic methods addressing fairness, equity, and social welfare including municipal service allocation, pricing under constraints, and demographic analysis."
+    },
+    {
+      "name": "Algorithmic Game Theory and Mechanism Design",
+      "paper_ids": [
+        "arxiv:2605.06525",
+        "arxiv:2605.05609",
+        "arxiv:2605.06451",
+        "arxiv:2605.03307",
+        "arxiv:2605.03621"
+      ],
+      "summary": "Game-theoretic and mechanism design approaches to cooperation, fair division, lending, and collective decision-making, including LLM-based agent coordination."
+    }
+  ]
+}
