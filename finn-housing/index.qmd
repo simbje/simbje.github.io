@@ -204,9 +204,70 @@ ggplot(dens_df, aes(x = price_sqm / 1000)) +
 
 ## Oslo på Kartet
 
-*Boblestørrelse = prisantydning. Farge = kategori. Klikk en boble for å åpne annonsen.*
+*Boblestørrelse = prisantydning. Farge = bydel. Klikk en boble for å åpne annonsen.*
 
 ```{r map}
+# Neighbourhood string → official Oslo bydel
+BYDEL_LOOKUP <- c(
+  "Frogner"           = "Frogner",
+  "Grünerløkka"       = "Grünerløkka",
+  "Sagene"            = "Sagene",
+  "Gamle Oslo"        = "Gamle Oslo",
+  "St. Hanshaugen"    = "St. Hanshaugen",
+  "Nordstrand"        = "Nordstrand",
+  "Østensjø"          = "Østensjø",
+  "Alna"              = "Alna",
+  "Bjerke"            = "Bjerke",
+  "Grorud"            = "Grorud",
+  "Stovner"           = "Stovner",
+  "Søndre Nordstrand" = "Søndre Nordstrand",
+  "Ullern"            = "Ullern",
+  "Vestre Aker"       = "Vestre Aker",
+  "Nordre Aker"       = "Nordre Aker",
+  "Sentrum"           = "Sentrum",
+  "Majorstuen"        = "Frogner",
+  "Vålerenga"         = "Gamle Oslo",
+  "Tøyen"             = "Gamle Oslo",
+  "Grønland"          = "Gamle Oslo",
+  "Kampen"            = "Gamle Oslo",
+  "Torshov"           = "Sagene",
+  "Iladalen"          = "Sagene",
+  "Sandaker"          = "Sagene",
+  "Bislett"           = "St. Hanshaugen",
+  "Adamstuen"         = "St. Hanshaugen",
+  "Sinsen"            = "Nordre Aker",
+  "Grefsen"           = "Nordre Aker",
+  "Storo"             = "Nordre Aker",
+  "Nydalen"           = "Nordre Aker",
+  "Kjelsås"           = "Nordre Aker",
+  "Nordberg"          = "Nordre Aker",
+  "Skøyen"            = "Ullern",
+  "Bestum"            = "Ullern",
+  "Røa"               = "Vestre Aker",
+  "Vinderen"          = "Vestre Aker",
+  "Slemdal"           = "Vestre Aker",
+  "Smestad"           = "Vestre Aker",
+  "Hovseter"          = "Vestre Aker",
+  "Holmlia"           = "Søndre Nordstrand",
+  "Mortensrud"        = "Søndre Nordstrand",
+  "Bjørndal"          = "Søndre Nordstrand",
+  "Lambertseter"      = "Østensjø",
+  "Bøler"             = "Østensjø",
+  "Manglerud"         = "Østensjø",
+  "Godlia"            = "Østensjø",
+  "Oppsal"            = "Østensjø",
+  "Romsås"            = "Grorud",
+  "Ammerud"           = "Grorud",
+  "Rødtvet"           = "Grorud",
+  "Furuset"           = "Alna",
+  "Helsfyr"           = "Alna",
+  "Teisen"            = "Alna",
+  "Hellerud"          = "Alna",
+  "Bekkelaget"        = "Nordstrand",
+  "Ljan"              = "Nordstrand",
+  "Ekeberg"           = "Nordstrand"
+)
+
 map_df <- df |>
   filter(!is.na(lat), !is.na(lon),
          lat > 59.5, lat < 60.2,
@@ -216,42 +277,63 @@ map_df <- df |>
 if (nrow(map_df) == 0) {
   cat("> Kartet vises når geokoding har kjørt (skjer automatisk etter hvert klassifiseringssteg).\n")
 } else {
-  # Radius: log-scale of price, capped to avoid giant bubbles
   map_df <- map_df |>
     mutate(
-      radius   = pmin(pmax(log(price / 1e6) * 5, 4), 22),
-      col_hex  = CAT_COLORS[category],
-      col_hex  = ifelse(is.na(col_hex), "#BBBBBB", col_hex),
+      bydel = {
+        b <- BYDEL_LOOKUP[coalesce(neighborhood, "")]
+        ifelse(is.na(b), "Ukjent", unname(b))
+      },
+      radius  = pmin(pmax(log(price / 1e6) * 5, 4), 22),
+      cat_hex = coalesce(CAT_COLORS[category], "#BBBBBB"),
       popup_txt = paste0(
         "<b><a href='", url, "' target='_blank'>", title, "</a></b><br>",
         "<b>", ifelse(!is.na(price), paste0(format(price, big.mark = " "), " NOK"), "—"), "</b>",
         ifelse(!is.na(size_sqm), paste0(" · ", size_sqm, " m²"), ""),
         ifelse(!is.na(rooms),    paste0(" · ", rooms, " rom"), ""), "<br>",
         ifelse(!is.na(address),  paste0(address, "<br>"), ""),
-        "<span style='background:", col_hex, ";color:#fff;padding:2px 6px;border-radius:3px;font-size:0.8em'>",
+        ifelse(!is.na(neighborhood) & neighborhood != "",
+               paste0("<i>", neighborhood, " (", bydel, ")</i><br>"), ""),
+        "<span style='background:", cat_hex, ";color:#fff;padding:2px 6px;border-radius:3px;font-size:0.8em'>",
         category, "</span>"
       )
     )
+
+  # Colour palette keyed on bydeler present in the data
+  present_bydeler <- sort(unique(map_df$bydel))
+  n_bd <- length(present_bydeler)
+  bd_raw <- if (n_bd <= 12) {
+    MetBrewer::met.brewer("Cassatt2", max(n_bd, 2L))
+  } else {
+    colorRampPalette(MetBrewer::met.brewer("Cassatt2", 12L))(n_bd)
+  }
+  BYDEL_COLORS <- setNames(as.character(bd_raw), present_bydeler)
+  BYDEL_COLORS["Ukjent"] <- "#BBBBBB"
+
+  map_df <- map_df |>
+    mutate(col_hex = coalesce(BYDEL_COLORS[bydel], "#BBBBBB"))
+
+  leg_bydeler <- present_bydeler[present_bydeler != "Ukjent"]
+  if (any(map_df$bydel == "Ukjent")) leg_bydeler <- c(leg_bydeler, "Ukjent")
 
   leaflet(map_df) |>
     addProviderTiles(providers$CartoDB.Positron) |>
     setView(lng = 10.757, lat = 59.913, zoom = 11) |>
     addCircleMarkers(
-      lng        = ~lon,
-      lat        = ~lat,
-      radius     = ~radius,
-      color      = ~col_hex,
-      fillColor  = ~col_hex,
+      lng         = ~lon,
+      lat         = ~lat,
+      radius      = ~radius,
+      color       = ~col_hex,
+      fillColor   = ~col_hex,
       fillOpacity = 0.65,
-      weight     = 1,
-      opacity    = 0.9,
-      popup      = ~popup_txt
+      weight      = 1,
+      opacity     = 0.9,
+      popup       = ~popup_txt
     ) |>
     addLegend(
       position = "bottomright",
-      colors   = CAT_COLORS[names(CAT_COLORS) %in% unique(map_df$category)],
-      labels   = names(CAT_COLORS)[names(CAT_COLORS) %in% unique(map_df$category)],
-      title    = "Kategori",
+      colors   = BYDEL_COLORS[leg_bydeler],
+      labels   = leg_bydeler,
+      title    = "Bydel",
       opacity  = 0.8
     )
 }
