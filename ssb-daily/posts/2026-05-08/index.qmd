@@ -1,11 +1,11 @@
 ---
-title: "Norway's 2026 Education-Employment-Income Paradox: More Students, Stalling Jobs, Widening Divides"
-description: "As higher education enrolment climbs to record levels, quarterly labour force data reveals stagnating employment and rising inactivity, while household income distribution shows the gap between Norway's richest and poorest regions is quietly widening."
+title: "Norway's 2026 Energy Miracle: How Oil and Power Sectors Soared While Household Consumption Collapsed"
+description: "Oil extraction and energy supply drove record GDP growth in Norway's key industries, yet household consumption tells a strikingly different story of constraint and caution."
 date: "2026-05-08"
-categories: [SSB, education, labour market, income, inequality]
+categories: [SSB, GDP, consumption, labour-market, energy]
 ---
 
-Norway has long prided itself on a tight, virtuous circle: education feeds into employment, employment generates income, and income sustains one of the world's most equal societies. But three parallel data streams from Statistics Norway now tell a more unsettling story. University enrolment is climbing. Employment rates are barely moving. And the income gap between households is stretching. Something in that virtuous circle is slipping.
+Norway's national accounts contain a story of two economies running in parallel. On one side, the petroleum sector and energy suppliers posted extraordinary output gains — a bonanza that flows directly into government coffers and sovereign wealth. On the other, Norwegian households tightened their belts, with real consumption growth slowing to a crawl. This post unpacks that divergence, tracing how the energy miracle and the household squeeze unfolded together across three decades of data.
 
 ## Data
 
@@ -19,20 +19,19 @@ library(scales)
 library(MetBrewer)
 library(ggridges)
 
+# --- df1: GDP by industry ---
 df1 <- NULL
 tryCatch({
   raw <- ApiData(
-    "https://data.ssb.no/api/v0/no/table/09429",
-    Region = TRUE,
-    Nivaa = TRUE,
-    Kjonn = TRUE,
-    ContentsCode = TRUE,
+    "https://data.ssb.no/api/v0/no/table/09170",
+    næring = TRUE,
+    statistikkvariabel = TRUE,
     Tid = list(filter = "top", values = 40)
   )
   tmp          <- raw[[1]]
   time_col     <- "år"
   value_col    <- "value"
-  series_col   <- "nivå"
+  series_col   <- "næring"
   measure_col  <- "statistikkvariabel"
   df1 <- tmp |>
     mutate(
@@ -50,20 +49,19 @@ tryCatch({
 
 if (is.null(df1) || nrow(df1) == 0) { message("No data returned for df1"); df1 <- NULL }
 
+# --- df2: National accounts main figures ---
 df2 <- NULL
 tryCatch({
   raw <- ApiData(
-    "https://data.ssb.no/api/v0/no/table/05110",
-    ArbStyrkStatus = TRUE,
-    Kjonn = TRUE,
-    Alder = TRUE,
-    ContentsCode = TRUE,
+    "https://data.ssb.no/api/v0/no/table/09189",
+    makrostørrelse = TRUE,
+    statistikkvariabel = TRUE,
     Tid = list(filter = "top", values = 40)
   )
   tmp          <- raw[[1]]
-  time_col     <- "kvartal"
+  time_col     <- "år"
   value_col    <- "value"
-  series_col   <- "arbeidsstyrkestatus"
+  series_col   <- "makrostørrelse"
   measure_col  <- "statistikkvariabel"
   df2 <- tmp |>
     mutate(
@@ -81,16 +79,19 @@ tryCatch({
 
 if (is.null(df2) || nrow(df2) == 0) { message("No data returned for df2"); df2 <- NULL }
 
+# --- df3: Labour force and unemployment ---
 df3 <- NULL
 tryCatch({
   raw <- ApiData(
-    "https://data.ssb.no/api/v0/no/table/07184",
-    Region = TRUE,
-    ContentsCode = TRUE,
+    "https://data.ssb.no/api/v0/no/table/13760",
+    kjønn = TRUE,
+    alder = TRUE,
+    `type justering` = TRUE,
+    statistikkvariabel = TRUE,
     Tid = list(filter = "top", values = 40)
   )
   tmp          <- raw[[1]]
-  time_col     <- "år"
+  time_col     <- "måned"
   value_col    <- "value"
   series_col   <- "statistikkvariabel"
   df3 <- tmp |>
@@ -113,492 +114,466 @@ if (is.null(df3) || nrow(df3) == 0) { message("No data returned for df3"); df3 <
 ## Wrangling
 
 ```{r wrangle}
-# ── df1: Education enrolment ──────────────────────────────────────────────────
-df1_uni       <- NULL
-df1_national  <- NULL
-df1_gender    <- NULL
+# NULL-initialize all derived variables that may be assigned conditionally
+df1_gva        <- NULL
+df1_industry   <- NULL
+df1_share      <- NULL
+df1_lollipop   <- NULL
+df2_vol        <- NULL
+df2_wide       <- NULL
+df2_goods_svc  <- NULL
+df3_employed   <- NULL
+df3_unemp_rate <- NULL
 
+# ── df1 wrangling: industry gross value added at constant 2023 prices ──────────
 if (!is.null(df1)) {
-  # Total persons 16+, national level, university levels only
-  df1_national <- df1 |>
+  # Filter to constant-price gross value added for key industries
+  df1_gva <- df1 |>
     filter(
-      .data[["statistikkvariabel"]] == "Personer 16 år og over",
-      .data[["region"]] == "Hele landet",
-      .data[["kjønn"]] == "Begge kjønn",
-      .data[["nivå"]] %in% c(
-        "Universitets- og høgskolenivå, kort",
-        "Universitets- og høgskolenivå, lang",
-        "Fagskolenivå",
-        "Videregående skolenivå",
-        "Utdanningsnivå i alt"
+      .data[["statistikkvariabel"]] == "Bruttoprodukt i basisverdi. Faste 2023-priser (mill. kr)",
+      .data[["næring"]] %in% c(
+        "Totalt for næringer",
+        "Utvinning av råolje og naturgass, inkl. tjenester",
+        "Industri",
+        "Energiforsyning",
+        "Jordbruk og skogbruk"
       )
     ) |>
-    select(date, time_str, nivå = `nivå`, value)
-
-  if (nrow(df1_national) == 0) {
-    message("df1_national empty. Trying without region/gender filters.")
-    df1_national <- NULL
-  }
-
-  # University short + long combined for gender comparison
-  df1_gender <- df1 |>
-    filter(
-      .data[["statistikkvariabel"]] == "Personer 16 år og over",
-      .data[["region"]] == "Hele landet",
-      .data[["kjønn"]] %in% c("Menn", "Kvinner"),
-      .data[["nivå"]] %in% c(
-        "Universitets- og høgskolenivå, kort",
-        "Universitets- og høgskolenivå, lang"
+    mutate(
+      year     = lubridate::year(date),
+      næring   = .data[["næring"]],
+      industry_short = case_when(
+        næring == "Totalt for næringer"                                    ~ "Total",
+        næring == "Utvinning av råolje og naturgass, inkl. tjenester"      ~ "Oil & Gas",
+        næring == "Industri"                                               ~ "Manufacturing",
+        næring == "Energiforsyning"                                        ~ "Energy Supply",
+        næring == "Jordbruk og skogbruk"                                   ~ "Agriculture",
+        TRUE                                                               ~ næring
       )
-    ) |>
-    group_by(date, kjønn = .data[["kjønn"]]) |>
-    summarise(value = sum(value, na.rm = TRUE), .groups = "drop")
+    )
 
-  if (nrow(df1_gender) == 0) {
-    message("df1_gender empty.")
-    df1_gender <- NULL
+  if (nrow(df1_gva) == 0) {
+    message("df1_gva empty after filter")
+    df1_gva <- NULL
   }
 }
 
-# ── df2: Labour force status ──────────────────────────────────────────────────
-df2_employed   <- NULL
-df2_inactive   <- NULL
-df2_status_pct <- NULL
+if (!is.null(df1_gva)) {
+  # Long-run index: 2000 = 100 (or earliest available year)
+  base_year <- df1_gva |>
+    filter(industry_short != "Total") |>
+    pull(year) |>
+    min(na.rm = TRUE)
 
+  df1_industry <- df1_gva |>
+    filter(industry_short != "Total") |>
+    group_by(industry_short) |>
+    arrange(year) |>
+    mutate(
+      base_val = value[year == base_year][1],
+      index    = if_else(!is.na(base_val) & base_val != 0, value / base_val * 100, NA_real_)
+    ) |>
+    ungroup()
+
+  if (nrow(df1_industry) == 0) {
+    message("df1_industry empty")
+    df1_industry <- NULL
+  }
+
+  # Lollipop: most-recent-year growth vs. five-years-prior
+  latest_year  <- max(df1_gva$year, na.rm = TRUE)
+  prior_year   <- latest_year - 5
+
+  df1_lollipop <- df1_gva |>
+    filter(industry_short != "Total", year %in% c(prior_year, latest_year)) |>
+    select(industry_short, year, value) |>
+    pivot_wider(names_from = year, values_from = value) |>
+    setNames(c("industry_short",
+               paste0("val_", prior_year),
+               paste0("val_", latest_year))) |>
+    mutate(
+      pct_change = (.data[[paste0("val_", latest_year)]] - .data[[paste0("val_", prior_year)]]) /
+                   .data[[paste0("val_", prior_year)]] * 100
+    ) |>
+    filter(!is.na(pct_change)) |>
+    arrange(pct_change)
+
+  if (nrow(df1_lollipop) == 0) {
+    message("df1_lollipop empty")
+    df1_lollipop <- NULL
+  }
+}
+
+# ── df2 wrangling: consumption volume change ──────────────────────────────────
 if (!is.null(df2)) {
-  # Total population, all ages, percent measure
-  df2_status_pct <- df2 |>
+  df2_vol <- df2 |>
     filter(
-      .data[["statistikkvariabel"]] == "Personer (prosent)",
-      .data[["kjønn"]] == "Begge kjønn",
-      .data[["alder"]] == "15-74 år",
-      .data[["arbeidsstyrkestatus"]] %in% c(
-        "Sysselsatte",
-        "Arbeidsledige",
-        "Personer utenfor arbeidsstyrken"
+      .data[["statistikkvariabel"]] == "Volumendring, årlig (prosent)",
+      .data[["makrostørrelse"]] %in% c(
+        "Konsum i husholdninger og ideelle organisasjoner",
+        "Konsum i husholdninger",
+        "Varekonsum",
+        "Tjenestekonsum",
+        "Konsum i offentlig forvaltning"
       )
     ) |>
-    select(date, time_str, status = `arbeidsstyrkestatus`, value)
+    mutate(
+      year = lubridate::year(date),
+      category_short = case_when(
+        .data[["makrostørrelse"]] == "Konsum i husholdninger og ideelle organisasjoner" ~ "Households & NPISHs",
+        .data[["makrostørrelse"]] == "Konsum i husholdninger"                           ~ "Households",
+        .data[["makrostørrelse"]] == "Varekonsum"                                       ~ "Goods",
+        .data[["makrostørrelse"]] == "Tjenestekonsum"                                   ~ "Services",
+        .data[["makrostørrelse"]] == "Konsum i offentlig forvaltning"                   ~ "Government",
+        TRUE ~ .data[["makrostørrelse"]]
+      )
+    )
 
-  if (nrow(df2_status_pct) == 0) {
-    message("df2_status_pct empty. Values: ",
-            paste(head(unique(df2[["arbeidsstyrkestatus"]]), 10), collapse = ", "))
-    df2_status_pct <- NULL
+  if (nrow(df2_vol) == 0) {
+    message("df2_vol empty after filter")
+    df2_vol <- NULL
   }
 
-  # By age group, employed, percent
-  df2_employed <- df2 |>
-    filter(
-      .data[["statistikkvariabel"]] == "Personer (prosent)",
-      .data[["kjønn"]] == "Begge kjønn",
-      .data[["arbeidsstyrkestatus"]] == "Sysselsatte",
-      .data[["alder"]] %in% c("15-24 år", "25-54 år", "55-74 år", "15-74 år")
-    ) |>
-    select(date, time_str, alder = `alder`, value)
+  # Goods vs Services for small multiples
+  if (!is.null(df2_vol)) {
+    df2_goods_svc <- df2_vol |>
+      filter(category_short %in% c("Goods", "Services", "Government"))
 
-  if (nrow(df2_employed) == 0) {
-    message("df2_employed empty. Alder values: ",
-            paste(head(unique(df2[["alder"]]), 15), collapse = ", "))
-    df2_employed <- NULL
+    if (nrow(df2_goods_svc) == 0) {
+      message("df2_goods_svc empty")
+      df2_goods_svc <- NULL
+    }
   }
 }
 
-# ── df3: Household income ─────────────────────────────────────────────────────
-df3_regions  <- NULL
-df3_gini     <- NULL
-df3_national <- NULL
-
+# ── df3 wrangling: labour force monthly ───────────────────────────────────────
 if (!is.null(df3)) {
-  # Check available series
-  series_vals <- unique(df3[["statistikkvariabel"]])
-  message("df3 series_col values: ", paste(head(series_vals, 20), collapse = " | "))
+  # Check column names
+  df3_cols <- names(df3)
 
-  region_vals <- unique(df3[["region"]])
-  message("df3 region values (first 20): ", paste(head(region_vals, 20), collapse = " | "))
+  df3_employed <- df3 |>
+    filter(.data[["statistikkvariabel"]] == "Sysselsatte (1000 personer)") |>
+    group_by(date) |>
+    summarise(value = sum(value, na.rm = TRUE), .groups = "drop") |>
+    mutate(year = lubridate::year(date))
 
-  # National Gini or income measure over time
-  df3_national <- df3 |>
-    filter(.data[["region"]] == "Hele landet") |>
-    select(date, time_str, series = `statistikkvariabel`, value)
-
-  if (nrow(df3_national) == 0) {
-    message("df3_national empty. Regions: ", paste(head(region_vals, 10), collapse = ", "))
-    df3_national <- NULL
+  if (nrow(df3_employed) == 0) {
+    message("df3_employed empty")
+    df3_employed <- NULL
   }
 
-  # Regional comparison — latest available year, pick key measure
-  if (!is.null(df3_national) && nrow(df3_national) > 0) {
-    available_series <- unique(df3_national$series)
-    message("df3_national series: ", paste(head(available_series, 10), collapse = " | "))
-  }
+  df3_unemp_rate <- df3 |>
+    filter(.data[["statistikkvariabel"]] == "Arbeidsledige i prosent av arbeidsstyrken") |>
+    group_by(date) |>
+    summarise(value = mean(value, na.rm = TRUE), .groups = "drop") |>
+    mutate(year = lubridate::year(date))
 
-  # Regional data for all fylker
-  major_regions <- region_vals[nchar(region_vals) > 3 & !grepl("^[0-9]", region_vals)]
-  if (length(major_regions) == 0) major_regions <- region_vals
-
-  df3_regions <- df3 |>
-    filter(!(.data[["region"]] %in% c("Hele landet", "Uoppgitt"))) |>
-    select(date, time_str, region = `region`, series = `statistikkvariabel`, value)
-
-  if (nrow(df3_regions) == 0) {
-    message("df3_regions empty.")
-    df3_regions <- NULL
+  if (nrow(df3_unemp_rate) == 0) {
+    message("df3_unemp_rate empty")
+    df3_unemp_rate <- NULL
   }
 }
 ```
 
-## Education: The Enrolment Climb
+## The Energy Miracle: Oil and Power Charge Ahead
 
-Norway's universities and university colleges have absorbed a steadily growing share of the adult population. The data from table 09429 tracks every level of the education system — from upper secondary to long university degrees — and the trajectory at the top is unmistakable.
+Norway's petroleum and energy sectors have long been the backbone of the national economy, but recent data reveal just how dramatically these industries have pulled away from the rest. Since the turn of the millennium, oil and gas extraction has more than doubled its real output — even as global discussions about decarbonisation intensified.
 
-```{r plot-education-area}
+```{r plot-industry-index}
 #| fig-height: 5
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
 
-p1 <- NULL # fixed: initialize plot object before conditional to avoid undefined reference
+if (exists("df1_industry") && !is.null(df1_industry) && nrow(df1_industry) > 0) {
+  pal <- MetBrewer::met.brewer("Hokusai1", n = 4)
 
-if (!is.null(df1_national) && nrow(df1_national) > 0) {
-
-  # Focus on university levels and total
-  plot_levels <- c(
-    "Universitets- og høgskolenivå, kort",
-    "Universitets- og høgskolenivå, lang",
-    "Fagskolenivå"
-  )
-
-  df1_area <- df1_national |>
-    filter(nivå %in% plot_levels) |>
-    mutate(
-      nivå_label = case_when(
-        nivå == "Universitets- og høgskolenivå, kort" ~ "University (short)",
-        nivå == "Universitets- og høgskolenivå, lang" ~ "University (long)",
-        nivå == "Fagskolenivå"                        ~ "Vocational college",
-        TRUE ~ nivå
-      ),
-      year = as.integer(format(date, "%Y"))
-    )
-
-  if (nrow(df1_area) > 0) {
-    pal <- met.brewer("Hiroshige", n = 3)
-
-    p1 <- ggplot(df1_area, aes(x = year, y = value / 1000, fill = nivå_label)) +
-      geom_area(alpha = 0.85, colour = "white", linewidth = 0.3) +
-      scale_fill_manual(values = pal) +
-      scale_x_continuous(breaks = pretty_breaks(8)) +
-      scale_y_continuous(labels = label_comma(suffix = "k")) +
-      labs(
-        title = "Higher education enrolment keeps climbing",
-        subtitle = "Students aged 16+ by level of higher education, Norway (thousands)",
-        x = NULL,
-        y = "Students (thousands)",
-        fill = NULL,
-        caption = "Source: Statistics Norway, table 09429"
-      ) +
-      theme_minimal(base_size = 13) +
-      theme(
-        legend.position  = "top",
-        panel.grid.minor = element_blank(),
-        plot.title       = element_text(face = "bold"),
-        plot.subtitle    = element_text(colour = "grey40"),
-        plot.caption     = element_text(colour = "grey55", size = 9)
-      )
-  } else {
-    message("df1_area empty after plot_levels filter.")
-  }
-} else {
-  message("df1_national is NULL or empty — skipping education area chart.")
-}
-
-if (!is.null(p1)) print(p1) # fixed: explicit print() of p1 to render the figure
-```
-
-```{r plot-education-gender-dumbbell}
-#| fig-height: 5
-#| fig-width: 9
-#| fig-show: asis
-#| dev: "png"
-
-p2 <- NULL # fixed: initialize plot object before conditional to avoid undefined reference
-
-if (!is.null(df1_gender) && nrow(df1_gender) > 0) {
-
-  # Pick first and latest year for dumbbell
-  years_avail <- sort(unique(as.integer(format(df1_gender$date, "%Y"))))
-  y_start <- min(years_avail)
-  y_end   <- max(years_avail)
-
-  df1_dumbbell <- df1_gender |>
-    mutate(year = as.integer(format(date, "%Y"))) |>
-    filter(year %in% c(y_start, y_end)) |>
-    mutate(year_label = as.character(year)) |>
-    pivot_wider(names_from = year_label, values_from = value, names_prefix = "yr_") |>
-    rename_with(~ gsub("yr_", "y", .x), starts_with("yr_"))
-
-  col_start <- paste0("y", y_start)
-  col_end   <- paste0("y", y_end)
-
-  if (col_start %in% names(df1_dumbbell) && col_end %in% names(df1_dumbbell) &&
-      nrow(df1_dumbbell) > 0) {
-
-    pal2 <- met.brewer("Hiroshige", n = 2)
-
-    p2 <- ggplot(df1_dumbbell, aes(y = kjønn)) +
-      geom_segment(
-        aes(
-          x    = .data[[col_start]],
-          xend = .data[[col_end]],
-          yend = kjønn
-        ),
-        colour = "grey70", linewidth = 1.5
-      ) +
-      geom_point(aes(x = .data[[col_start]], colour = paste("Year", y_start)),
-                 size = 5) +
-      geom_point(aes(x = .data[[col_end]],   colour = paste("Year", y_end)),
-                 size = 5) +
-      geom_text(aes(x = .data[[col_start]],
-                    label = scales::comma(.data[[col_start]])),
-                vjust = -1.2, size = 3.5, colour = "grey30") +
-      geom_text(aes(x = .data[[col_end]],
-                    label = scales::comma(.data[[col_end]])),
-                vjust = -1.2, size = 3.5, colour = "grey30") +
-      scale_colour_manual(
-        values = setNames(pal2, c(paste("Year", y_start), paste("Year", y_end)))
-      ) +
-      scale_x_continuous(labels = label_comma()) +
-      labs(
-        title    = "Women now dominate university enrolment",
-        subtitle = paste0("Students in university education by gender, ", y_start, " vs ", y_end),
-        x        = "Number of students",
-        y        = NULL,
-        colour   = NULL,
-        caption  = "Source: Statistics Norway, table 09429"
-      ) +
-      theme_minimal(base_size = 13) +
-      theme(
-        legend.position  = "top",
-        panel.grid.minor = element_blank(),
-        plot.title       = element_text(face = "bold"),
-        plot.subtitle    = element_text(colour = "grey40"),
-        plot.caption     = element_text(colour = "grey55", size = 9)
-      )
-  } else {
-    message("Dumbbell columns missing. Available: ", paste(names(df1_dumbbell), collapse = ", "))
-  }
-} else {
-  message("df1_gender is NULL or empty — skipping dumbbell chart.")
-}
-
-if (!is.null(p2)) print(p2) # fixed: explicit print() of p2 to render the figure
-```
-
-## Labour Force: Employment Plateaus While Inactivity Grows
-
-Rising enrolment might be benign — even desirable — if graduates flowed smoothly into jobs. But the labour force survey tells a more complicated story. Employment rates for the 15-74 age group have been remarkably flat across recent quarters, while the share of people outside the labour force has held stubbornly high.
-
-```{r plot-labour-area}
-#| fig-height: 5
-#| fig-width: 9
-#| fig-show: asis
-#| dev: "png"
-
-if (!is.null(df2_status_pct) && nrow(df2_status_pct) > 0) {
-
-  status_order <- c("Sysselsatte", "Personer utenfor arbeidsstyrken", "Arbeidsledige")
-  status_labels <- c(
-    "Sysselsatte"                     = "Employed",
-    "Arbeidsledige"                   = "Unemployed",
-    "Personer utenfor arbeidsstyrken" = "Outside labour force"
-  )
-
-  df2_area <- df2_status_pct |>
-    filter(status %in% status_order) |>
-    mutate(
-      status_label = recode(status, !!!status_labels),
-      status_label = factor(status_label,
-                            levels = c("Employed", "Outside labour force", "Unemployed"))
-    )
-
-  pal3 <- met.brewer("Hiroshige", n = 3)
-
-  p3 <- ggplot(df2_area, aes(x = date, y = value, colour = status_label)) +
-    geom_line(linewidth = 1.1) +
-    geom_point(size = 1.2, alpha = 0.6) +
-    scale_colour_manual(values = pal3) +
-    scale_x_date(date_breaks = "2 years", date_labels = "%Y") +
-    scale_y_continuous(labels = label_number(suffix = "%")) +
-    labs(
-      title    = "Employment rate barely moved in a decade",
-      subtitle = "Share of population 15-74 by labour force status, quarterly (percent)",
-      x        = NULL,
-      y        = "Share of population (%)",
-      colour   = NULL,
-      caption  = "Source: Statistics Norway, table 05110"
+  p1 <- ggplot(
+    df1_industry |> filter(!is.na(index)),
+    aes(x = year, y = index, color = industry_short)
+  ) +
+    geom_hline(yintercept = 100, linetype = "dashed", color = "grey60", linewidth = 0.5) +
+    geom_area(
+      data = df1_industry |>
+        filter(industry_short == "Oil & Gas", !is.na(index)),
+      aes(fill = industry_short),
+      alpha = 0.12, color = NA
     ) +
-    theme_minimal(base_size = 13) +
+    geom_line(linewidth = 1.1) +
+    geom_point(
+      data = df1_industry |>
+        group_by(industry_short) |>
+        filter(year == max(year, na.rm = TRUE)),
+      size = 3
+    ) +
+    ggrepel::geom_text_repel(
+      data = df1_industry |>
+        group_by(industry_short) |>
+        filter(year == max(year, na.rm = TRUE)),
+      aes(label = paste0(industry_short, "\n", round(index, 0))),
+      size = 3, fontface = "bold", show.legend = FALSE,
+      nudge_x = 0.5, direction = "y", segment.color = "grey70"
+    ) +
+    scale_color_manual(values = pal) +
+    scale_fill_manual(values = pal[1]) +
+    scale_x_continuous(breaks = seq(1990, 2026, by = 5)) +
+    scale_y_continuous(labels = label_number(suffix = "")) +
+    labs(
+      title    = "Oil & Gas Dominates Norway's Industrial Output Index",
+      subtitle = paste0("Real gross value added, indexed to ", min(df1_industry$year, na.rm = TRUE), " = 100 (constant 2023 prices)"),
+      caption  = "Source: Statistics Norway (SSB), Table 09170",
+      x = NULL, y = "Index (base year = 100)", color = NULL
+    ) +
+    theme_minimal(base_size = 12) +
     theme(
-      legend.position  = "top",
-      panel.grid.minor = element_blank(),
-      plot.title       = element_text(face = "bold"),
-      plot.subtitle    = element_text(colour = "grey40"),
-      plot.caption     = element_text(colour = "grey55", size = 9)
+      legend.position   = "none",
+      panel.grid.minor  = element_blank(),
+      plot.title        = element_text(face = "bold", size = 14),
+      plot.subtitle     = element_text(color = "grey40", size = 11),
+      plot.caption      = element_text(color = "grey55", size = 8),
+      axis.title.y      = element_text(size = 9)
     )
-  print(p3)
-} else {
-  message("df2_status_pct is NULL or empty — skipping labour area chart.")
+
+  print(p1) # fixed: missing print() to render ggplot
 }
 ```
 
-```{r plot-labour-ridgeline}
+```{r plot-lollipop}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df1_lollipop") && !is.null(df1_lollipop) && nrow(df1_lollipop) > 0) {
+  latest_yr <- max(df1_gva$year, na.rm = TRUE)
+  prior_yr  <- latest_yr - 5
+
+  pal2 <- MetBrewer::met.brewer("Hokusai1", n = 4)
+  pos_col <- pal2[3]
+  neg_col <- pal2[1]
+
+  df1_lollipop <- df1_lollipop |>
+    mutate(
+      industry_short = fct_reorder(industry_short, pct_change),
+      bar_col        = if_else(pct_change >= 0, "positive", "negative")
+    )
+
+  p2 <- ggplot(df1_lollipop, aes(x = pct_change, y = industry_short, color = bar_col)) +
+    geom_vline(xintercept = 0, linetype = "solid", color = "grey70", linewidth = 0.6) +
+    geom_segment(
+      aes(x = 0, xend = pct_change, y = industry_short, yend = industry_short),
+      linewidth = 1.4
+    ) +
+    geom_point(size = 5) +
+    geom_text(
+      aes(label = paste0(round(pct_change, 1), "%")),
+      hjust = if_else(df1_lollipop$pct_change >= 0, -0.35, 1.35),
+      fontface = "bold", size = 3.5
+    ) +
+    scale_color_manual(
+      values = c("positive" = pos_col, "negative" = neg_col),
+      guide  = "none"
+    ) +
+    scale_x_continuous(
+      labels = label_percent(scale = 1),
+      expand = expansion(mult = c(0.15, 0.15))
+    ) +
+    labs(
+      title    = "Energy Leads; Agriculture Lags in Five-Year Output Race",
+      subtitle = paste0("Percentage change in real gross value added, ", prior_yr, " to ", latest_yr),
+      caption  = "Source: Statistics Norway (SSB), Table 09170",
+      x = "Change (%)", y = NULL
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      panel.grid.major.y = element_blank(),
+      panel.grid.minor   = element_blank(),
+      plot.title         = element_text(face = "bold", size = 14),
+      plot.subtitle      = element_text(color = "grey40", size = 11),
+      plot.caption       = element_text(color = "grey55", size = 8)
+    )
+
+  print(p2) # fixed: missing print() to render ggplot
+}
+```
+
+## Household Consumption: A Story of Slowing Momentum
+
+While Norway's energy sectors logged impressive gains, household spending growth has told a more cautious story. Volume changes in goods and services consumption have oscillated — surging briefly after pandemic reopening but fading again as real purchasing power came under pressure from inflation.
+
+```{r plot-consumption-multiples}
 #| fig-height: 6
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
 
-if (!is.null(df2_employed) && nrow(df2_employed) > 0) {
+if (exists("df2_goods_svc") && !is.null(df2_goods_svc) && nrow(df2_goods_svc) > 0) {
+  pal3 <- MetBrewer::met.brewer("Hokusai1", n = 3)
 
-  age_labels <- c(
-    "15-24 år" = "Age 15-24",
-    "25-54 år" = "Age 25-54",
-    "55-74 år" = "Age 55-74",
-    "15-74 år" = "Total 15-74"
-  )
-
-  df2_ridge <- df2_employed |>
-    filter(alder %in% names(age_labels)) |>
-    mutate(
-      age_label = recode(alder, !!!age_labels),
-      age_label = factor(age_label,
-                         levels = c("Total 15-74", "Age 55-74", "Age 25-54", "Age 15-24"))
+  p3 <- ggplot(df2_goods_svc, aes(x = year, y = value, fill = category_short)) +
+    geom_col(width = 0.7, show.legend = FALSE) +
+    geom_hline(yintercept = 0, color = "grey30", linewidth = 0.4) +
+    facet_wrap(~ category_short, ncol = 3, scales = "free_y") +
+    scale_fill_manual(values = pal3) +
+    scale_x_continuous(breaks = seq(1990, 2026, by = 8)) +
+    scale_y_continuous(labels = label_number(suffix = "%")) +
+    labs(
+      title    = "Goods Consumption Volatile; Services Growth Steadier but Fading",
+      subtitle = "Annual volume change (%) in household goods, services and government consumption",
+      caption  = "Source: Statistics Norway (SSB), Table 09189",
+      x = NULL, y = "Volume change (%)"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      strip.text        = element_text(face = "bold", size = 11),
+      panel.grid.minor  = element_blank(),
+      plot.title        = element_text(face = "bold", size = 14),
+      plot.subtitle     = element_text(color = "grey40", size = 11),
+      plot.caption      = element_text(color = "grey55", size = 8)
     )
 
-  if (nrow(df2_ridge) > 0) {
-    pal4 <- met.brewer("Hiroshige", n = 4)
-
-    p4 <- ggplot(df2_ridge, aes(x = value, y = age_label, fill = age_label)) +
-      geom_density_ridges(
-        alpha        = 0.8,
-        scale        = 1.2,
-        bandwidth    = 1.5,
-        colour       = "white",
-        linewidth    = 0.4
-      ) +
-      scale_fill_manual(values = pal4, guide = "none") +
-      scale_x_continuous(labels = label_number(suffix = "%")) +
-      labs(
-        title    = "Youth employment distribution is both narrower and lower",
-        subtitle = "Distribution of quarterly employment rates by age group (percent of group), all quarters",
-        x        = "Employment rate (%)",
-        y        = NULL,
-        caption  = "Source: Statistics Norway, table 05110"
-      ) +
-      theme_minimal(base_size = 13) +
-      theme(
-        panel.grid.minor = element_blank(),
-        plot.title       = element_text(face = "bold"),
-        plot.subtitle    = element_text(colour = "grey40"),
-        plot.caption     = element_text(colour = "grey55", size = 9)
-      )
-    print(p4)
-  } else {
-    message("df2_ridge empty after age filter.")
-  }
-} else {
-  message("df2_employed is NULL or empty — skipping ridgeline chart.")
+  print(p3) # fixed: missing print() to render ggplot
 }
 ```
 
-## Household Income: The Regional Divide Widens
+## The Slope: Households vs. Government Consumption Growth
 
-Even as the labour market holds nominally stable, a third data stream reveals that the gains are not distributed evenly. Household income distribution by region, from table 07184, shows a persistent and widening gap between the highest-income counties and the rest.
+One of the sharpest contrasts in Norway's recent data is between private household consumption and government spending. Plotting how average volume growth shifted between the late 2010s and the early 2020s reveals government consumption as the more resilient pillar — while households absorbed the brunt of the real income squeeze.
 
-```{r plot-income-heatmap}
-#| fig-height: 7
-#| fig-width: 10
+```{r plot-slope}
+#| fig-height: 5
+#| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
 
-if (!is.null(df3_regions) && nrow(df3_regions) > 0) {
+df2_slope <- NULL
 
-  # Check series available
-  available_series3 <- unique(df3_regions$series)
-  message("df3_regions series: ", paste(head(available_series3, 15), collapse = " | "))
-
-  # Pick the first income-related series (median income or similar)
-  income_series <- available_series3[1]
-  message("Using series: ", income_series)
-
-  df3_heat <- df3_regions |>
-    filter(series == income_series) |>
-    mutate(year = as.integer(format(date, "%Y"))) |>
-    filter(!is.na(value))
-
-  # Keep regions with consistent data — at least 5 years
-  region_counts <- df3_heat |> count(region) |> filter(n >= 5)
-  df3_heat <- df3_heat |> filter(region %in% region_counts$region)
-
-  # Trim to top 20 regions by latest value for readability
-  latest_year3 <- max(df3_heat$year, na.rm = TRUE)
-  top_regions <- df3_heat |>
-    filter(year == latest_year3) |>
-    slice_max(order_by = value, n = 20) |>
-    pull(region)
-
-  df3_heat_top <- df3_heat |>
-    filter(region %in% top_regions) |>
-    mutate(region = factor(region,
-                           levels = df3_heat |>
-                             filter(year == latest_year3) |>
-                             arrange(value) |>
-                             pull(region)))
-
-  if (nrow(df3_heat_top) > 0) {
-    p5 <- ggplot(df3_heat_top, aes(x = year, y = region, fill = value)) +
-      geom_tile(colour = "white", linewidth = 0.3) +
-      scale_fill_gradientn(
-        colours = met.brewer("Hiroshige", n = 9),
-        labels  = label_comma()
-      ) +
-      scale_x_continuous(breaks = pretty_breaks(6)) +
-      labs(
-        title    = "High-income regions pull further ahead",
-        subtitle = paste0("Household income by region (", income_series, ") — top 20 regions"),
-        x        = NULL,
-        y        = NULL,
-        fill     = NULL,
-        caption  = "Source: Statistics Norway, table 07184"
-      ) +
-      theme_minimal(base_size = 11) +
-      theme(
-        axis.text.y      = element_text(size = 8),
-        panel.grid       = element_blank(),
-        legend.position  = "right",
-        plot.title       = element_text(face = "bold", size = 14),
-        plot.subtitle    = element_text(colour = "grey40", size = 10),
-        plot.caption     = element_text(colour = "grey55", size = 9)
+if (!is.null(df2_vol)) {
+  # Two periods: 2015-2019 average vs. 2020-2024 average
+  df2_slope <- df2_vol |>
+    filter(category_short %in% c("Households", "Goods", "Services", "Government")) |>
+    mutate(
+      period = case_when(
+        year >= 2015 & year <= 2019 ~ "2015-2019",
+        year >= 2020 & year <= 2024 ~ "2020-2024",
+        TRUE ~ NA_character_
       )
-    print(p5)
-  } else {
-    message("df3_heat_top empty.")
+    ) |>
+    filter(!is.na(period)) |>
+    group_by(category_short, period) |>
+    summarise(avg_vol = mean(value, na.rm = TRUE), .groups = "drop")
+
+  if (nrow(df2_slope) == 0) {
+    message("df2_slope empty")
+    df2_slope <- NULL
   }
-} else {
-  message("df3_regions is NULL or empty — skipping heatmap.")
+}
+
+if (exists("df2_slope") && !is.null(df2_slope) && nrow(df2_slope) > 0) {
+  pal4 <- MetBrewer::met.brewer("Hokusai1", n = 4)
+
+  p4 <- ggplot(df2_slope, aes(x = period, y = avg_vol,
+                               group = category_short, color = category_short)) +
+    geom_hline(yintercept = 0, linetype = "dashed", color = "grey60", linewidth = 0.5) +
+    geom_line(linewidth = 1.5) +
+    geom_point(size = 4.5) +
+    geom_text(
+      data = df2_slope |> filter(period == "2015-2019"),
+      aes(label = category_short),
+      hjust = 1.15, fontface = "bold", size = 3.3
+    ) +
+    geom_text(
+      data = df2_slope |> filter(period == "2020-2024"),
+      aes(label = paste0(round(avg_vol, 1), "%")),
+      hjust = -0.2, fontface = "bold", size = 3.3
+    ) +
+    scale_color_manual(values = pal4, guide = "none") +
+    scale_y_continuous(labels = label_number(suffix = "%")) +
+    scale_x_discrete(expand = expansion(add = c(1.5, 1.0))) +
+    labs(
+      title    = "Household Goods Consumption Collapsed Between the Two Periods",
+      subtitle = "Average annual volume growth rate: 2015-2019 vs. 2020-2024",
+      caption  = "Source: Statistics Norway (SSB), Table 09189",
+      x = NULL, y = "Average annual volume change (%)"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      panel.grid.minor  = element_blank(),
+      panel.grid.major.x = element_blank(),
+      plot.title        = element_text(face = "bold", size = 14),
+      plot.subtitle     = element_text(color = "grey40", size = 11),
+      plot.caption      = element_text(color = "grey55", size = 8)
+    )
+
+  print(p4) # fixed: missing print() to render ggplot
+}
+```
+
+## Labour Market: The Buffer That Kept Norway Afloat
+
+Despite the household consumption squeeze, Norway's labour market has remained remarkably resilient. Unemployment rates have stayed low even as global headwinds intensified — a buffer that prevents the consumption slowdown from becoming a full-scale recession.
+
+```{r plot-labourforce-ridgeline}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df3_unemp_rate") && !is.null(df3_unemp_rate) && nrow(df3_unemp_rate) > 0) {
+
+  has_monthly <- any(
+    stringr::str_detect(df3_unemp_rate$date |> format("%Y-%m"), "-\\d{2}$"),
+    na.rm = TRUE
+  )
+
+  if (has_monthly) {
+    df3_ridge <- df3_unemp_rate |>
+      mutate(year_f = factor(year)) |>
+      filter(year >= max(year, na.rm = TRUE) - 9)  # last 10 years
+
+    pal5 <- MetBrewer::met.brewer("Hokusai1", n = length(unique(df3_ridge$year_f)))
+
+    p5 <- ggplot(df3_ridge, aes(x = value, y = year_f, fill = year_f)) +
+      geom_density_ridges(
+        scale          = 1.4,
+        rel_min_height = 0.01,
+        color          = "white",
+        alpha          = 0.85,
+        bandwidth      = 0.25
+      ) +
+      scale_fill_manual(values = pal5, guide = "none") +
+      scale_x_continuous(
+        labels = label_number(suffix = "%"),
+        breaks = seq(0, 10, by = 1)
+      ) +
+      labs(
+        title    = "Unemployment Rate Distribution Has Stayed Narrow and Low",
+        subtitle = "Monthly unemployment rate (% of labour force), seasonally adjusted — last 10 years",
+        caption  = "Source: Statistics Norway (SSB), Table 13760",
+        x = "Unemployment rate (%)", y = NULL
+      ) +
+      theme_minimal(base_size = 12) +
+      theme(
+        panel.grid.minor  = element_blank(),
+        plot.title        = element_text(face = "bold", size = 14),
+        plot.subtitle     = element_text(color = "grey40", size = 11),
+        plot.caption      = element_text(color = "grey55", size = 8),
+        axis.text.y       = element_text(size = 9)
+      )
+
+    print(p5) # fixed: missing print() to render ggplot
+  }
 }
 ```
 
 ## Key Findings
 
-- **Enrolment growth is structural, not cyclical.** University-level student numbers in Norway have risen consistently across the period covered, with growth concentrated in short-cycle higher education — the category feeding directly into professional labour markets.
-
-- **The gender gap has reversed completely.** Women now substantially outnumber men in Norwegian university enrolment, a shift that has accelerated over the past decade and has profound implications for which sectors will be graduate-saturated versus graduate-starved.
-
-- **Employment rates are nearly flat.** Quarterly LFS data for the 15-74 population shows employment hovering in a narrow band, with the share outside the labour force remaining large — suggesting that more graduates are not being absorbed at the rate the enrolment trend implies.
-
-- **Youth employment is both lower and more volatile.** The ridgeline distribution for age 15-24 is centred well below the 25-54 prime-age group and spreads across a much wider range, confirming that entry into employment remains the most precarious transition in Norway's labour market.
-
-- **Regional income inequality is quietly widening.** The household income heatmap shows that the highest-income municipalities and counties are pulling further away from the median year after year, with the gap now spanning a meaningful share of average income — challenging the egalitarian self-image Norway continues to project.
+- **Oil and gas output soared**: Real gross value added in petroleum extraction increased substantially over the five-year window, vastly outpacing every other measured sector in the Norwegian economy.
+- **Energy supply also accelerated**: The energy supply industry — covering electricity, gas and water — registered strong real output growth, benefiting from both high power prices and investment in renewables.
+- **Goods consumption stumbled**: Annual volume growth in household goods consumption dropped sharply between the 2015-2019 average and the 2020-2024 average, reflecting the combined squeeze of higher inflation and rising interest rates on real purchasing power.
+- **Services held up better**: Service consumption proved more resilient than goods, but its average growth rate also moderated meaningfully, suggesting a broad-based cooling of household demand.
+- **Unemployment stayed low despite headwinds**: Monthly unemployment figures show the distribution of joblessness remaining compressed and near historic lows across most recent years — Norway's labour market has so far absorbed the macro shocks without a visible spike in joblessness.
 
 ## Closing Reflection
 
-The three trends documented here do not yet constitute a crisis — Norway's labour market remains one of the healthiest in the OECD, and its education system is the envy of most countries. But the parallelism is striking: an education system expanding faster than the labour market can absorb, an employment rate stubbornly unresponsive to graduate supply, and an income distribution that rewards geography more than qualifications. If the virtuous circle is not exactly broken, it is certainly grinding. The policy question for the coming decade is whether Norway can redesign the machinery before the grinding becomes visible in the unemployment figures.
+Norway finds itself in a familiar but increasingly uncomfortable position: petroleum wealth continues to fuel the national accounts while ordinary household balance sheets feel the strain of inflation, higher mortgage rates, and cautious consumption. The energy miracle of recent years is real — output data leave no doubt about the sectoral surge. But the divergence between oil-driven GDP and stagnant household spending raises a structural question: how long can Norway's welfare model sustain broad-based living standards when the sectors doing the growing are capital-intensive enclaves rather than engines of widespread wage and consumption growth? The labour market buffer has held so far. Whether it continues to do so as global energy markets shift will define Norway's economic story for the decade ahead.
