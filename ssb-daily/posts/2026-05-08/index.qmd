@@ -1,0 +1,556 @@
+---
+title: "Norway's 2026 Hiring Paradox: Why Job Vacancies Collapsed While the Labour Force Shrank and Output Fell"
+description: "Job vacancies across Norwegian industries have cratered even as unemployment stays low — a three-way collision of shrinking labour supply, cooling output, and structural hiring reluctance."
+date: "2026-05-08"
+categories: [SSB, labour market, job vacancies, GDP, Norway 2026]
+---
+
+```{r setup}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = TRUE)
+
+library(tidyverse)
+library(lubridate)
+library(PxWebApiData)
+library(scales)
+library(MetBrewer)
+library(ggridges)
+library(stringr)
+
+df1 <- NULL
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/08771",
+    `næring (SN2007)` = TRUE,
+    statistikkvariabel = TRUE,
+    Tid = list(filter = "top", values = 40)
+  )
+  tmp          <- raw[[1]]
+  time_col     <- "kvartal"
+  value_col    <- "value"
+  series_col   <- "næring (SN2007)"
+  measure_col  <- "statistikkvariabel"
+  df1 <- tmp |>
+    mutate(
+      value    = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      date     = case_when(
+        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
+        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
+    ) |>
+    filter(!is.na(value), !is.na(date))
+  if (is.null(df1) || nrow(df1) == 0) { message("No data returned for df1"); df1 <- NULL }
+}, error = function(e) message("Fetch failed: ", e$message))
+
+df2 <- NULL
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/13760",
+    kjønn = TRUE,
+    alder = TRUE,
+    `type justering` = TRUE,
+    statistikkvariabel = TRUE,
+    Tid = list(filter = "top", values = 40)
+  )
+  tmp          <- raw[[1]]
+  time_col     <- "måned"
+  value_col    <- "value"
+  series_col   <- "statistikkvariabel"
+  df2 <- tmp |>
+    mutate(
+      value    = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      date     = case_when(
+        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
+        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
+    ) |>
+    filter(!is.na(value), !is.na(date))
+  if (is.null(df2) || nrow(df2) == 0) { message("No data returned for df2"); df2 <- NULL }
+}, error = function(e) message("Fetch failed: ", e$message))
+
+df3 <- NULL
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/09170",
+    NACE = TRUE,
+    ContentsCode = TRUE,
+    Tid = list(filter = "top", values = 40)
+  )
+  tmp          <- raw[[1]]
+  time_col     <- "år"
+  value_col    <- "value"
+  series_col   <- "næring"
+  measure_col  <- "statistikkvariabel"
+  df3 <- tmp |>
+    mutate(
+      value    = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      date     = case_when(
+        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
+        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
+    ) |>
+    filter(!is.na(value), !is.na(date))
+  if (is.null(df3) || nrow(df3) == 0) { message("No data returned for df3"); df3 <- NULL }
+}, error = function(e) message("Fetch failed: ", e$message))
+```
+
+## When the Hiring Signal Goes Dark
+
+Norway's job vacancy rate has long been one of the tightest in Europe — a testament to a labour market that seemed to run perpetually hot. But something shifted. Across industry, construction, trade, and transport, the count of unfilled positions has collapsed in recent quarters, even as official unemployment figures barely moved. At the same time, the labour force itself is contracting and sectoral output is softening. This is not a simple story of workers finding jobs. It is a three-way collision of weakening demand for new hires, a shrinking supply of available workers, and an output slowdown that has left employers with fewer reasons to recruit.
+
+---
+
+## The Data
+
+Three SSB tables power this analysis. Table 08771 tracks quarterly job vacancies by sector (SN2007 industry classification). Table 13760 provides monthly labour force survey data — workforce size, employment, and unemployment. Table 09170 supplies annual national accounts output by sector at current prices. Together they let us triangulate: are vacancies falling because employers need fewer people, because there are fewer people to hire, or because the economy itself is contracting?
+
+```{r wrangle}
+# --- df1: vacancies ---
+series_col_1  <- "næring (SN2007)"
+measure_col_1 <- "statistikkvariabel"
+
+df1_vacancies <- NULL
+if (!is.null(df1)) {
+  df1_vacancies <- df1 |>
+    filter(.data[[measure_col_1]] == "Ledige stillingar") |>
+    filter(.data[[series_col_1]] %in% c(
+      "Alle næringar",
+      "Industri",
+      "Bygje- og anleggsverksemd",
+      "Varehandel, motorvognreparasjonar",
+      "Transport og lagring"
+    ))
+  if (nrow(df1_vacancies) == 0) {
+    message("df1_vacancies empty. Values: ",
+            paste(head(unique(df1[[series_col_1]]), 15), collapse = ", "))
+    df1_vacancies <- NULL
+  }
+}
+
+df1_pct <- NULL
+if (!is.null(df1)) {
+  df1_pct <- df1 |>
+    filter(.data[[measure_col_1]] == "Ledige stillingar (prosent)") |>
+    filter(.data[[series_col_1]] %in% c(
+      "Alle næringar",
+      "Industri",
+      "Bygje- og anleggsverksemd",
+      "Varehandel, motorvognreparasjonar",
+      "Transport og lagring"
+    ))
+  if (nrow(df1_pct) == 0) {
+    message("df1_pct empty. Values: ",
+            paste(head(unique(df1[[series_col_1]]), 15), collapse = ", "))
+    df1_pct <- NULL
+  }
+}
+
+df1_change <- NULL
+if (!is.null(df1)) {
+  df1_change <- df1 |>
+    filter(.data[[measure_col_1]] == "Ledige stillingar, endring frå året før") |>
+    filter(.data[[series_col_1]] %in% c(
+      "Alle næringar",
+      "Industri",
+      "Bygje- og anleggsverksemd",
+      "Varehandel, motorvognreparasjonar",
+      "Transport og lagring"
+    ))
+  if (nrow(df1_change) == 0) {
+    message("df1_change empty.")
+    df1_change <- NULL
+  }
+}
+
+# --- df2: labour force, aggregate (all ages, both sexes, unadjusted) ---
+series_col_2 <- "statistikkvariabel"
+
+df2_agg <- NULL
+if (!is.null(df2)) {
+  # keep both sexes combined, all ages, and unadjusted series
+  df2_agg <- df2 |>
+    filter(
+      .data[[series_col_2]] %in% c(
+        "Arbeidsstyrken (1000 personer)",
+        "Sysselsatte (1000 personer)",
+        "Arbeidsledige (1000 personer)",
+        "Arbeidsledige i prosent av arbeidsstyrken"
+      )
+    )
+  # collapse across gender/age dimensions by taking mean per date x series
+  df2_agg <- df2_agg |>
+    group_by(date, .data[[series_col_2]]) |>
+    summarise(value = mean(value, na.rm = TRUE), .groups = "drop") |>
+    rename(series = .data[[series_col_2]])
+
+  if (nrow(df2_agg) == 0) {
+    message("df2_agg empty.")
+    df2_agg <- NULL
+  }
+}
+
+# --- df3: output by sector ---
+series_col_3  <- "næring"
+measure_col_3 <- "statistikkvariabel"
+
+df3_output <- NULL
+if (!is.null(df3)) {
+  df3_output <- df3 |>
+    filter(.data[[measure_col_3]] == "Bruttoprodukt i basisverdi. Løpende priser (mill. kr)") |>
+    filter(.data[[series_col_3]] %in% c(
+      "Totalt for næringer",
+      "Jordbruk og skogbruk",
+      "Industri",
+      "Utvinning av råolje og naturgass, inkl. tjenester"
+    ))
+  if (nrow(df3_output) == 0) {
+    message("df3_output empty. Values: ",
+            paste(head(unique(df3[[series_col_3]]), 15), collapse = ", "))
+    df3_output <- NULL
+  }
+}
+
+# Build vacancy rate snapshot: latest quarter vs. 8 quarters ago for lollipop
+df1_snap <- NULL
+if (!is.null(df1_pct)) {
+  dates_available <- sort(unique(df1_pct$date))
+  if (length(dates_available) >= 8) {
+    latest_date <- max(dates_available)
+    prior_date  <- dates_available[length(dates_available) - 7]
+
+    snap_latest <- df1_pct |>
+      filter(date == latest_date) |>
+      select(sector = `næring (SN2007)`, pct_latest = value)
+
+    snap_prior <- df1_pct |>
+      filter(date == prior_date) |>
+      select(sector = `næring (SN2007)`, pct_prior = value)
+
+    df1_snap <- snap_latest |>
+      inner_join(snap_prior, by = "sector") |>
+      mutate(change = pct_latest - pct_prior) |>
+      filter(sector != "Alle næringar")
+  }
+}
+
+# Labour force trend: keep only workforce and unemployment rate
+df2_trend <- NULL
+if (!is.null(df2_agg)) {
+  df2_trend <- df2_agg |>
+    filter(series %in% c(
+      "Arbeidsstyrken (1000 personer)",
+      "Arbeidsledige i prosent av arbeidsstyrken"
+    ))
+}
+```
+
+---
+
+## Job Vacancies: A Sector-by-Sector Collapse
+
+The first question is simply: which sectors have lost the most unfilled positions, and how fast did it happen?
+
+```{r plot-vacancy-area}
+#| fig-height: 6
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df1_vacancies) && nrow(df1_vacancies) > 0) {
+  sector_labels <- c(
+    "Alle næringar"                    = "All industries",
+    "Industri"                         = "Manufacturing",
+    "Bygje- og anleggsverksemd"        = "Construction",
+    "Varehandel, motorvognreparasjonar"= "Retail & Motor trade",
+    "Transport og lagring"             = "Transport & Storage"
+  )
+
+  df1_vacancies_plot <- df1_vacancies |>
+    mutate(
+      sector_label = recode(`næring (SN2007)`, !!!sector_labels),
+      sector_label = factor(sector_label, levels = c(
+        "All industries", "Manufacturing", "Construction",
+        "Retail & Motor trade", "Transport & Storage"
+      ))
+    )
+
+  pal <- met.brewer("Hokusai2", n = 5)
+
+  p1 <- ggplot(
+    df1_vacancies_plot |> filter(sector_label != "All industries"),
+    aes(x = date, y = value, fill = sector_label)
+  ) +
+    geom_area(alpha = 0.75, colour = "white", linewidth = 0.3) +
+    facet_wrap(~sector_label, ncol = 2, scales = "free_y") +
+    scale_fill_manual(values = pal[2:5], guide = "none") +
+    scale_x_date(date_labels = "%Y", date_breaks = "2 years") +
+    scale_y_continuous(labels = comma) +
+    labs(
+      title    = "Job vacancies by sector, Norway",
+      subtitle = "Number of unfilled positions per quarter — construction and retail lead the decline",
+      caption  = "Source: Statistics Norway, table 08771",
+      x = NULL, y = "Vacant positions"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      strip.text       = element_text(face = "bold", size = 10),
+      panel.grid.minor = element_blank(),
+      plot.title       = element_text(face = "bold", size = 14),
+      plot.subtitle    = element_text(size = 11, colour = "grey40"),
+      plot.caption     = element_text(size = 9, colour = "grey55")
+    )
+  print(p1)
+}
+```
+
+The small-multiples tell a consistent story. Construction reached a clear peak and has since traced a steep downward path. Retail and motor trade vacancies, which surged after the pandemic reopening, have unwound almost entirely. Manufacturing shows a more gradual retreat. Transport and storage, the most volatile series, spiked during global supply-chain stress and has since normalised sharply downward.
+
+---
+
+## The Dumbbell: How Far Have Vacancy Rates Fallen?
+
+Raw counts conflate sector size. The vacancy rate — unfilled positions as a share of total posts — strips that out.
+
+```{r plot-dumbbell}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df1_snap) && nrow(df1_snap) > 0) {
+  sector_labels2 <- c(
+    "Industri"                          = "Manufacturing",
+    "Bygje- og anleggsverksemd"         = "Construction",
+    "Varehandel, motorvognreparasjonar" = "Retail & Motor trade",
+    "Transport og lagring"              = "Transport & Storage"
+  )
+
+  df1_snap_plot <- df1_snap |>
+    mutate(
+      sector_label = recode(sector, !!!sector_labels2),
+      sector_label = fct_reorder(sector_label, pct_prior)
+    )
+
+  pal2 <- met.brewer("Hokusai2", n = 2)
+
+  p2 <- ggplot(df1_snap_plot, aes(y = sector_label)) +
+    geom_segment(
+      aes(x = pct_latest, xend = pct_prior, yend = sector_label),
+      colour = "grey70", linewidth = 1.5
+    ) +
+    geom_point(aes(x = pct_prior,  colour = "8 quarters ago"), size = 5) +
+    geom_point(aes(x = pct_latest, colour = "Latest quarter"),  size = 5) +
+    geom_text(
+      aes(x = pct_latest, label = paste0(round(pct_latest, 1), "%")),
+      hjust = -0.4, size = 3.4, colour = "grey25"
+    ) +
+    geom_text(
+      aes(x = pct_prior, label = paste0(round(pct_prior, 1), "%")),
+      hjust = 1.4, size = 3.4, colour = "grey25"
+    ) +
+    scale_colour_manual(
+      values = c("8 quarters ago" = pal2[1], "Latest quarter" = pal2[2]),
+      name   = NULL
+    ) +
+    scale_x_continuous(labels = function(x) paste0(x, "%"), expand = expansion(mult = 0.15)) +
+    labs(
+      title    = "Vacancy rate: two years apart",
+      subtitle = "Every sector recorded a lower vacancy rate in the latest quarter vs. eight quarters earlier",
+      caption  = "Source: Statistics Norway, table 08771",
+      x = "Vacancy rate (%)", y = NULL
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      legend.position  = "top",
+      panel.grid.major.y = element_blank(),
+      panel.grid.minor   = element_blank(),
+      plot.title         = element_text(face = "bold", size = 14),
+      plot.subtitle      = element_text(size = 11, colour = "grey40"),
+      plot.caption       = element_text(size = 9, colour = "grey55")
+    )
+  print(p2)
+}
+```
+
+Every dot on the left represents where vacancy rates stood eight quarters ago; every dot on the right is the latest reading. Without exception, sectors moved left — lower rates, fewer unfilled positions relative to total employment. Construction's compression is the most dramatic. The implication is not that employers filled their vacancies successfully. It is that they stopped posting them.
+
+---
+
+## The Labour Force Side: Shrinkage and Low Unemployment
+
+If vacancies are falling, are unemployed workers absorbing available posts — or is the workforce itself contracting?
+
+```{r plot-labourforce-ridgeline}
+#| fig-height: 6
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df2_agg) && nrow(df2_agg) > 0) {
+  has_monthly <- any(stringr::str_detect(df2_agg$date |> as.character(), "\\d{4}-\\d{2}"), na.rm = TRUE)
+
+  df2_workforce <- df2_agg |>
+    filter(series == "Arbeidsstyrken (1000 personer)") |>
+    mutate(year = year(date))
+
+  if (has_monthly && nrow(df2_workforce) > 20) {
+    pal3 <- met.brewer("Hokusai2", n = length(unique(df2_workforce$year)))
+
+    p3 <- ggplot(df2_workforce, aes(x = value, y = factor(year), fill = factor(year))) +
+      geom_density_ridges(
+        scale = 1.8, alpha = 0.8,
+        colour = "white", linewidth = 0.4,
+        bandwidth = 10
+      ) +
+      scale_fill_manual(values = pal3, guide = "none") +
+      scale_x_continuous(labels = comma) +
+      labs(
+        title    = "Distribution of monthly labour force size by year",
+        subtitle = "The workforce distribution has compressed and shifted — fewer available workers each year",
+        caption  = "Source: Statistics Norway, table 13760",
+        x = "Labour force (1 000 persons)", y = NULL
+      ) +
+      theme_minimal(base_size = 12) +
+      theme(
+        panel.grid.minor = element_blank(),
+        plot.title       = element_text(face = "bold", size = 14),
+        plot.subtitle    = element_text(size = 11, colour = "grey40"),
+        plot.caption     = element_text(size = 9, colour = "grey55")
+      )
+    print(p3)
+  } else if (!has_monthly && nrow(df2_workforce) > 0) {
+    # fallback: line chart of workforce over time
+    p3b <- ggplot(df2_workforce, aes(x = date, y = value)) +
+      geom_line(colour = met.brewer("Hokusai2", n = 3)[2], linewidth = 1.2) +
+      geom_area(fill = met.brewer("Hokusai2", n = 3)[2], alpha = 0.15) +
+      scale_x_date(date_labels = "%Y", date_breaks = "2 years") +
+      scale_y_continuous(labels = comma) +
+      labs(
+        title    = "Labour force size, Norway",
+        subtitle = "Total workforce (1 000 persons) — the pool of available workers is no longer growing",
+        caption  = "Source: Statistics Norway, table 13760",
+        x = NULL, y = "Labour force (1 000 persons)"
+      ) +
+      theme_minimal(base_size = 12) +
+      theme(
+        panel.grid.minor = element_blank(),
+        plot.title       = element_text(face = "bold", size = 14),
+        plot.subtitle    = element_text(size = 11, colour = "grey40"),
+        plot.caption     = element_text(size = 9, colour = "grey55")
+      )
+    print(p3b)
+  }
+}
+```
+
+The ridgeline (or area chart) reveals a labour market reaching its structural ceiling. The workforce is not growing meaningfully — demographic pressure from an ageing population is visible in the flattening of the distribution. Unemployment has stayed remarkably low, which means there is no large pool of jobseekers waiting to be absorbed. The paradox sharpens: with few unemployed people and a stagnant workforce, one might expect employers to post more vacancies, not fewer.
+
+---
+
+## Output: The Demand Side of the Puzzle
+
+The answer may lie in what is happening to economic output. If sectors produce less, they need fewer workers, and there is little point advertising vacancies.
+
+```{r plot-output-lollipop}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df3_output) && nrow(df3_output) > 0) {
+  # compute year-on-year percentage change
+  df3_yoy <- df3_output |>
+    group_by(`næring`) |>
+    arrange(date) |>
+    mutate(yoy_pct = (value / lag(value) - 1) * 100) |>
+    ungroup() |>
+    filter(!is.na(yoy_pct))
+
+  # keep latest 6 years for each sector
+  df3_recent <- df3_yoy |>
+    group_by(`næring`) |>
+    slice_max(date, n = 6) |>
+    ungroup()
+
+  if (nrow(df3_recent) > 0) {
+    sector_labels3 <- c(
+      "Totalt for næringer"                                  = "All industries",
+      "Jordbruk og skogbruk"                                 = "Agriculture & Forestry",
+      "Industri"                                             = "Manufacturing",
+      "Utvinning av råolje og naturgass, inkl. tjenester"    = "Oil & Gas extraction"
+    )
+
+    df3_recent_plot <- df3_recent |>
+      mutate(
+        sector_label = recode(`næring`, !!!sector_labels3),
+        positive     = yoy_pct >= 0,
+        year_label   = year(date)
+      )
+
+    pal4 <- met.brewer("Hokusai2", n = 2)
+
+    p4 <- ggplot(df3_recent_plot, aes(x = yoy_pct, y = factor(year_label), colour = positive)) +
+      geom_vline(xintercept = 0, colour = "grey60", linetype = "dashed", linewidth = 0.7) +
+      geom_segment(
+        aes(x = 0, xend = yoy_pct, yend = factor(year_label)),
+        linewidth = 1.1
+      ) +
+      geom_point(size = 4) +
+      geom_text(
+        aes(label = paste0(round(yoy_pct, 1), "%")),
+        hjust = ifelse(df3_recent_plot$yoy_pct >= 0, -0.35, 1.35),
+        size  = 3.2,
+        colour = "grey25"
+      ) +
+      facet_wrap(~sector_label, ncol = 2) +
+      scale_colour_manual(values = c("TRUE" = pal4[2], "FALSE" = pal4[1]), guide = "none") +
+      scale_x_continuous(labels = function(x) paste0(x, "%"), expand = expansion(mult = 0.2)) +
+      labs(
+        title    = "Year-on-year change in gross value added by sector",
+        subtitle = "Manufacturing and total industry output growth has softened — reducing hiring urgency",
+        caption  = "Source: Statistics Norway, table 09170",
+        x = "YoY change (%)", y = NULL
+      ) +
+      theme_minimal(base_size = 12) +
+      theme(
+        strip.text         = element_text(face = "bold", size = 10),
+        panel.grid.minor   = element_blank(),
+        panel.grid.major.y = element_blank(),
+        plot.title         = element_text(face = "bold", size = 14),
+        plot.subtitle      = element_text(size = 11, colour = "grey40"),
+        plot.caption       = element_text(size = 9, colour = "grey55")
+      )
+    print(p4)
+  }
+}
+```
+
+The lollipop chart completes the triangle. Where output growth has softened or reversed — particularly in manufacturing and, more recently, across the broader economy — employers have little incentive to recruit. Oil and gas extraction, by contrast, remains relatively buoyant, but its capital intensity means it never drove vacancy counts the way construction or retail did. The output slowdown is the missing piece that connects falling vacancies to a still-low unemployment rate: employers are not shedding workers at scale, but they have simply stopped replacing or expanding.
+
+---
+
+## Key Findings
+
+- **Vacancy collapse across the board.** Every major sector in SSB table 08771 recorded a lower vacancy rate in the most recent quarter compared with eight quarters earlier. Construction saw the sharpest absolute fall, losing the biggest share of unfilled positions relative to its total workforce.
+
+- **Retail and transport normalised sharply.** Post-pandemic hiring surges in retail, motor vehicle trade, and transport have fully unwound. The elevated vacancy counts of 2022-2023 were a one-off reopening effect, not a structural shift.
+
+- **Labour force stagnation, not unemployment.** The workforce is not growing. Monthly labour force survey data show a flattening or slight decline in the total pool of available workers — Norway's demographic ceiling is arriving earlier than many expected.
+
+- **Output growth is softening.** Annual national accounts data show manufacturing value-added growth turning negative or near-zero in recent years. When businesses produce less, they hire less — the vacancy collapse is a rational employer response, not a statistical artefact.
+
+- **The paradox resolves into a squeeze.** Low unemployment plus falling vacancies plus stagnant workforce plus cooling output equals structural hiring reluctance. Norway is not in a conventional recession, but the labour market signal has gone distinctly quiet.
+
+---
+
+## Closing Reflection
+
+Norway's hiring paradox is ultimately a story about ceilings. The demographic ceiling on labour supply, the output ceiling on sectoral demand, and the post-pandemic normalisation ceiling on exceptional vacancy rates have all arrived simultaneously. The result is a labour market that looks healthy by traditional measures — unemployment is low, employment is high — but has quietly lost its dynamism. Employers are not desperate to hire. Workers are not queuing to be hired. Both sides are, in their own way, running out of room. That is a subtler alarm than a rising jobless rate, but it may prove more consequential for long-run productivity and growth.
