@@ -574,6 +574,32 @@ After ANY filter() that narrows to specific category labels:
     print(p)
   }
 
+## Variable-scope discipline (CRITICAL — prevents "object X not found")
+Every derived data frame referenced by ANY later chunk MUST be initialized to NULL
+at the top of the wrangle chunk, BEFORE any conditional logic. A wrangle branch
+that does not run otherwise leaves the variable undefined and the plot chunk that
+references it crashes with "object X not found" — the chunk does not just skip.
+
+WRONG (df1_top is only created if df1 is non-null — undefined otherwise):
+  if (!is.null(df1)) {
+    df1_national <- df1 |> ...
+    df1_top      <- df1_national |> ...   # ← never assigned if df1 is NULL
+  }
+
+RIGHT (every derived var declared up front, then conditionally populated):
+  df1_national <- NULL
+  df1_top      <- NULL
+  if (!is.null(df1)) {
+    df1_national <- df1 |> ...
+    df1_top      <- df1_national |> ...
+  }
+
+Plot chunk guards must check existence + null + nrow:
+  if (exists("df1_top") && !is.null(df1_top) && nrow(df1_top) > 0) {
+    p <- ggplot(df1_top, ...) + ...
+    print(p)
+  }
+
 ## Frequency guard (CRITICAL)
 The spec specifies frequency for each table. Respect it strictly:
 - frequency = "year"    → NO quarterly or monthly decomposition; use year-over-year trends
@@ -755,6 +781,32 @@ BUG 7 — FILTER WITHOUT nrow GUARD
   After every filter() selecting categories:
     if (nrow(df_sub) == 0) { message("Filter empty: ", paste(head(unique(df[[col]]), 15), collapse=", ")); df_sub <- NULL }
   Then: if (!is.null(df_sub)) { p <- ggplot(df_sub, ...); print(p) }
+
+BUG 9 — DERIVED VARIABLE NOT NULL-INITIALIZED AT TOP OF WRANGLE CHUNK
+  Symptom: a downstream plot chunk fails with "object X not found" because X is
+  only assigned inside an if-branch that did not execute.
+
+  Wrong (df1_top is only defined when df1 is non-null):
+    if (!is.null(df1)) {
+      df1_national <- df1 |> ...
+      df1_top      <- df1_national |> ...
+    }
+
+  Fix: scan the wrangle chunk for assignments inside conditional branches.
+  For every such variable, INSERT a `var <- NULL` line at the top of the wrangle
+  chunk, BEFORE any if/tryCatch/for. Order: list every NULL-init first, then the
+  conditional block that populates them.
+
+    df1_national <- NULL
+    df1_top      <- NULL
+    if (!is.null(df1)) {
+      df1_national <- df1 |> ...
+      df1_top      <- df1_national |> ...
+    }
+
+  Also: every plot chunk guard MUST use the triple
+    if (exists("X") && !is.null(X) && nrow(X) > 0) { ... }
+  Upgrade any guard missing exists() or nrow() to use the full triple.
 
 OUTPUT FORMAT:
 Line 1: ISSUES: <comma-separated bugs fixed, or "none">

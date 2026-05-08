@@ -2,8 +2,9 @@
 # =============================================================================
 # fix_post.R
 # Runs after `quarto render`. Reads the freeze JSON for today's SSB post,
-# detects R error blocks, calls Claude to fix the QMD, re-renders the single
-# post, and appends the error pattern to error_patterns.md for future learning.
+# detects R error blocks AND missing figures, calls Claude to fix the QMD,
+# re-renders the single post, and appends the error pattern to
+# error_patterns.md for future learning.
 # Always exits 0 — never blocks deployment.
 # =============================================================================
 
@@ -15,70 +16,129 @@ TODAY             <- Sys.Date()
 POST_SLUG         <- format(TODAY, "%Y-%m-%d")
 POST_DIR          <- file.path("ssb-daily", "posts", POST_SLUG)
 POST_FILE         <- file.path(POST_DIR, "index.qmd")
-FREEZE_JSON       <- file.path("_freeze", "ssb-daily", "posts", POST_SLUG,
-                               "index", "execute-results", "html.json")
+FREEZE_DIR        <- file.path("_freeze", "ssb-daily", "posts", POST_SLUG, "index")
+FREEZE_JSON       <- file.path(FREEZE_DIR, "execute-results", "html.json")
+FIGURE_DIR        <- file.path(FREEZE_DIR, "figure-html")
 PATTERNS_FILE     <- file.path("ssb-daily", "error_patterns.md")
 MAX_PATTERNS      <- 15L
 
 message("fix_post.R — checking ", POST_SLUG)
 
-# ── Safe exit helper ──────────────────────────────────────────────────────────
 bail <- function(msg) { message(msg); quit(save = "no", status = 0) }
+
+# ── Detect ::: cell-output-error blocks (and legacy ## Error headings) ────────
+# Returns a list of character snippets, one per error block.
+detect_error_blocks <- function(lines) {
+  open_re <- "^::: \\{\\.cell-output \\.cell-output-error\\}"
+  head_re <- "^## Error"
+  open_idx <- grep(open_re, lines)
+  head_idx <- grep(head_re, lines)
+
+  snippets <- character(0)
+
+  # Walk each ::: opener to its matching close fence (lone ":::" line)
+  for (i in open_idx) {
+    end <- length(lines)
+    for (j in (i + 1L):min(length(lines), i + 20L)) {
+      if (identical(trimws(lines[j]), ":::")) { end <- j; break }
+    }
+    snippets <- c(snippets, paste(lines[i:end], collapse = "\n"))
+  }
+
+  # Legacy ## Error: ±4-line window
+  for (i in head_idx) {
+    start <- max(1L, i - 4L)
+    end   <- min(length(lines), i + 4L)
+    snippets <- c(snippets, paste(lines[start:end], collapse = "\n"))
+  }
+
+  snippets
+}
+
+# ── Detect plot-* chunks in the QMD that produced no figure ──────────────────
+# Returns a character vector of chunk labels with no corresponding PNG.
+detect_empty_figures <- function(qmd_path, figure_dir) {
+  if (!file.exists(qmd_path)) return(character(0))
+  qmd <- readLines(qmd_path, warn = FALSE)
+  fence_idx <- grep("^```\\{r\\s+([^,}\\s]+)", qmd, perl = TRUE)
+  labels <- sub("^```\\{r\\s+([^,}\\s]+).*$", "\\1", qmd[fence_idx], perl = TRUE)
+  plot_labels <- labels[grepl("^plot[-_]", labels)]
+  if (length(plot_labels) == 0L) return(character(0))
+
+  if (!dir.exists(figure_dir)) {
+    # Whole figure dir is missing — every plot chunk is empty
+    return(plot_labels)
+  }
+
+  pngs <- list.files(figure_dir, pattern = "\\.png$")
+  # PNG names are "{label}-{n}.png"; strip "-N.png" to recover the chunk label
+  png_labels <- unique(sub("-\\d+\\.png$", "", pngs))
+  setdiff(plot_labels, png_labels)
+}
 
 tryCatch({
 
-  # ── 1. Verify post exists ──────────────────────────────────────────────────
   if (!file.exists(POST_FILE))  bail("No post for today — nothing to check.")
   if (!file.exists(FREEZE_JSON)) bail("Freeze JSON not found — render may have failed upstream.")
 
-  # ── 2. Read freeze JSON and extract rendered markdown ──────────────────────
+  # ── Read freeze JSON ──────────────────────────────────────────────────────
   freeze      <- jsonlite::read_json(FREEZE_JSON)
   rendered_md <- freeze$result$markdown
   if (is.null(rendered_md) || !nzchar(rendered_md))
     bail("Freeze JSON has no markdown content.")
 
-  # ── 3. Detect error blocks ─────────────────────────────────────────────────
-  lines      <- strsplit(rendered_md, "\n")[[1]]
-  error_idx  <- grep("^## Error", lines)
+  lines <- strsplit(rendered_md, "\n")[[1]]
 
-  if (length(error_idx) == 0L) {
-    bail("No errors found in rendered output — post looks clean.")
+  # ── Detect errors ─────────────────────────────────────────────────────────
+  error_snippets <- detect_error_blocks(lines)
+  empty_figures  <- detect_empty_figures(POST_FILE, FIGURE_DIR)
+
+  if (length(error_snippets) == 0L && length(empty_figures) == 0L) {
+    bail("No errors or missing figures found — post looks clean.")
   }
 
-  message("  Found ", length(error_idx), " error block(s).")
+  message("  Found ", length(error_snippets), " error block(s), ",
+          length(empty_figures), " missing figure(s).")
 
-  # Collect ±4 lines of context around each error hit
-  extract_context <- function(idx, all_lines, window = 4L) {
-    start <- max(1L, idx - window)
-    end   <- min(length(all_lines), idx + window)
-    paste(all_lines[start:end], collapse = "\n")
+  # ── Build error_text for Claude ───────────────────────────────────────────
+  parts <- character(0)
+  if (length(error_snippets) > 0L) {
+    parts <- c(parts, paste0(
+      "--- Error ", seq_along(error_snippets), " ---\n", error_snippets
+    ))
   }
-  error_snippets <- vapply(error_idx, extract_context, character(1L),
-                           all_lines = lines)
-  error_text <- paste(
-    paste0("--- Error ", seq_along(error_snippets), " ---\n", error_snippets),
-    collapse = "\n\n"
-  )
+  if (length(empty_figures) > 0L) {
+    parts <- c(parts, paste0(
+      "--- Missing figure: chunk '", empty_figures, "' produced no PNG ---\n",
+      "The plot chunk ran but emitted no figure. Likely causes: ggplot built ",
+      "but never print()-ed; chunk's null-guard skipped the body silently; ",
+      "data frame referenced is undefined or empty."
+    ))
+  }
+  error_text <- paste(parts, collapse = "\n\n")
 
-  # ── 4. Read the raw QMD ───────────────────────────────────────────────────
+  # ── Read raw QMD ──────────────────────────────────────────────────────────
   qmd_content <- paste(readLines(POST_FILE, warn = FALSE), collapse = "\n")
 
-  # ── 5. Bail if no API key ─────────────────────────────────────────────────
   if (nchar(ANTHROPIC_API_KEY) == 0L)
     bail("ANTHROPIC_API_KEY not set — cannot fix errors automatically.")
 
-  # ── 6. Call Claude to fix the QMD ─────────────────────────────────────────
+  # ── Call Claude to fix the QMD ────────────────────────────────────────────
   message("  Calling Claude to fix errors...")
 
   fixer_system <- paste0(
-    "You are fixing R runtime errors in a Quarto blog post.\n\n",
+    "You are fixing R runtime errors and missing-figure bugs in a Quarto blog post.\n\n",
     "Rules:\n",
     "- Return ONLY the corrected .qmd, starting with ---\n",
     "- Do NOT rewrite, restructure, or improve working code\n",
     "- Fix only the specific errors shown — minimal targeted changes\n",
-    "- Common fixes: add null+empty guards (if (!is.null(df) && nrow(df) > 0)), ",
-    "add post-ApiData() empty checks (if (is.null(df) || nrow(df) == 0) df <- NULL), ",
-    "fix wrong filter values, add missing print(), fix mismatched column names\n",
+    "- Common fixes:\n",
+    "  * 'object X not found' → variable assigned only inside an if-branch that didn't run. ",
+    "    Initialize `X <- NULL` at the top of the wrangle chunk BEFORE any conditional logic.\n",
+    "  * Plot guards must use `if (exists(\"X\") && !is.null(X) && nrow(X) > 0)` to be fully safe.\n",
+    "  * Missing figure but no error → add explicit `print(p)` if missing; ensure null-guard does not silently skip every branch.\n",
+    "  * Empty SSB fetch → add `if (is.null(df) || nrow(df) == 0) df <- NULL` after ApiData().\n",
+    "  * Wrong filter values, mismatched column names → fix to match the spec.\n",
     "- After fixing, add a one-line comment # fixed: <brief reason> near the change\n\n",
     "OUTPUT FORMAT:\n",
     "Line 1: FIXES: <comma-separated list of what was fixed>\n",
@@ -86,7 +146,7 @@ tryCatch({
   )
 
   fixer_user <- paste0(
-    "The following R errors appeared in the rendered output:\n\n",
+    "The following issues appeared in the rendered output:\n\n",
     error_text, "\n\n",
     "Here is the full QMD source:\n\n",
     qmd_content
@@ -121,7 +181,6 @@ tryCatch({
 
   if (is.null(raw_response)) bail("Could not parse Claude response.")
 
-  # Extract fixes line
   fixes_line <- tryCatch(
     regmatches(raw_response,
                regexpr("(?i)^FIXES:[ \t]*[^\n]*", raw_response, perl = TRUE)),
@@ -132,16 +191,14 @@ tryCatch({
   else "unknown"
   message("  Fixes: ", fixes_desc)
 
-  # Extract corrected QMD
   m <- regexpr("(?m)^---[ \t]*$", raw_response, perl = TRUE)
   if (m[[1]] < 0L) bail("Claude response contained no QMD front matter — skipping.")
   fixed_qmd <- substring(raw_response, m[[1]])
 
-  # ── 7. Write fixed QMD ────────────────────────────────────────────────────
   writeLines(fixed_qmd, POST_FILE)
   message("  Fixed QMD written to ", POST_FILE)
 
-  # ── 8. Delete freeze cache and re-render single post ─────────────────────
+  # ── Delete freeze cache and re-render ────────────────────────────────────
   freeze_post_dir <- file.path("_freeze", "ssb-daily", "posts", POST_SLUG)
   if (dir.exists(freeze_post_dir)) {
     unlink(freeze_post_dir, recursive = TRUE)
@@ -152,11 +209,19 @@ tryCatch({
   render_rc <- system2("quarto", c("render", POST_FILE), stdout = TRUE, stderr = TRUE)
   message(paste(render_rc, collapse = "\n"))
 
-  # ── 9. Append to error_patterns.md ───────────────────────────────────────
-  first_error <- trimws(lines[error_idx[1]])
+  # ── Append to error_patterns.md ──────────────────────────────────────────
+  first_signal <- if (length(error_snippets) > 0L) {
+    # First non-empty line inside the first error block
+    err_lines <- strsplit(error_snippets[1], "\n")[[1]]
+    err_msg   <- err_lines[grepl("^Error", err_lines, perl = TRUE)]
+    if (length(err_msg) > 0L) trimws(err_msg[1]) else trimws(err_lines[1])
+  } else {
+    paste0("Missing figure: ", empty_figures[1])
+  }
+
   new_entry <- paste0(
     "## ", POST_SLUG, "\n\n",
-    "**Error:** `", substr(first_error, 1L, 120L), "`\n",
+    "**Error:** `", substr(first_signal, 1L, 120L), "`\n",
     "**Fixes applied:** ", fixes_desc, "\n"
   )
 
@@ -164,7 +229,6 @@ tryCatch({
     paste(readLines(PATTERNS_FILE, warn = FALSE), collapse = "\n")
   else ""
 
-  # Split into sections by ## heading and keep last MAX_PATTERNS - 1
   sections <- if (nzchar(existing_content))
     strsplit(existing_content, "\n(?=## )", perl = TRUE)[[1]]
   else character(0)
