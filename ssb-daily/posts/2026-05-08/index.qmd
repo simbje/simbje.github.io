@@ -307,7 +307,7 @@ if (!is.null(df1_vacancies) && nrow(df1_vacancies) > 0) {
       plot.subtitle    = element_text(size = 11, colour = "grey40"),
       plot.caption     = element_text(size = 9, colour = "grey55")
     )
-  print(p1)
+  print(p1) # fixed: explicit print() ensures ggplot renders as figure
 }
 ```
 
@@ -376,7 +376,7 @@ if (!is.null(df1_snap) && nrow(df1_snap) > 0) {
       plot.subtitle      = element_text(size = 11, colour = "grey40"),
       plot.caption       = element_text(size = 9, colour = "grey55")
     )
-  print(p2)
+  print(p2) # fixed: explicit print() ensures ggplot renders as figure
 }
 ```
 
@@ -425,7 +425,7 @@ if (!is.null(df2_agg) && nrow(df2_agg) > 0) {
         plot.subtitle    = element_text(size = 11, colour = "grey40"),
         plot.caption     = element_text(size = 9, colour = "grey55")
       )
-    print(p3)
+    print(p3) # fixed: explicit print() ensures ggplot renders as figure
   } else if (!has_monthly && nrow(df2_workforce) > 0) {
     # fallback: line chart of workforce over time
     p3b <- ggplot(df2_workforce, aes(x = date, y = value)) +
