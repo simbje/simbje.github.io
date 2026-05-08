@@ -145,6 +145,58 @@ ggplot(plot_df, aes(x = run_date, y = name, size = n_papers, color = name)) +
   )
 ```
 
+How each topic's rank shifts across runs — rank 1 = most papers that fortnight.
+
+```{r bump-chart, eval = has_data && length(snapshots) >= 2, fig.width = 11, fig.height = 6}
+top_n_bump <- min(10L, n_distinct(topics_long$name))
+
+bump_totals <- topics_long |>
+  group_by(name) |>
+  summarise(total = sum(n_papers), .groups = "drop") |>
+  arrange(desc(total)) |>
+  slice_head(n = top_n_bump)
+
+n_bump       <- nrow(bump_totals)
+bump_palette <- if (n_bump <= 12)
+  MetBrewer::met.brewer("Cassatt2", max(n_bump, 2L))
+else
+  colorRampPalette(MetBrewer::met.brewer("Cassatt2", 12L))(n_bump)
+bump_colors <- setNames(as.character(bump_palette), bump_totals$name)
+
+bump_df <- topics_long |>
+  semi_join(bump_totals, by = "name") |>
+  group_by(run_date) |>
+  mutate(rank = rank(-n_papers, ties.method = "min")) |>
+  ungroup()
+
+label_right <- bump_df |>
+  filter(run_date == max(run_date)) |>
+  mutate(label = str_trunc(name, 28))
+
+ggplot(bump_df, aes(x = run_date, y = rank, group = name, color = name)) +
+  geom_line(linewidth = 1.3, alpha = 0.8, lineend = "round") +
+  geom_point(aes(size = n_papers), alpha = 0.9) +
+  geom_text(data = label_right,
+            aes(label = str_trunc(name, 28)),
+            hjust = -0.12, size = 3.1, fontface = "bold") +
+  scale_color_manual(values = bump_colors, guide = "none") +
+  scale_size_area(max_size = 9, name = "papers") +
+  scale_y_reverse(breaks = seq_len(top_n_bump), minor_breaks = NULL) +
+  scale_x_date(date_labels = "%d %b '%y",
+               expand = expansion(mult = c(0.04, 0.42))) +
+  labs(x = NULL, y = "Rank",
+       title = paste0("Topic rank over time — top ", top_n_bump, " by cumulative papers")) +
+  theme_minimal(base_size = 12) +
+  theme(
+    panel.grid.minor    = element_blank(),
+    panel.grid.major.x  = element_line(color = "grey85"),
+    panel.grid.major.y  = element_line(color = "grey92", linetype = "dashed"),
+    plot.title          = element_text(face = "bold", color = PAL_PRIMARY),
+    axis.text           = element_text(color = PAL_PRIMARY),
+    axis.title.y        = element_text(color = PAL_PRIMARY, size = 10)
+  )
+```
+
 ```{r top-data-science, eval = has_data, results = "asis"}
 render_bucket_section("data_science", BUCKETS$data_science)
 ```
