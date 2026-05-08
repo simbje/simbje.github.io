@@ -163,10 +163,11 @@ mean_val <- mean(dens_df$price_sqm)
 cv_mean  <- round(sd(dens_df$price_sqm) / mean_val * 100, 1)
 cv_med   <- round(mad(dens_df$price_sqm) / med_val * 100, 1)
 
-better_txt <- if (cv_med < cv_mean)
+better_txt <- if (cv_med < cv_mean) {
   paste0("Median er mest representativ (MAD/median = ", cv_med, "% vs CV = ", cv_mean, "%).")
-else
+} else {
   paste0("Gjennomsnitt er mest stabilt her (CV = ", cv_mean, "% vs MAD/median = ", cv_med, "%).")
+}
 
 subtitle_txt <- paste0(
   "Gjennomsnitt = ", round(mean_val / 1000, 0), "k, median = ", round(med_val / 1000, 0),
