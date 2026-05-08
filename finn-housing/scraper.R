@@ -100,6 +100,8 @@ tryCatch(dbExecute(con, "ALTER TABLE listings ADD COLUMN standard               
 tryCatch(dbExecute(con, "ALTER TABLE listings ADD COLUMN standard_confidence     TEXT"), error = function(e) NULL)
 tryCatch(dbExecute(con, "ALTER TABLE listings ADD COLUMN standard_reasoning      TEXT"), error = function(e) NULL)
 tryCatch(dbExecute(con, "ALTER TABLE listings ADD COLUMN standard_classified_at  TEXT"), error = function(e) NULL)
+tryCatch(dbExecute(con, "ALTER TABLE listings ADD COLUMN floor                  INTEGER"), error = function(e) NULL)
+tryCatch(dbExecute(con, "ALTER TABLE listings ADD COLUMN has_balcony            INTEGER"), error = function(e) NULL)
 
 existing_ids <- dbGetQuery(con, "SELECT finn_id FROM listings")$finn_id
 message("Eksisterende annonser i DB: ", length(existing_ids))
@@ -450,10 +452,24 @@ scrape_listing_detail <- function(finn_id) {
     found
   }, error = function(e) NA_character_)
 
+  # ── Floor number (etasje) ─────────────────────────────────────────────────────
+  floor_raw <- get_fact(c("Etasje", "Etasjenummer", "Etg"))
+  floor <- if (!is.na(floor_raw)) {
+    m <- str_match(floor_raw, "(\\d+)")
+    if (!is.na(m[1, 2])) suppressWarnings(as.integer(m[1, 2])) else NA_integer_
+  } else NA_integer_
+
+  # ── Balcony (balkong) ─────────────────────────────────────────────────────────
+  balcony_raw <- get_fact(c("Balkong", "Terrasse/balkong", "Terrasse"))
+  has_balcony <- if (!is.na(balcony_raw)) {
+    as.integer(grepl("^ja", tolower(trimws(balcony_raw))))
+  } else NA_integer_
+
   list(title = title, price = price, size_sqm = size_sqm, rooms = rooms,
        address = address, neighborhood = neighborhood,
        property_type = property_type, year_built = year_built,
-       description = description, broker = broker)
+       description = description, broker = broker,
+       floor = floor, has_balcony = has_balcony)
 }
 
 # ── Main scrape loop ───────────────────────────────────────────────────────────
@@ -511,12 +527,13 @@ if (length(new_rows) > 0) {
     INSERT OR IGNORE INTO listings
       (finn_id, title, price, size_sqm, rooms, address,
        neighborhood, property_type, year_built, description,
-       broker, url, scraped_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+       broker, url, scraped_at, floor, has_balcony)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     params = list(
       row$finn_id, final_title, final_price, final_size, final_rooms, final_address,
       detail$neighborhood, detail$property_type, detail$year_built, detail$description,
-      detail$broker, row$url, scraped_at
+      detail$broker, row$url, scraped_at,
+      detail$floor, detail$has_balcony
     )
   )
   }  # end new-listings loop
@@ -561,17 +578,48 @@ if (nrow(needs_backfill) > 0) {
         property_type = COALESCE(property_type, ?),
         year_built    = COALESCE(year_built,    ?),
         description   = COALESCE(description,   ?),
-        broker        = COALESCE(broker,        ?)
+        broker        = COALESCE(broker,        ?),
+        floor         = COALESCE(floor,         ?),
+        has_balcony   = COALESCE(has_balcony,   ?)
       WHERE finn_id = ?",
       params = list(
         d$title, d$price, d$size_sqm, d$rooms, d$address,
         d$neighborhood, d$property_type, d$year_built, d$description, d$broker,
+        d$floor, d$has_balcony,
         fid
       )
     )
     Sys.sleep(DETAIL_SLEEP)
   }
   message("  Etterlysing ferdig.")
+}
+
+# ── Backfill floor + balcony for existing listings ────────────────────────────
+FLOOR_BACKFILL_BATCH <- 150L
+
+needs_floor <- dbGetQuery(con, paste0(
+  "SELECT finn_id FROM listings
+   WHERE floor IS NULL AND has_balcony IS NULL
+     AND scraped_at IS NOT NULL
+   ORDER BY scraped_at DESC
+   LIMIT ", FLOOR_BACKFILL_BATCH
+))
+
+if (nrow(needs_floor) > 0) {
+  message("\nEtterlyser etasje/balkong for ", nrow(needs_floor), " annonser...")
+  for (i in seq_len(nrow(needs_floor))) {
+    fid <- needs_floor$finn_id[i]
+    message("  [", i, "/", nrow(needs_floor), "] etterlys finn_id=", fid)
+    d <- tryCatch(scrape_listing_detail(fid), error = function(e) NULL)
+    if (!is.null(d) && (!is.na(d$floor) || !is.na(d$has_balcony))) {
+      dbExecute(con,
+        "UPDATE listings SET floor = ?, has_balcony = ? WHERE finn_id = ?",
+        params = list(d$floor, d$has_balcony, fid)
+      )
+    }
+    Sys.sleep(DETAIL_SLEEP)
+  }
+  message("  Etasje/balkong-etterlysing ferdig.")
 }
 
 # ── Export CSV snapshot so the Quarto page can render even before classify.R ──
@@ -581,7 +629,8 @@ snap <- dbGetQuery(con, "
   SELECT finn_id, title, price, size_sqm, rooms, address, neighborhood,
          property_type, year_built, broker, url, scraped_at, lat, lon,
          category, category_confidence, category_reasoning, classified_at,
-         standard, standard_confidence, standard_reasoning, standard_classified_at
+         standard, standard_confidence, standard_reasoning, standard_classified_at,
+         floor, has_balcony
   FROM listings ORDER BY scraped_at DESC
 ")
 write.csv(snap, CSV_PATH, row.names = FALSE, fileEncoding = "UTF-8")

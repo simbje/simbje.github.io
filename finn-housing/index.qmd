@@ -57,6 +57,9 @@ raw <- raw |>
     for (col in c("broker", "standard", "standard_confidence", "standard_reasoning")) {
       if (!col %in% names(d)) d[[col]] <- NA_character_
     }
+    for (col in c("floor", "has_balcony")) {
+      if (!col %in% names(d)) d[[col]] <- NA_integer_
+    }
     d
   })()
 
@@ -621,10 +624,12 @@ reg_df <- classified |>
          price > 500000, price < 50e6,
          size_sqm > 10, size_sqm < 450) |>
   mutate(
-    log_price  = log(price),
-    size_std   = as.numeric(scale(size_sqm)),
-    rooms_std  = if_else(!is.na(rooms), as.numeric(scale(rooms)), NA_real_),
-    year_std   = if_else(!is.na(year_built), as.numeric(scale(year_built)), NA_real_),
+    log_price   = log(price),
+    size_std    = as.numeric(scale(size_sqm)),
+    rooms_std   = if_else(!is.na(rooms),      as.numeric(scale(rooms)),      NA_real_),
+    year_std    = if_else(!is.na(year_built), as.numeric(scale(year_built)), NA_real_),
+    floor_std   = if_else(!is.na(floor),      as.numeric(scale(floor)),      NA_real_),
+    has_balcony_i = if_else(!is.na(has_balcony), as.numeric(has_balcony), NA_real_),
     category   = factor(category),
     std_factor = factor(
       if_else(!is.na(standard) & standard != "", standard, NA_character_),
@@ -642,10 +647,12 @@ if (nrow(reg_df) < 30) {
 
   # Include each predictor only when ≥ 30% of rows have non-NA values
   preds <- "size_std"
-  if (sum(!is.na(reg_df$rooms))      > nrow(reg_df) * 0.3) preds <- c(preds, "rooms_std")
-  if (sum(!is.na(reg_df$year_built)) > nrow(reg_df) * 0.3) preds <- c(preds, "year_std")
+  if (sum(!is.na(reg_df$rooms))        > nrow(reg_df) * 0.3) preds <- c(preds, "rooms_std")
+  if (sum(!is.na(reg_df$year_built))   > nrow(reg_df) * 0.3) preds <- c(preds, "year_std")
+  if (sum(!is.na(reg_df$floor_std))    > nrow(reg_df) * 0.3) preds <- c(preds, "floor_std")
+  if (sum(!is.na(reg_df$has_balcony_i)) > nrow(reg_df) * 0.3) preds <- c(preds, "has_balcony_i")
   preds <- c(preds, "category")
-  if (sum(!is.na(reg_df$std_factor)) > nrow(reg_df) * 0.3) preds <- c(preds, "std_factor")
+  if (sum(!is.na(reg_df$std_factor))   > nrow(reg_df) * 0.3) preds <- c(preds, "std_factor")
 
   fit   <- lm(as.formula(paste("log_price ~", paste(preds, collapse = " + "))),
               data = reg_df, na.action = na.omit)
@@ -670,7 +677,8 @@ if (nrow(reg_df) < 30) {
       pct_hi = (exp(upper)    - 1) * 100,
       # Assign facet group BEFORE stripping prefix
       predictor_type = case_when(
-        term %in% c("size_std", "rooms_std", "year_std") ~ "Kontinuerlige prediktorer",
+        term %in% c("size_std", "rooms_std", "year_std",
+                    "floor_std", "has_balcony_i") ~ "Kontinuerlige prediktorer",
         startsWith(term, "category")   ~ paste0("Boligkategori  (vs ", ref_cat, ")"),
         startsWith(term, "std_factor") ~ "Boligstandard  (vs Good standard)",
         TRUE ~ "Annet"
@@ -678,9 +686,11 @@ if (nrow(reg_df) < 30) {
       # Clean up term labels
       term = gsub("^(category|std_factor)", "", term),
       term = case_when(
-        term == "size_std"  ~ "Størrelse (per SD)",
-        term == "rooms_std" ~ "Rom (per SD)",
-        term == "year_std"  ~ "Byggeår (per SD)",
+        term == "size_std"      ~ "Størrelse (per SD)",
+        term == "rooms_std"     ~ "Rom (per SD)",
+        term == "year_std"      ~ "Byggeår (per SD)",
+        term == "floor_std"     ~ "Etasje (per SD)",
+        term == "has_balcony_i" ~ "Balkong (ja vs nei)",
         TRUE ~ term
       )
     )
