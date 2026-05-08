@@ -148,6 +148,56 @@ Sist oppdatert **`r format(last_scrape, "%d %b %Y")`**
 
 ---
 
+## Median vs Gjennomsnitt: Pris per m²
+
+::: {.callout-note appearance="minimal"}
+Boligpriser per kvadratmeter er typisk høyreskjevt fordelt — noen få svært dyre boliger drar **gjennomsnittet** oppover uten å påvirke **medianen**. Diagrammet under viser fordelingen av pris/m² og sammenligner de to målene, slik at du ser hvilken som er mest representativ for et «typisk» oppgjør.
+:::
+
+```{r psqm-density, fig.height=4, fig.width=9}
+dens_df <- classified |>
+  filter(!is.na(price_sqm), price_sqm > 10000, price_sqm < 250000)
+
+med_val  <- median(dens_df$price_sqm)
+mean_val <- mean(dens_df$price_sqm)
+cv_mean  <- round(sd(dens_df$price_sqm) / mean_val * 100, 1)
+cv_med   <- round(mad(dens_df$price_sqm) / med_val * 100, 1)
+
+better_txt <- if (cv_med < cv_mean)
+  paste0("Median er mest representativ (MAD/median = ", cv_med, "% vs CV = ", cv_mean, "%).")
+else
+  paste0("Gjennomsnitt er mest stabilt her (CV = ", cv_mean, "% vs MAD/median = ", cv_med, "%).")
+
+subtitle_txt <- paste0(
+  "Gjennomsnitt = ", round(mean_val / 1000, 0), "k, median = ", round(med_val / 1000, 0),
+  " k NOK/m². ", better_txt
+)
+
+# Label positions: median label left-of-line, mean label right-of-line
+med_hjust  <- if (mean_val > med_val) 1.08 else -0.08
+mean_hjust <- if (mean_val > med_val) -0.08 else 1.08
+
+ggplot(dens_df, aes(x = price_sqm / 1000)) +
+  geom_density(fill = "#A8DADC", colour = "#457B9D", alpha = 0.6, linewidth = 0.8) +
+  geom_vline(xintercept = med_val  / 1000, colour = "#2A9D8F", linewidth = 1.1) +
+  geom_vline(xintercept = mean_val / 1000, colour = "#C0392B", linewidth = 1.1, linetype = "dashed") +
+  annotate("label",
+           x = med_val / 1000, y = Inf, vjust = 1.5, hjust = med_hjust,
+           label = paste0("Median\n", round(med_val / 1000, 0), "k\nMAD/median ", cv_med, "%"),
+           colour = "#2A9D8F", fill = "white", size = 3.2, label.size = 0.3) +
+  annotate("label",
+           x = mean_val / 1000, y = Inf, vjust = 1.5, hjust = mean_hjust,
+           label = paste0("Gjennomsnitt\n", round(mean_val / 1000, 0), "k\nCV ", cv_mean, "%"),
+           colour = "#C0392B", fill = "white", size = 3.2, label.size = 0.3) +
+  scale_x_continuous(labels = label_number(suffix = "k NOK", accuracy = 1)) +
+  labs(x = "Pris per m² (1 000 NOK)", y = "Tetthet",
+       title = "Fordeling av pris per m²: median vs gjennomsnitt",
+       subtitle = subtitle_txt) +
+  theme_minimal(base_size = 13)
+```
+
+---
+
 ## Oslo på Kartet
 
 *Boblestørrelse = prisantydning. Farge = kategori. Klikk en boble for å åpne annonsen.*
