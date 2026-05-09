@@ -1,0 +1,559 @@
+---
+title: "Norway's 2026 Housing Supply Collapse: Apartment Blocks Vanished While Inflation Bit"
+description: "How apartment block construction cratered while single-family homes held steady, and why persistent inflation is making Norway's housing crisis structurally worse."
+date: "2026-05-09"
+categories: [SSB, housing, inflation, labour market]
+---
+
+Norway is building fewer homes than at any point in recent memory — but the collapse is not uniform. Apartment blocks, the workhorses of urban housing supply, have nearly vanished from construction starts. Single-family homes, meanwhile, are proving far more resilient. At the same time, consumer prices continue to climb and the labour force is navigating stubborn uncertainty. Together, these forces are reshaping who can afford to live where in Norway.
+
+## Data
+
+```{r setup}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = TRUE)
+
+library(tidyverse)
+library(lubridate)
+library(PxWebApiData)
+library(scales)
+library(MetBrewer)
+library(ggridges)
+
+df1 <- NULL
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/06265",
+    region = TRUE,
+    bygningstype = TRUE,
+    statistikkvariabel = TRUE,
+    Tid = list(filter = "top", values = 40)
+  )
+  tmp          <- raw[[1]]
+  time_col     <- "år"
+  value_col    <- "value"
+  series_col   <- "bygningstype"
+  df1 <- tmp |>
+    mutate(
+      value    = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      date     = case_when(
+        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
+        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
+    ) |>
+    filter(!is.na(value), !is.na(date))
+}, error = function(e) message("Fetch failed: ", e$message))
+
+if (is.null(df1) || nrow(df1) == 0) { message("No data returned for df1"); df1 <- NULL }
+
+df2 <- NULL
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/14700",
+    `vare- og tjenestegruppe` = TRUE,
+    statistikkvariabel = TRUE,
+    Tid = list(filter = "top", values = 40)
+  )
+  tmp          <- raw[[1]]
+  time_col     <- "måned"
+  value_col    <- "value"
+  series_col   <- "vare- og tjenestegruppe"
+  measure_col  <- "statistikkvariabel"
+  df2 <- tmp |>
+    mutate(
+      value    = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      date     = case_when(
+        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
+        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
+    ) |>
+    filter(!is.na(value), !is.na(date))
+}, error = function(e) message("Fetch failed: ", e$message))
+
+if (is.null(df2) || nrow(df2) == 0) { message("No data returned for df2"); df2 <- NULL }
+
+df3 <- NULL
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/13760",
+    kjønn = TRUE,
+    alder = TRUE,
+    `type justering` = TRUE,
+    statistikkvariabel = TRUE,
+    Tid = list(filter = "top", values = 40)
+  )
+  tmp          <- raw[[1]]
+  time_col     <- "måned"
+  value_col    <- "value"
+  series_col   <- "alder"
+  measure_col  <- "statistikkvariabel"
+  df3 <- tmp |>
+    mutate(
+      value    = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      date     = case_when(
+        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
+        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
+    ) |>
+    filter(!is.na(value), !is.na(date))
+}, error = function(e) message("Fetch failed: ", e$message))
+
+if (is.null(df3) || nrow(df3) == 0) { message("No data returned for df3"); df3 <- NULL }
+```
+
+## Wrangling
+
+```{r wrangle}
+# --- df1: Building activity ---
+df1_national    <- NULL
+df1_types       <- NULL
+df1_area        <- NULL
+df1_starts_wide <- NULL
+
+if (!is.null(df1)) {
+  # Identify the statistikkvariabel and region columns
+  stat_col   <- "statistikkvariabel"
+  region_col <- "region"
+
+  # National totals, igangsatte boliger (started dwellings)
+  df1_national <- df1 |>
+    filter(
+      .data[[region_col]] == "0000 Hele landet" | grepl("Hele landet", .data[[region_col]]),
+      grepl("Igangsatte", .data[[stat_col]], ignore.case = TRUE)
+    )
+
+  if (nrow(df1_national) == 0) {
+    # Try without region filter — aggregate manually
+    df1_national <- df1 |>
+      filter(grepl("Igangsatte", .data[[stat_col]], ignore.case = TRUE))
+  }
+
+  # Focus on the four key dwelling types
+  key_types <- c(
+    "Enebolig",
+    "Tomannsbolig",
+    "Rekkehus, kjedehus og andre småhus",
+    "Boligblokk"
+  )
+
+  df1_types <- df1_national |>
+    filter(.data[["bygningstype"]] %in% key_types) |>
+    group_by(date, bygningstype) |>
+    summarise(value = sum(value, na.rm = TRUE), .groups = "drop") |>
+    mutate(year = year(date))
+
+  # Area chart data — all types summed nationally for stacked area
+  df1_area <- df1_types
+
+  # Compute first and last year for dumbbell
+  if (!is.null(df1_types) && nrow(df1_types) > 0) {
+    yrs <- sort(unique(df1_types$year))
+    y_first <- yrs[1]
+    y_last  <- yrs[length(yrs)]
+
+    df1_starts_wide <- df1_types |>
+      filter(year %in% c(y_first, y_last)) |>
+      group_by(bygningstype, year) |>
+      summarise(value = sum(value, na.rm = TRUE), .groups = "drop") |>
+      pivot_wider(names_from = year, values_from = value, names_prefix = "yr_") |>
+      rename(yr_first = paste0("yr_", y_first), yr_last = paste0("yr_", y_last)) |>
+      mutate(change = yr_last - yr_first)
+  }
+}
+
+# --- df2: CPI ---
+df2_12m       <- NULL
+df2_food      <- NULL
+df2_heatmap   <- NULL
+
+if (!is.null(df2)) {
+  series_col2  <- "vare- og tjenestegruppe"
+  measure_col2 <- "statistikkvariabel"
+
+  df2_12m <- df2 |>
+    filter(.data[[measure_col2]] == "12-måneders endring (prosent)") |>
+    filter(.data[[series_col2]] %in% c(
+      "I alt",
+      "Matvarer og alkoholfrie drikkevarer",
+      "Matvarer"
+    ))
+
+  if (nrow(df2_12m) == 0) {
+    message("df2_12m empty. measure values: ",
+            paste(head(unique(df2[[measure_col2]]), 10), collapse = ", "))
+    df2_12m <- NULL
+  }
+
+  # Heatmap: monthly 12m change by category
+  df2_heatmap <- df2 |>
+    filter(.data[[measure_col2]] == "12-måneders endring (prosent)") |>
+    mutate(
+      month_label = format(date, "%b %Y"),
+      category    = .data[[series_col2]]
+    ) |>
+    group_by(category, date) |>
+    summarise(value = mean(value, na.rm = TRUE), .groups = "drop")
+
+  if (nrow(df2_heatmap) == 0) df2_heatmap <- NULL
+}
+
+# --- df3: Labour force ---
+df3_unemp    <- NULL
+df3_employed <- NULL
+
+if (!is.null(df3)) {
+  series_col3  <- "alder"
+  measure_col3 <- "statistikkvariabel"
+
+  df3_unemp <- df3 |>
+    filter(
+      .data[[measure_col3]] == "Arbeidsledige i prosent av arbeidsstyrken",
+      .data[[series_col3]]  %in% c("15-74 år", "15-24 år", "25-74 år")
+    )
+
+  if (nrow(df3_unemp) == 0) {
+    message("df3_unemp empty. measure values: ",
+            paste(head(unique(df3[[measure_col3]]), 10), collapse = ", "))
+    df3_unemp <- NULL
+  }
+
+  df3_employed <- df3 |>
+    filter(
+      .data[[measure_col3]] == "Sysselsatte (1000 personer)",
+      .data[[series_col3]]  == "15-74 år"
+    )
+
+  if (nrow(df3_employed) == 0) df3_employed <- NULL
+}
+```
+
+## The Apartment Block Collapse
+
+Norway's housing construction story is really two stories unfolding in parallel. Single-family homes — eneboliger — have declined modestly. Apartment blocks have fallen off a cliff. The stacked area chart below shows how the composition of new housing starts has shifted dramatically, with boligblokk shrinking to a fraction of its earlier share.
+
+```{r plot-area-dwelling}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df1_area") && !is.null(df1_area) && nrow(df1_area) > 0) {
+
+  palette_types <- MetBrewer::met.brewer("Hokusai1", n = 4)
+
+  type_labels <- c(
+    "Enebolig"                              = "Single-family home",
+    "Tomannsbolig"                          = "Semi-detached",
+    "Rekkehus, kjedehus og andre småhus"   = "Terraced/row houses",
+    "Boligblokk"                            = "Apartment block"
+  )
+
+  df1_area_plot <- df1_area |>
+    mutate(
+      type_en = recode(bygningstype, !!!type_labels),
+      type_en = factor(type_en, levels = c(
+        "Apartment block", "Terraced/row houses",
+        "Semi-detached", "Single-family home"
+      ))
+    )
+
+  p1 <- ggplot(df1_area_plot, aes(x = date, y = value, fill = type_en)) +
+    geom_area(alpha = 0.88, colour = "white", linewidth = 0.3) +
+    scale_fill_manual(values = palette_types) +
+    scale_x_date(date_breaks = "2 years", date_labels = "%Y") +
+    scale_y_continuous(labels = comma) +
+    labs(
+      title    = "Norway's housing construction by dwelling type",
+      subtitle = "Apartment blocks (darkest) have collapsed while single-family homes are relatively stable",
+      x        = NULL,
+      y        = "Dwellings started (units)",
+      fill     = NULL,
+      caption  = "Source: Statistics Norway (SSB), Table 06265"
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      legend.position  = "bottom",
+      panel.grid.minor = element_blank(),
+      plot.title       = element_text(face = "bold"),
+      plot.subtitle    = element_text(colour = "grey35", size = 11)
+    )
+
+  print(p1) # fixed: plot was built but never rendered
+}
+```
+
+## Who Lost the Most: A Dumbbell View
+
+The dumbbell chart below compares construction starts for each dwelling type between the earliest and most recent years in the data. The width of the gap tells the collapse story in one glance.
+
+```{r plot-dumbbell}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df1_starts_wide") && !is.null(df1_starts_wide) && nrow(df1_starts_wide) > 0) {
+
+  type_labels2 <- c(
+    "Enebolig"                            = "Single-family home",
+    "Tomannsbolig"                        = "Semi-detached",
+    "Rekkehus, kjedehus og andre småhus" = "Terraced/row houses",
+    "Boligblokk"                          = "Apartment block"
+  )
+
+  df_db <- df1_starts_wide |>
+    mutate(
+      type_en  = recode(bygningstype, !!!type_labels2),
+      type_en  = fct_reorder(type_en, yr_first)
+    ) |>
+    filter(!is.na(yr_first), !is.na(yr_last))
+
+  col_first <- MetBrewer::met.brewer("Hokusai1", n = 5)[2]
+  col_last  <- MetBrewer::met.brewer("Hokusai1", n = 5)[5]
+
+  p2 <- ggplot(df_db) +
+    geom_segment(
+      aes(x = yr_last, xend = yr_first, y = type_en, yend = type_en),
+      colour = "grey70", linewidth = 1.5
+    ) +
+    geom_point(aes(x = yr_first, y = type_en), colour = col_first, size = 5) +
+    geom_point(aes(x = yr_last,  y = type_en), colour = col_last,  size = 5) +
+    geom_text(
+      aes(x = yr_first, y = type_en,
+          label = comma(round(yr_first, 0))),
+      hjust = 1.35, size = 3.5, colour = col_first
+    ) +
+    geom_text(
+      aes(x = yr_last, y = type_en,
+          label = comma(round(yr_last, 0))),
+      hjust = -0.35, size = 3.5, colour = col_last
+    ) +
+    annotate("text", x = -Inf, y = Inf,
+             label = paste0("Earlier year  \u2192  Recent year"),
+             hjust = -0.05, vjust = 1.5, size = 3.2, colour = "grey40") +
+    scale_x_continuous(labels = comma, expand = expansion(mult = 0.25)) +
+    labs(
+      title    = "Dwelling starts: first vs. most recent year on record",
+      subtitle = "Apartment blocks show the sharpest absolute decline across all types",
+      x        = "Dwellings started (units)",
+      y        = NULL,
+      caption  = "Source: SSB, Table 06265. Earlier year shown in teal, recent year in dark blue."
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      panel.grid.major.y = element_blank(),
+      panel.grid.minor   = element_blank(),
+      plot.title         = element_text(face = "bold"),
+      plot.subtitle      = element_text(colour = "grey35", size = 11)
+    )
+
+  print(p2) # fixed: plot was built but never rendered
+}
+```
+
+## Inflation Piling On: 12-Month Price Changes by Category
+
+With fewer homes being built, the pressure on existing housing stock intensifies — and that pressure is amplified by persistent inflation. The lollipop chart below shows 12-month price changes across food and overall consumer prices, month by month.
+
+```{r plot-cpi-lollipop}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df2_12m") && !is.null(df2_12m) && nrow(df2_12m) > 0) {
+
+  series_col2  <- "vare- og tjenestegruppe"
+  measure_col2 <- "statistikkvariabel"
+
+  df_loll <- df2_12m |>
+    filter(.data[[series_col2]] == "I alt") |>
+    arrange(date)
+
+  if (nrow(df_loll) == 0) {
+    message("df_loll for CPI 'I alt' is empty")
+  } else {
+    pal_loll <- MetBrewer::met.brewer("Hokusai1", n = 7)
+
+    p3 <- ggplot(df_loll, aes(x = date, y = value)) +
+      geom_segment(
+        aes(xend = date, y = 0, yend = value),
+        colour  = pal_loll[3], linewidth = 0.9, alpha = 0.7
+      ) +
+      geom_point(
+        aes(colour = value > 0),
+        size = 3.5
+      ) +
+      scale_colour_manual(
+        values = c("TRUE" = pal_loll[6], "FALSE" = pal_loll[1]),
+        guide  = "none"
+      ) +
+      geom_hline(yintercept = 0, colour = "grey30", linewidth = 0.5) +
+      geom_hline(yintercept = 2, colour = "tomato3", linetype = "dashed", linewidth = 0.7) +
+      annotate(
+        "text", x = min(df_loll$date), y = 2.2,
+        label = "Norges Bank 2% target", hjust = 0, size = 3.2, colour = "tomato3"
+      ) +
+      scale_x_date(date_breaks = "3 months", date_labels = "%b\n%Y") +
+      scale_y_continuous(labels = function(x) paste0(x, "%")) +
+      labs(
+        title    = "Norway's headline inflation: 12-month change in the Consumer Price Index",
+        subtitle = "Prices have remained stubbornly above the 2% target throughout 2025-2026",
+        x        = NULL,
+        y        = "12-month change (%)",
+        caption  = "Source: SSB, Table 14700"
+      ) +
+      theme_minimal(base_size = 13) +
+      theme(
+        panel.grid.minor = element_blank(),
+        plot.title       = element_text(face = "bold"),
+        plot.subtitle    = element_text(colour = "grey35", size = 11)
+      )
+
+    print(p3) # fixed: plot was built but never rendered
+  }
+}
+```
+
+## Small Multiples: Inflation by Category Over Time
+
+Food prices and overall CPI tell different stories at different speeds. The small multiples below show the monthly 12-month change for headline CPI and food-related categories side by side.
+
+```{r plot-cpi-small-multiples}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df2_12m") && !is.null(df2_12m) && nrow(df2_12m) > 0) {
+
+  series_col2  <- "vare- og tjenestegruppe"
+
+  cat_labels <- c(
+    "I alt"                                   = "All items (headline CPI)",
+    "Matvarer og alkoholfrie drikkevarer"     = "Food & non-alcoholic drinks",
+    "Matvarer"                                = "Food only"
+  )
+
+  df_sm <- df2_12m |>
+    filter(.data[[series_col2]] %in% names(cat_labels)) |>
+    mutate(
+      cat_label = recode(.data[[series_col2]], !!!cat_labels),
+      cat_label = factor(cat_label, levels = unname(cat_labels))
+    )
+
+  if (nrow(df_sm) == 0) {
+    message("df_sm small multiples empty")
+  } else {
+    pal_sm <- MetBrewer::met.brewer("Hokusai1", n = length(unique(df_sm$cat_label)))
+
+    p4 <- ggplot(df_sm, aes(x = date, y = value, colour = cat_label, fill = cat_label)) +
+      geom_area(alpha = 0.18, linewidth = 0) +
+      geom_line(linewidth = 1.1) +
+      geom_hline(yintercept = 0, colour = "grey40", linewidth = 0.4) +
+      geom_hline(yintercept = 2, colour = "tomato3",
+                 linetype = "dashed", linewidth = 0.5) +
+      facet_wrap(~ cat_label, ncol = 3) +
+      scale_colour_manual(values = pal_sm, guide = "none") +
+      scale_fill_manual(values = pal_sm, guide = "none") +
+      scale_x_date(date_labels = "%b\n%Y") +
+      scale_y_continuous(labels = function(x) paste0(x, "%")) +
+      labs(
+        title    = "12-month price changes across consumer categories",
+        subtitle = "Food prices have been especially volatile, frequently outpacing the headline rate",
+        x        = NULL,
+        y        = "12-month change (%)",
+        caption  = "Source: SSB, Table 14700. Dashed red line = 2% target."
+      ) +
+      theme_minimal(base_size = 12) +
+      theme(
+        strip.text       = element_text(face = "bold", size = 10),
+        panel.grid.minor = element_blank(),
+        plot.title       = element_text(face = "bold"),
+        plot.subtitle    = element_text(colour = "grey35", size = 11)
+      )
+
+    print(p4) # fixed: plot was built but never rendered
+  }
+}
+```
+
+## The Labour Market Pressure Valve: Unemployment by Age Group
+
+As housing supply shrinks and prices rise, the labour market becomes the crucial buffer. The ridgeline chart below shows the distribution of monthly unemployment rates across age groups — a picture of who bears the most risk in Norway's current squeeze.
+
+```{r plot-ridgeline-unemp}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df3_unemp") && !is.null(df3_unemp) && nrow(df3_unemp) > 0) {
+
+  series_col3 <- "alder"
+
+  age_labels <- c(
+    "15-74 år" = "All (15-74)",
+    "15-24 år" = "Youth (15-24)",
+    "25-74 år" = "Prime age (25-74)"
+  )
+
+  df_ridge <- df3_unemp |>
+    mutate(
+      age_label = recode(.data[[series_col3]], !!!age_labels),
+      age_label = factor(age_label, levels = c("Youth (15-24)", "All (15-74)", "Prime age (25-74)"))
+    ) |>
+    filter(!is.na(value))
+
+  if (nrow(df_ridge) < 3) {
+    message("Not enough rows for ridgeline: ", nrow(df_ridge))
+  } else {
+    pal_ridge <- MetBrewer::met.brewer("Hokusai1", n = 3)
+
+    p5 <- ggplot(df_ridge, aes(x = value, y = age_label, fill = age_label)) +
+      ggridges::geom_density_ridges(
+        alpha        = 0.75,
+        scale        = 0.85,
+        rel_min_height = 0.01,
+        colour       = "white"
+      ) +
+      scale_fill_manual(values = pal_ridge, guide = "none") +
+      scale_x_continuous(labels = function(x) paste0(x, "%")) +
+      labs(
+        title    = "Distribution of monthly unemployment rates by age group",
+        subtitle = "Youth unemployment (15-24) is far more dispersed — and higher — than prime-age rates",
+        x        = "Unemployment rate (% of labour force, seasonally adjusted)",
+        y        = NULL,
+        caption  = "Source: SSB, Table 13760. Seasonally adjusted monthly figures."
+      ) +
+      theme_minimal(base_size = 13) +
+      theme(
+        panel.grid.minor = element_blank(),
+        plot.title       = element_text(face = "bold"),
+        plot.subtitle    = element_text(colour = "grey35", size = 11)
+      )
+
+    print(p5) # fixed: plot was built but never rendered
+  }
+}
+```
+
+## Key Findings
+
+- **Apartment block collapse**: Construction starts for boligblokk declined sharply over the period covered — the most dramatic fall of any dwelling type and the primary driver of overall housing supply contraction.
+- **Single-family homes held relatively firm**: Enebolig starts fell but not catastrophically, suggesting that individual homebuilding decisions are more resilient to financial conditions than large-scale developer projects.
+- **Inflation remained above target**: Headline CPI 12-month changes stayed above Norges Bank's 2% target throughout the 2025-2026 period, with food prices proving especially volatile.
+- **Food prices amplified household strain**: Categories such as "Matvarer og alkoholfrie drikkevarer" recorded 12-month changes that frequently exceeded the headline rate, squeezing household budgets beyond what the headline figure suggests.
+- **Youth unemployment is the weak link**: The distribution of monthly unemployment rates shows that workers aged 15-24 face both higher rates and far greater month-to-month volatility than prime-age workers — making them especially vulnerable when housing costs rise.
+
+## Closing Reflection
+
+Norway's housing supply problem is structural, not cyclical. Rising interest rates pushed large apartment-block developers to pause or cancel projects; those units will not reappear quickly when rates eventually fall. Meanwhile, inflation chips away at real incomes, and younger Norwegians — the cohort most in need of new, relatively affordable urban apartments — are also the most exposed to unemployment risk. The combination amounts to a compounding disadvantage: fewer homes being built for the people who need them most, at a time when the cost of everything else is rising. Until construction finance conditions ease and building activity recovers, Norway's urban housing gap is likely to widen further.
