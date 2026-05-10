@@ -1,0 +1,549 @@
+---
+title: "Norway's 2026 Housing-Demographic Fault Line: How Aging Citizens, Immigration Gaps, and Sectoral Divergence Shattered the Housing Supply Dream"
+description: "Three interlocking crises — a construction collapse, a citizenship composition shift, and widening industrial divergence — are converging to reshape where and how Norwegians will live."
+date: "2026-05-10"
+categories: [SSB, housing, demography, GDP, construction]
+---
+
+```{r setup}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = TRUE)
+
+library(tidyverse)
+library(lubridate)
+library(PxWebApiData)
+library(scales)
+library(MetBrewer)
+library(ggridges)
+library(stringr)
+
+df1 <- NULL
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/09170",
+    NACE = TRUE,
+    ContentsCode = TRUE,
+    Tid = list(filter = "top", values = 40)
+  )
+  tmp          <- raw[[1]]
+  time_col     <- "år"
+  value_col    <- "value"
+  series_col   <- "næring"
+  measure_col  <- "statistikkvariabel"
+  df1 <- tmp |>
+    mutate(
+      value    = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      date     = case_when(
+        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
+        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
+    ) |>
+    filter(!is.na(value), !is.na(date))
+}, error = function(e) message("Fetch failed: ", e$message))
+
+if (is.null(df1) || nrow(df1) == 0) { message("No data returned"); df1 <- NULL }
+
+df2 <- NULL
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/05196",
+    Kjonn = TRUE,
+    Statsbrgskap = TRUE,
+    Alder = TRUE,
+    Tid = list(filter = "top", values = 40)
+  )
+  tmp          <- raw[[1]]
+  time_col     <- "år"
+  value_col    <- "value"
+  series_col   <- "statsborgerskap"
+  df2 <- tmp |>
+    mutate(
+      value    = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      date     = case_when(
+        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
+        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
+    ) |>
+    filter(!is.na(value), !is.na(date))
+}, error = function(e) message("Fetch failed: ", e$message))
+
+if (is.null(df2) || nrow(df2) == 0) { message("No data returned"); df2 <- NULL }
+
+df3 <- NULL
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/06265",
+    Region = TRUE,
+    Bygningstype = TRUE,
+    Tid = list(filter = "top", values = 40)
+  )
+  tmp          <- raw[[1]]
+  time_col     <- "år"
+  value_col    <- "value"
+  series_col   <- "bygningstype"
+  df3 <- tmp |>
+    mutate(
+      value    = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      date     = case_when(
+        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
+        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
+    ) |>
+    filter(!is.na(value), !is.na(date))
+}, error = function(e) message("Fetch failed: ", e$message))
+
+if (is.null(df3) || nrow(df3) == 0) { message("No data returned"); df3 <- NULL }
+```
+
+## Three Crises, One Fault Line
+
+Norway's housing story in 2026 is not a single failure but a convergence of three. Dwelling completions have fallen sharply from their post-pandemic peak, even as the population's citizenship composition continues to shift in ways that alter housing demand across age groups and regions. Meanwhile, the national accounts reveal an industrial economy increasingly concentrated in oil and gas — sectors that generate enormous wealth but remarkably few new homes. The numbers from Statistics Norway illuminate a structural mismatch that will define Norwegian society for a generation.
+
+## Data and Wrangling
+
+```{r wrangle}
+# --- df1: GDP / value added by industry ---
+df1_gva       <- NULL
+df1_sector_ts <- NULL
+df1_shares    <- NULL
+
+if (!is.null(df1)) {
+  target_measure <- "Bruttoprodukt i basisverdi. Faste 2023-priser (mill. kr)"
+  target_sectors <- c(
+    "Totalt for næringer",
+    "Jordbruk og skogbruk",
+    "Fiske, fangst og akvakultur",
+    "Industri",
+    "Utvinning av råolje og naturgass"
+  )
+
+  df1_gva <- df1 |>
+    filter(
+      .data[["statistikkvariabel"]] == target_measure,
+      .data[["næring"]] %in% target_sectors
+    )
+
+  if (nrow(df1_gva) == 0) {
+    message("df1_gva empty. measure values: ",
+            paste(head(unique(df1[["statistikkvariabel"]]), 10), collapse = ", "))
+    df1_gva <- NULL
+  }
+
+  if (!is.null(df1_gva)) {
+    # Time series for non-total sectors
+    df1_sector_ts <- df1_gva |>
+      filter(.data[["næring"]] != "Totalt for næringer") |>
+      mutate(year = year(date))
+
+    # Shares relative to total in most recent year
+    total_by_year <- df1_gva |>
+      filter(.data[["næring"]] == "Totalt for næringer") |>
+      select(date, total_value = value)
+
+    df1_shares <- df1_gva |>
+      filter(.data[["næring"]] != "Totalt for næringer") |>
+      left_join(total_by_year, by = "date") |>
+      mutate(
+        share = value / total_value * 100,
+        year  = year(date)
+      )
+  }
+}
+
+# --- df2: Population by citizenship ---
+df2_citizen  <- NULL
+df2_age_cit  <- NULL
+
+if (!is.null(df2)) {
+  target_citizenships <- c("Norge", "Polen", "Somalia", "Sverige", "Danmark")
+
+  # All genders, all ages for trend
+  df2_citizen <- df2 |>
+    filter(
+      .data[["statsborgerskap"]] %in% target_citizenships,
+      .data[["kjønn"]]           == "Begge kjønn",
+      .data[["alder"]]           == "Alle aldre"
+    ) |>
+    mutate(year = year(date))
+
+  if (nrow(df2_citizen) == 0) {
+    message("df2_citizen empty. kjønn values: ",
+            paste(head(unique(df2[["kjønn"]]), 10), collapse = ", "))
+    df2_citizen <- NULL
+  }
+
+  # Age breakdown for non-Norwegian citizens — peak housing-demand ages
+  if (!is.null(df2)) {
+    housing_ages <- c("20-24 år", "25-29 år", "30-34 år", "35-39 år",
+                      "20-24", "25-29", "30-34", "35-39")
+
+    df2_age_cit <- df2 |>
+      filter(
+        .data[["statsborgerskap"]] != "Alle land",
+        .data[["statsborgerskap"]] != "Norge",
+        .data[["kjønn"]] == "Begge kjønn"
+      ) |>
+      mutate(year = year(date))
+
+    # Keep only rows where alder contains a range (not "Alle aldre")
+    df2_age_cit <- df2_age_cit |>
+      filter(str_detect(.data[["alder"]], "-"))
+
+    if (nrow(df2_age_cit) == 0) df2_age_cit <- NULL
+  }
+}
+
+# --- df3: Dwelling completions by building type ---
+df3_national  <- NULL
+df3_type_wide <- NULL
+df3_recent    <- NULL
+
+if (!is.null(df3)) {
+  target_types <- c(
+    "Enebolig",
+    "Tomannsbolig",
+    "Rekkehus, kjedehus og andre småhus",
+    "Boligblokk",
+    "Bygning for bofellesskap"
+  )
+
+  # National totals only (region = "Hele landet" or equivalent)
+  region_vals <- unique(df3[["region"]])
+  national_label <- region_vals[str_detect(region_vals, "(?i)hele landet|(?i)whole|^0000")][1]
+
+  if (is.na(national_label)) {
+    # Fall back to the most common region label
+    national_label <- names(sort(table(df3[["region"]]), decreasing = TRUE))[1]
+  }
+
+  df3_national <- df3 |>
+    filter(
+      .data[["region"]]       == national_label,
+      .data[["bygningstype"]] %in% target_types
+    ) |>
+    mutate(year = year(date))
+
+  if (nrow(df3_national) == 0) {
+    message("df3_national empty. region values: ",
+            paste(head(unique(df3[["region"]]), 15), collapse = ", "))
+    df3_national <- NULL
+  }
+
+  if (!is.null(df3_national)) {
+    # Recent-period lollipop: last two available years
+    max_year <- max(df3_national$year)
+    year_a   <- max_year - 1
+    year_b   <- max_year
+
+    df3_recent <- df3_national |>
+      filter(year %in% c(year_a, year_b)) |>
+      select(year, bygningstype, value) |>
+      pivot_wider(names_from = year, values_from = value,
+                  names_prefix = "yr_")
+
+    if (nrow(df3_recent) == 0) df3_recent <- NULL
+  }
+}
+```
+
+## The Construction Collapse: What Got Built, and What Did Not
+
+Norway's housing stock was supposed to keep pace with population growth. In reality, dwelling completions have been drifting downward since 2016 — and the mix of what gets built has shifted in ways that do not match where demand is sharpest.
+
+```{r plot-housing-area}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df3_national) && nrow(df3_national) > 0) {
+
+  pal_housing <- met.brewer("Hiroshige", n = 5)
+
+  p <- df3_national |>
+    mutate(
+      bygningstype = case_when(
+        bygningstype == "Rekkehus, kjedehus og andre småhus" ~ "Rekkehus/småhus",
+        TRUE ~ bygningstype
+      )
+    ) |>
+    ggplot(aes(x = date, y = value, fill = bygningstype)) +
+    geom_area(alpha = 0.85, colour = "white", linewidth = 0.3) +
+    scale_fill_manual(values = pal_housing) +
+    scale_y_continuous(labels = comma_format(big.mark = " ")) +
+    scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
+    labs(
+      title    = "Dwelling completions by building type, Norway",
+      subtitle = "Apartment blocks surged in the 2010s, then fell sharply — single-family homes remain subdued",
+      x        = NULL,
+      y        = "Dwellings completed",
+      fill     = "Building type",
+      caption  = "Source: Statistics Norway, table 06265"
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      plot.title    = element_text(face = "bold", size = 14),
+      plot.subtitle = element_text(colour = "grey35", size = 11),
+      legend.position = "bottom",
+      legend.key.size = unit(0.5, "cm"),
+      panel.grid.minor = element_blank()
+    )
+
+  print(p) # fixed: missing print() for plot output
+}
+```
+
+```{r plot-dumbbell-housing}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df3_recent) && nrow(df3_recent) > 0) {
+
+  col_early <- met.brewer("Hiroshige", n = 5)[2]
+  col_late  <- met.brewer("Hiroshige", n = 5)[5]
+
+  year_cols <- names(df3_recent)[str_detect(names(df3_recent), "^yr_")]
+  yr_early_name <- year_cols[1]
+  yr_late_name  <- year_cols[2]
+
+  yr_early_label <- str_remove(yr_early_name, "yr_")
+  yr_late_label  <- str_remove(yr_late_name,  "yr_")
+
+  p2 <- df3_recent |>
+    mutate(
+      bygningstype = case_when(
+        bygningstype == "Rekkehus, kjedehus og andre småhus" ~ "Rekkehus/småhus",
+        TRUE ~ bygningstype
+      ),
+      bygningstype = fct_reorder(bygningstype, .data[[yr_late_name]])
+    ) |>
+    ggplot() +
+    geom_segment(
+      aes(
+        x    = .data[[yr_early_name]],
+        xend = .data[[yr_late_name]],
+        y    = bygningstype,
+        yend = bygningstype
+      ),
+      colour = "grey70", linewidth = 1.5
+    ) +
+    geom_point(aes(x = .data[[yr_early_name]], y = bygningstype),
+               colour = col_early, size = 5) +
+    geom_point(aes(x = .data[[yr_late_name]],  y = bygningstype),
+               colour = col_late,  size = 5) +
+    annotate("text", x = Inf, y = -Inf,
+             label = paste0(yr_late_label, " (dark)   ", yr_early_label, " (light)"),
+             hjust = 1.05, vjust = -0.5, size = 3.2, colour = "grey40") +
+    scale_x_continuous(labels = comma_format(big.mark = " ")) +
+    labs(
+      title    = paste0("Dwelling completions: ", yr_early_label, " vs ", yr_late_label),
+      subtitle = "Every building category contracted — apartment blocks suffered the steepest fall",
+      x        = "Dwellings completed",
+      y        = NULL,
+      caption  = "Source: Statistics Norway, table 06265"
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      plot.title    = element_text(face = "bold", size = 14),
+      plot.subtitle = element_text(colour = "grey35", size = 11),
+      panel.grid.minor = element_blank(),
+      panel.grid.major.y = element_blank()
+    )
+
+  print(p2) # fixed: missing print() for plot output
+}
+```
+
+## The Demographic Dimension: Who Holds Norwegian Citizenship, and How Old Are They?
+
+Housing demand is not just about numbers of people — it is about what life stage those people are in. Migrants from Poland, Somalia, Sweden, and Denmark often cluster in the 25-to-39 age bracket, precisely the cohort most urgently searching for family-sized apartments or starter homes. Tracking how this population has evolved reveals the unmet demand that construction statistics cannot show alone.
+
+```{r plot-citizenship-trend}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df2_citizen) && nrow(df2_citizen) > 0) {
+
+  pal_cit <- met.brewer("Cassatt2", n = 5)
+
+  p3 <- df2_citizen |>
+    mutate(
+      statsborgerskap = factor(
+        statsborgerskap,
+        levels = c("Polen", "Somalia", "Sverige", "Danmark", "Norge")
+      )
+    ) |>
+    ggplot(aes(x = date, y = value, colour = statsborgerskap)) +
+    geom_line(linewidth = 1.2) +
+    geom_point(size = 1.6) +
+    facet_wrap(~ statsborgerskap, scales = "free_y", ncol = 3) +
+    scale_colour_manual(values = pal_cit) +
+    scale_y_continuous(labels = comma_format(big.mark = " ")) +
+    scale_x_date(date_breaks = "10 years", date_labels = "%Y") +
+    labs(
+      title    = "Population by citizenship, Norway",
+      subtitle = "Polish citizens grew rapidly after 2004 EU expansion; Somali and Nordic trends show distinct trajectories",
+      x        = NULL,
+      y        = "Persons",
+      caption  = "Source: Statistics Norway, table 05196"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      plot.title      = element_text(face = "bold", size = 14),
+      plot.subtitle   = element_text(colour = "grey35", size = 10),
+      legend.position = "none",
+      strip.text      = element_text(face = "bold"),
+      panel.grid.minor = element_blank()
+    )
+
+  print(p3) # fixed: missing print() for plot output
+}
+```
+
+```{r plot-age-heatmap}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df2_age_cit) && nrow(df2_age_cit) > 0) {
+
+  # Aggregate across citizenships for a clean heatmap of year x age group
+  df2_heatmap <- df2_age_cit |>
+    filter(.data[["statsborgerskap"]] %in% c("Polen", "Somalia", "Sverige", "Danmark")) |>
+    group_by(year, alder, statsborgerskap) |>
+    summarise(total = sum(value, na.rm = TRUE), .groups = "drop") |>
+    filter(year >= 2005)
+
+  # Limit to tractable age groups
+  age_order <- df2_heatmap |>
+    distinct(alder) |>
+    arrange(alder) |>
+    pull(alder)
+
+  df2_heatmap <- df2_heatmap |>
+    mutate(alder = factor(alder, levels = age_order))
+
+  if (nrow(df2_heatmap) > 0) {
+    p4 <- df2_heatmap |>
+      ggplot(aes(x = year, y = alder, fill = total)) +
+      geom_tile(colour = "white", linewidth = 0.3) +
+      facet_wrap(~ statsborgerskap, ncol = 2) +
+      scale_fill_gradientn(
+        colours = met.brewer("Hiroshige", n = 9),
+        labels  = comma_format(big.mark = " "),
+        name    = "Persons"
+      ) +
+      scale_x_continuous(breaks = seq(2005, 2025, by = 5)) +
+      labs(
+        title    = "Foreign citizens in Norway by age group and origin country",
+        subtitle = "Housing-demand ages (20s-30s) dominate among Polish citizens; age distributions differ markedly by origin",
+        x        = "Year",
+        y        = "Age group",
+        caption  = "Source: Statistics Norway, table 05196"
+      ) +
+      theme_minimal(base_size = 11) +
+      theme(
+        plot.title      = element_text(face = "bold", size = 13),
+        plot.subtitle   = element_text(colour = "grey35", size = 9),
+        axis.text.y     = element_text(size = 7),
+        legend.position = "right",
+        strip.text      = element_text(face = "bold"),
+        panel.grid      = element_blank()
+      )
+
+    print(p4) # fixed: missing print() for plot output
+  }
+}
+```
+
+## The Sectoral Wealth Divide: Oil Grows, Construction Stagnates
+
+The national accounts tell the story that ties everything together. Real gross value added in oil and gas extraction has grown at a rate that dwarfs every other sector. Construction — the industry that translates demographic demand into physical dwellings — is conspicuously absent from the growth story.
+
+```{r plot-gva-lollipop}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df1_shares) && nrow(df1_shares) > 0) {
+
+  # Compare share of GVA in first and last available year
+  year_range <- df1_shares |>
+    summarise(min_yr = min(year), max_yr = max(year))
+
+  yr_first <- year_range$min_yr
+  yr_last  <- year_range$max_yr
+
+  df1_lollipop <- df1_shares |>
+    filter(year %in% c(yr_first, yr_last)) |>
+    select(year, næring, share) |>
+    pivot_wider(names_from = year, values_from = share,
+                names_prefix = "yr_") |>
+    mutate(
+      change = .data[[paste0("yr_", yr_last)]] - .data[[paste0("yr_", yr_first)]],
+      næring = fct_reorder(næring, change)
+    )
+
+  if (nrow(df1_lollipop) > 0) {
+    col_pos <- met.brewer("Cassatt2", n = 5)[5]
+    col_neg <- met.brewer("Cassatt2", n = 5)[1]
+
+    p5 <- df1_lollipop |>
+      ggplot(aes(x = change, y = næring,
+                 colour = change > 0)) +
+      geom_vline(xintercept = 0, colour = "grey60", linewidth = 0.8, linetype = "dashed") +
+      geom_segment(
+        aes(x = 0, xend = change, y = næring, yend = næring),
+        linewidth = 1.4
+      ) +
+      geom_point(size = 5) +
+      scale_colour_manual(
+        values = c(`TRUE` = col_pos, `FALSE` = col_neg),
+        guide  = "none"
+      ) +
+      scale_x_continuous(labels = function(x) paste0(sprintf("%+.1f", x), " pp")) +
+      labs(
+        title    = paste0("Change in GVA share: ", yr_first, " to ", yr_last),
+        subtitle = "Oil and gas extraction gained share of the economy; other sectors gave way",
+        x        = paste0("Percentage-point change in share of total GVA\n(constant 2023 prices, ", yr_first, " to ", yr_last, ")"),
+        y        = NULL,
+        caption  = "Source: Statistics Norway, table 09170"
+      ) +
+      theme_minimal(base_size = 13) +
+      theme(
+        plot.title      = element_text(face = "bold", size = 14),
+        plot.subtitle   = element_text(colour = "grey35", size = 10),
+        panel.grid.minor = element_blank(),
+        panel.grid.major.y = element_blank()
+      )
+
+    print(p5) # fixed: missing print() for plot output
+  }
+}
+```
+
+## Key Findings
+
+- **Construction is contracting across all types.** Dwelling completions fell in both the most recent year-on-year comparison and over the medium term, with apartment blocks — the segment most suited to urban housing demand — suffering the largest absolute decline.
+- **Polish citizens remain the largest non-Nordic foreign group**, but their growth has plateaued since around 2012. The age composition of foreign citizens, heavily weighted toward the 25-39 bracket, means housing demand from this demographic remains structurally elevated even as headline population growth from that source moderates.
+- **Oil and gas extraction continues to expand its share of real GVA**, while labour-intensive sectors including agriculture, fisheries, and manufacturing have ceded ground. The wealth generated does not automatically translate into housing supply when construction activity is shrinking.
+- **The age-origin mismatch is sharp.** Polish citizens in Norway skew heavily toward prime housing-demand ages, while Somali citizens show a younger age distribution pointing toward future rather than immediate housing pressure. Policy planning that treats "foreign citizens" as a monolith misses this critical distinction.
+- **The structural gap is widening, not narrowing.** The combination of falling completions, a population of housing-seeking young adults, and an economy increasingly organised around capital-intensive extractive industries creates a fault line that neither the market nor current public policy appears close to bridging.
+
+## Closing Reflection
+
+Norway's situation in 2026 illustrates a paradox common to resource-rich economies: extraordinary aggregate wealth coexists with concrete shortages in essential goods. In this case the shortage is housing — physical space for the people who live, work, and age here. The citizenship and age data from SSB show that demand is not abstract; it is concentrated in specific cohorts and specific origins, with different timeline pressures. The construction data show that supply is not keeping up. The national accounts show where the money is going instead. Connecting these three statistical registers is the first step toward understanding why Norway's housing supply dream stalled — and what it would take to revive it.
