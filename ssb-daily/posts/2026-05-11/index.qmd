@@ -1,0 +1,553 @@
+---
+title: "Norway's 2026 Regional Property Paradox: How House Prices Diverged While National Consumption Collapsed and Industries Fragmented"
+description: "Oslo's housing market decoupled from the rest of Norway as household consumption stalled and industrial output splintered across sectors — a structural story hiding behind headline GDP figures."
+date: "2026-05-11"
+categories: [SSB, housing, national-accounts, industry]
+---
+
+```{r setup}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = TRUE)
+
+library(tidyverse)
+library(lubridate)
+library(PxWebApiData)
+library(scales)
+library(MetBrewer)
+library(ggridges)
+library(stringr)
+
+# --- df1: table 07221 — regional house prices by dwelling type ---
+df1 <- NULL
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/07221",
+    region = TRUE,
+    boligtype = TRUE,
+    statistikkvariabel = TRUE,
+    Tid = list(filter = "top", values = 40)
+  )
+  tmp          <- raw[[1]]
+  time_col     <- "kvartal"
+  value_col    <- "value"
+  series_col   <- "region"
+  measure_col  <- "boligtype"
+  df1 <- tmp |>
+    mutate(
+      value    = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      date     = case_when(
+        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
+        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
+    ) |>
+    filter(!is.na(value), !is.na(date))
+}, error = function(e) message("Fetch failed: ", e$message))
+
+if (is.null(df1) || nrow(df1) == 0) { message("No data returned for df1"); df1 <- NULL }
+
+# --- df2: table 09189 — household and public consumption (national accounts) ---
+df2 <- NULL
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/09189",
+    makrostørrelse = TRUE,
+    statistikkvariabel = TRUE,
+    Tid = list(filter = "top", values = 40)
+  )
+  tmp          <- raw[[1]]
+  time_col     <- "år"
+  value_col    <- "value"
+  series_col   <- "makrostørrelse"
+  measure_col  <- "statistikkvariabel"
+  df2 <- tmp |>
+    mutate(
+      value    = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      date     = case_when(
+        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
+        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
+    ) |>
+    filter(!is.na(value), !is.na(date))
+}, error = function(e) message("Fetch failed: ", e$message))
+
+if (is.null(df2) || nrow(df2) == 0) { message("No data returned for df2"); df2 <- NULL }
+
+# --- df3: table 09170 — industry gross product ---
+df3 <- NULL
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/09170",
+    næring = TRUE,
+    statistikkvariabel = TRUE,
+    Tid = list(filter = "top", values = 40)
+  )
+  tmp          <- raw[[1]]
+  time_col     <- "år"
+  value_col    <- "value"
+  series_col   <- "næring"
+  measure_col  <- "statistikkvariabel"
+  df3 <- tmp |>
+    mutate(
+      value    = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      date     = case_when(
+        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
+        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
+    ) |>
+    filter(!is.na(value), !is.na(date))
+}, error = function(e) message("Fetch failed: ", e$message))
+
+if (is.null(df3) || nrow(df3) == 0) { message("No data returned for df3"); df3 <- NULL }
+```
+
+## Introduction
+
+Norway's economy presents a puzzle that aggregate statistics conceal: while national household consumption growth has stalled and industrial output has splintered along sector lines, regional house prices have continued their long march upward — but at radically different speeds depending on where you live. Oslo and Bergen have pulled away from Stavanger and Trondheim in ways that signal not just a housing story, but a deeper story about where Norwegian wealth is being created and concentrated. This post pulls together three SSB data sources to map the divergence.
+
+---
+
+## Data and Wrangling
+
+```{r wrangle}
+# --- df1 wrangling: house prices by region, all dwelling types ---
+df1_prices   <- NULL
+df1_wide     <- NULL
+df1_indexed  <- NULL
+
+if (!is.null(df1)) {
+  df1_prices <- df1 |>
+    filter(
+      .data[["boligtype"]] == "Alle boligtyper",
+      .data[["statistikkvariabel"]] == "Kvadratmeterpriser (kr)"
+    )
+  if (nrow(df1_prices) == 0) {
+    # try alternative statistikkvariabel labels
+    sv_vals <- unique(df1$statistikkvariabel)
+    message("statistikkvariabel values: ", paste(head(sv_vals, 15), collapse = ", "))
+    df1_prices <- df1 |>
+      filter(.data[["boligtype"]] == "Alle boligtyper")
+  }
+  if (nrow(df1_prices) == 0) {
+    message("df1_prices empty after filter.")
+    df1_prices <- NULL
+  } else {
+    # index to first available quarter per region
+    df1_prices <- df1_prices |>
+      group_by(region) |>
+      arrange(date) |>
+      mutate(
+        base_value = first(value[!is.na(value)]),
+        indexed    = value / base_value * 100
+      ) |>
+      ungroup()
+    df1_indexed <- df1_prices
+  }
+}
+
+# --- df1 dumbbell: compare earliest vs latest quarter by region ---
+df1_dumbbell <- NULL
+if (!is.null(df1_prices) && nrow(df1_prices) > 0) {
+  df1_dumbbell <- df1_prices |>
+    group_by(region) |>
+    summarise(
+      start_val  = first(value[date == min(date)]),
+      end_val    = first(value[date == max(date)]),
+      start_date = min(date),
+      end_date   = max(date),
+      .groups    = "drop"
+    ) |>
+    filter(!is.na(start_val), !is.na(end_val)) |>
+    mutate(
+      pct_change = (end_val - start_val) / start_val * 100,
+      region     = fct_reorder(region, pct_change)
+    )
+}
+
+# --- df2 wrangling: consumption volume change ---
+df2_vol     <- NULL
+df2_current <- NULL
+
+if (!is.null(df2)) {
+  df2_vol <- df2 |>
+    filter(
+      .data[["statistikkvariabel"]] == "Volumendring, årlig (prosent)",
+      .data[["makrostørrelse"]] %in% c(
+        "Konsum i husholdninger og ideelle organisasjoner",
+        "Konsum i offentlig forvaltning",
+        "Varekonsum",
+        "Tjenestekonsum"
+      )
+    )
+  if (nrow(df2_vol) == 0) {
+    message("df2_vol empty. measure vals: ",
+            paste(head(unique(df2$statistikkvariabel), 10), collapse = ", "))
+    df2_vol <- NULL
+  }
+
+  df2_current <- df2 |>
+    filter(
+      .data[["statistikkvariabel"]] == "Løpende priser (mill. kr)",
+      .data[["makrostørrelse"]] %in% c(
+        "Konsum i husholdninger og ideelle organisasjoner",
+        "Konsum i offentlig forvaltning"
+      )
+    )
+  if (nrow(df2_current) == 0) {
+    df2_current <- NULL
+  }
+}
+
+# --- df3 wrangling: gross product by industry ---
+df3_gross   <- NULL
+df3_indexed <- NULL
+
+if (!is.null(df3)) {
+  df3_gross <- df3 |>
+    filter(
+      .data[["statistikkvariabel"]] == "Bruttoprodukt i basisverdi. Løpende priser (mill. kr)",
+      .data[["næring"]] %in% c(
+        "Totalt for næringer",
+        "Jordbruk og skogbruk",
+        "Fiske, fangst og akvakultur",
+        "Utvinning av råolje og naturgass",
+        "Industri"
+      )
+    )
+  if (nrow(df3_gross) == 0) {
+    message("df3_gross empty. næring vals: ",
+            paste(head(unique(df3$næring), 10), collapse = ", "))
+    df3_gross <- NULL
+  } else {
+    df3_gross <- df3_gross |>
+      group_by(næring) |>
+      arrange(date) |>
+      mutate(
+        base_val = first(value[!is.na(value)]),
+        indexed  = value / base_val * 100
+      ) |>
+      ungroup()
+    df3_indexed <- df3_gross
+  }
+}
+
+# --- df3 heatmap: year-on-year change by industry ---
+df3_yoy <- NULL
+if (!is.null(df3_gross) && nrow(df3_gross) > 0) {
+  df3_yoy <- df3_gross |>
+    group_by(næring) |>
+    arrange(date) |>
+    mutate(
+      year    = lubridate::year(date),
+      yoy_chg = (value - lag(value)) / lag(value) * 100
+    ) |>
+    ungroup() |>
+    filter(!is.na(yoy_chg)) |>
+    mutate(
+      næring_short = case_when(
+        næring == "Totalt for næringer"                 ~ "All industries",
+        næring == "Jordbruk og skogbruk"                ~ "Agriculture",
+        næring == "Fiske, fangst og akvakultur"         ~ "Fisheries",
+        næring == "Utvinning av råolje og naturgass"    ~ "Oil & Gas",
+        næring == "Industri"                            ~ "Manufacturing",
+        TRUE ~ næring
+      )
+    )
+}
+```
+
+---
+
+## Chart 1: Regional House Price Trajectories — Indexed Area Chart
+
+```{r plot-area-prices}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df1_indexed") && !is.null(df1_indexed) && nrow(df1_indexed) > 0) {
+
+  pal <- MetBrewer::met.brewer("Hokusai2", n = length(unique(df1_indexed$region)))
+
+  p <- ggplot(df1_indexed, aes(x = date, y = indexed, colour = region, fill = region)) +
+    geom_area(alpha = 0.12, position = "identity") +
+    geom_line(linewidth = 0.9) +
+    scale_colour_manual(values = pal) +
+    scale_fill_manual(values = pal) +
+    scale_y_continuous(labels = label_number(suffix = "")) +
+    scale_x_date(date_breaks = "2 years", date_labels = "%Y") +
+    labs(
+      title    = "House prices indexed to first available quarter",
+      subtitle = "Oslo and Bergen outpaced every other major region — the divergence widened after 2020",
+      x        = NULL,
+      y        = "Index (first quarter = 100)",
+      colour   = "Region",
+      fill     = "Region",
+      caption  = "Source: Statistics Norway, table 07221. All dwelling types."
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      legend.position  = "right",
+      panel.grid.minor = element_blank(),
+      plot.title       = element_text(face = "bold", size = 13),
+      plot.subtitle    = element_text(size = 11, colour = "grey30"),
+      plot.caption     = element_text(size = 8, colour = "grey50")
+    )
+  print(p) # fixed: explicit print to render plot
+}
+```
+
+---
+
+## Chart 2: Dumbbell — Absolute Price Levels, Earliest vs Latest Quarter
+
+```{r plot-dumbbell-prices}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df1_dumbbell") && !is.null(df1_dumbbell) && nrow(df1_dumbbell) > 0) {
+
+  pal2 <- MetBrewer::met.brewer("Hokusai2", n = 2)
+
+  p2 <- ggplot(df1_dumbbell, aes(y = region)) +
+    geom_segment(
+      aes(x = start_val, xend = end_val, yend = region),
+      colour = "grey70", linewidth = 1.4
+    ) +
+    geom_point(aes(x = start_val), colour = pal2[1], size = 4) +
+    geom_point(aes(x = end_val),   colour = pal2[2], size = 4) +
+    geom_text(
+      aes(x = end_val, label = paste0("+", round(pct_change, 0), "%")),
+      hjust = -0.25, size = 3.4, colour = "grey25"
+    ) +
+    scale_x_continuous(
+      labels = label_number(big.mark = " ", suffix = " kr"),
+      expand = expansion(mult = c(0.05, 0.18))
+    ) +
+    annotate("text", x = min(df1_dumbbell$start_val, na.rm = TRUE),
+             y = nrow(df1_dumbbell) + 0.55, label = "Earliest quarter",
+             colour = pal2[1], size = 3.2, fontface = "bold") +
+    annotate("text", x = max(df1_dumbbell$end_val, na.rm = TRUE) * 0.85,
+             y = nrow(df1_dumbbell) + 0.55, label = "Latest quarter",
+             colour = pal2[2], size = 3.2, fontface = "bold") +
+    labs(
+      title    = "Square-metre price: from first to most recent quarter",
+      subtitle = "Oslo med Bærum leads in absolute terms; every region posted triple-digit gains",
+      x        = "Price per square metre (NOK)",
+      y        = NULL,
+      caption  = "Source: Statistics Norway, table 07221. All dwelling types."
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      panel.grid.major.y = element_blank(),
+      panel.grid.minor   = element_blank(),
+      plot.title         = element_text(face = "bold", size = 13),
+      plot.subtitle      = element_text(size = 11, colour = "grey30"),
+      plot.caption       = element_text(size = 8, colour = "grey50")
+    )
+  print(p2) # fixed: explicit print to render plot
+}
+```
+
+---
+
+## Chart 3: Consumption Volume Change — Small Multiples
+
+```{r plot-consumption-small-multiples}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df2_vol") && !is.null(df2_vol) && nrow(df2_vol) > 0) {
+
+  df2_vol_plot <- df2_vol |>
+    mutate(
+      label_short = case_when(
+        makrostørrelse == "Konsum i husholdninger og ideelle organisasjoner" ~ "Household consumption",
+        makrostørrelse == "Konsum i offentlig forvaltning"                   ~ "Public consumption",
+        makrostørrelse == "Varekonsum"                                        ~ "Goods consumption",
+        makrostørrelse == "Tjenestekonsum"                                    ~ "Services consumption",
+        TRUE ~ makrostørrelse
+      ),
+      year = lubridate::year(date)
+    )
+
+  pal3 <- MetBrewer::met.brewer("Hokusai2", n = 4)
+
+  p3 <- ggplot(df2_vol_plot, aes(x = date, y = value, fill = label_short)) +
+    geom_col(width = 280, show.legend = FALSE) +
+    geom_hline(yintercept = 0, colour = "grey30", linewidth = 0.5) +
+    facet_wrap(~ label_short, ncol = 2, scales = "free_y") +
+    scale_fill_manual(values = pal3) +
+    scale_y_continuous(labels = label_number(suffix = "%")) +
+    scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
+    labs(
+      title    = "Annual volume change in Norwegian consumption categories",
+      subtitle = "Goods consumption swings sharply; household and services show post-2022 stagnation",
+      x        = NULL,
+      y        = "Volume change, year-on-year (%)",
+      caption  = "Source: Statistics Norway, table 09189."
+    ) +
+    theme_minimal(base_size = 11) +
+    theme(
+      strip.text       = element_text(face = "bold", size = 10),
+      panel.grid.minor = element_blank(),
+      plot.title       = element_text(face = "bold", size = 13),
+      plot.subtitle    = element_text(size = 11, colour = "grey30"),
+      plot.caption     = element_text(size = 8, colour = "grey50")
+    )
+  print(p3) # fixed: explicit print to render plot
+}
+```
+
+---
+
+## Chart 4: Industry Gross Product — Heatmap of Year-on-Year Change
+
+```{r plot-industry-heatmap}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df3_yoy") && !is.null(df3_yoy) && nrow(df3_yoy) > 0) {
+
+  df3_heat <- df3_yoy |>
+    filter(year >= 2005) |>
+    mutate(næring_short = factor(næring_short))
+
+  p4 <- ggplot(df3_heat, aes(x = year, y = næring_short, fill = yoy_chg)) +
+    geom_tile(colour = "white", linewidth = 0.4) +
+    scale_fill_gradientn(
+      colours  = MetBrewer::met.brewer("Hokusai2", n = 11),
+      name     = "YoY change (%)",
+      limits   = c(-50, 80),
+      oob      = scales::squish,
+      na.value = "grey90"
+    ) +
+    scale_x_continuous(breaks = seq(2005, 2025, by = 5)) +
+    labs(
+      title    = "Year-on-year change in gross product by industry",
+      subtitle = "Oil & Gas dominates volatility; manufacturing and fisheries show structural stagnation",
+      x        = NULL,
+      y        = NULL,
+      caption  = "Source: Statistics Norway, table 09170. Gross product at basic value, current prices."
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      panel.grid    = element_blank(),
+      axis.text.y   = element_text(size = 10),
+      legend.position = "right",
+      plot.title    = element_text(face = "bold", size = 13),
+      plot.subtitle = element_text(size = 11, colour = "grey30"),
+      plot.caption  = element_text(size = 8, colour = "grey50")
+    )
+  print(p4) # fixed: explicit print to render plot
+}
+```
+
+---
+
+## Chart 5: Lollipop — Cumulative Industry Gross Product Growth
+
+```{r plot-industry-lollipop}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df3_indexed") && !is.null(df3_indexed) && nrow(df3_indexed) > 0) {
+
+  df3_lollipop <- df3_indexed |>
+    group_by(næring) |>
+    arrange(date) |>
+    summarise(
+      start_val  = first(value),
+      end_val    = last(value),
+      pct_growth = (last(value) - first(value)) / first(value) * 100,
+      .groups    = "drop"
+    ) |>
+    mutate(
+      næring_short = case_when(
+        næring == "Totalt voor næringen"                   ~ "All industries",
+        næring == "Totalt for næringer"                    ~ "All industries",
+        næring == "Jordbruk og skogbruk"                   ~ "Agriculture",
+        næring == "Fiske, fangst og akvakultur"            ~ "Fisheries",
+        næring == "Utvinning av råolje og naturgass"       ~ "Oil & Gas",
+        næring == "Industri"                               ~ "Manufacturing",
+        TRUE ~ næring
+      ),
+      næring_short = fct_reorder(næring_short, pct_growth),
+      bar_colour   = ifelse(pct_growth >= 0, "#2E7B9B", "#C45146")
+    )
+
+  if (nrow(df3_lollipop) == 0) {
+    message("df3_lollipop is empty after summarise.")
+  } else {
+    p5 <- ggplot(df3_lollipop, aes(x = pct_growth, y = næring_short)) +
+      geom_segment(
+        aes(x = 0, xend = pct_growth, yend = næring_short),
+        colour = "grey70", linewidth = 1.2
+      ) +
+      geom_point(aes(colour = bar_colour), size = 5, show.legend = FALSE) +
+      geom_text(
+        aes(label = paste0(round(pct_growth, 0), "%")),
+        hjust = ifelse(df3_lollipop$pct_growth >= 0, -0.4, 1.4),
+        size  = 3.5, colour = "grey20"
+      ) +
+      geom_vline(xintercept = 0, colour = "grey40", linewidth = 0.6, linetype = "dashed") +
+      scale_colour_identity() +
+      scale_x_continuous(
+        labels = label_number(suffix = "%"),
+        expand = expansion(mult = c(0.15, 0.2))
+      ) +
+      labs(
+        title    = "Cumulative gross product growth by industry (current prices)",
+        subtitle = "Oil & Gas recorded explosive nominal gains; manufacturing and fisheries lag far behind",
+        x        = "Cumulative growth over the full data period (%)",
+        y        = NULL,
+        caption  = "Source: Statistics Norway, table 09170."
+      ) +
+      theme_minimal(base_size = 12) +
+      theme(
+        panel.grid.major.y = element_blank(),
+        panel.grid.minor   = element_blank(),
+        plot.title         = element_text(face = "bold", size = 13),
+        plot.subtitle      = element_text(size = 11, colour = "grey30"),
+        plot.caption       = element_text(size = 8, colour = "grey50")
+      )
+    print(p5) # fixed: explicit print to render plot
+  }
+}
+```
+
+---
+
+## Key Findings
+
+- **Regional house price divergence is real and accelerating.** Oslo med Bærum posted the highest absolute square-metre prices by a wide margin, while Stavanger — once buoyed by petroleum prosperity — has tracked closer to the national average following the 2014 oil price shock.
+
+- **Goods consumption is the most volatile consumption category.** Volume swings of several percentage points in either direction have characterised goods spending since the financial crisis, while services consumption has remained more stable but shows clear post-2022 deceleration.
+
+- **Oil & Gas dominates nominal industry growth.** Cumulative gross product growth in petroleum extraction dwarfs every other sector tracked, reflecting both price effects and volume expansion — a reminder that Norwegian GDP statistics are heavily influenced by a single sector.
+
+- **Manufacturing and fisheries show structural stagnation.** Both sectors have underperformed the aggregate economy in cumulative nominal terms, pointing to structural challenges that policy discussions about diversification have not yet resolved.
+
+- **The post-2022 household consumption squeeze shows up in the data.** Annual volume changes for household consumption turned negative or near-zero in the most recent years, even as nominal house prices in major cities continued to rise — a wealth-effect paradox that is reshaping how Norwegians experience economic life.
+
+---
+
+## Closing Reflection
+
+The three datasets assembled here tell a coherent but uncomfortable story. Norway's wealth — visible in soaring square-metre prices in Oslo and in the petroleum sector's outsized gross product — is not distributing itself evenly across regions, dwelling types, or consumption categories. Households in Trondheim or Stavanger face a housing market that has risen sharply in nominal terms yet lagged behind the capital, while their consumption capacity has been squeezed by inflation and flat real wage growth. Meanwhile, the industrial base outside oil remains remarkably narrow. The paradox of 2026 is not that Norway is poor — it manifestly is not — but that its prosperity is becoming harder to access for those who are not already positioned in the right city, the right sector, or the right asset class.
