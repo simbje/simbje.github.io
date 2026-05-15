@@ -1,0 +1,301 @@
+{
+  "run_date": "2026-05-15",
+  "candidates_count": 71,
+  "sources_used": ["arxiv:cs.LG", "arxiv:stat.ME", "arxiv:stat.ML", "arxiv:econ.EM", "arxiv:q-fin.ST", "arxiv:stat.AP", "arxiv:q-fin.MF", "arxiv:q-fin.RM", "arxiv:q-fin.GN", "arxiv:q-fin.CP", "arxiv:q-fin.TR", "arxiv:econ.GN", "arxiv:q-fin.PM", "arxiv:econ.TH"],
+  "bucket_counts": {
+    "data_science": 27,
+    "finance": 25,
+    "social_sciences": 26
+  },
+  "top_papers": {
+    "data_science": [
+      {
+        "id": "arxiv:2605.14786",
+        "rank": 1,
+        "title": "Known By Their Actions: Fingerprinting LLM Browser Agents via UI Traces",
+        "authors": "William Lugoloobi",
+        "url": "https://arxiv.org/abs/2605.14786",
+        "source": "arxiv",
+        "why_trending": "Reveals critical security vulnerability in LLM-based agents through passive UI tracking, achieving 96% F1 across frontier models—directly relevant to deployed agent trustworthiness.",
+        "topics": [
+          "LLM agent security and interpretability"
+        ]
+      },
+      {
+        "id": "arxiv:2605.14841",
+        "rank": 2,
+        "title": "GPart: End-to-End Isometric Fine-Tuning via Global Parameter Partitioning",
+        "authors": "Paolo Mandica",
+        "url": "https://arxiv.org/abs/2605.14841",
+        "source": "arxiv",
+        "why_trending": "Addresses fundamental limitation in LoRA fine-tuning by achieving end-to-end isometry in parameter space, advancing parameter-efficient LLM adaptation at scale.",
+        "topics": [
+          "Efficient LLM training and adaptation"
+        ]
+      },
+      {
+        "id": "arxiv:2605.14844",
+        "rank": 3,
+        "title": "XFP: Quality-Targeted Adaptive Codebook Quantization with Sparse Outlier Separation for LLM Inference",
+        "authors": "Thomas Witt",
+        "url": "https://arxiv.org/abs/2605.14844",
+        "source": "arxiv",
+        "why_trending": "Introduces quality-targeted dynamic quantization for LLM inference with automatic hyperparameter selection, enabling practical sub-byte compression without calibration.",
+        "topics": [
+          "Efficient LLM inference and quantization"
+        ]
+      },
+      {
+        "id": "arxiv:2605.14809",
+        "rank": 4,
+        "title": "GFMate: Empowering Graph Foundation Models with Test-time Prompt Tuning",
+        "authors": "Yan Jiang",
+        "url": "https://arxiv.org/abs/2605.14809",
+        "source": "arxiv",
+        "why_trending": "Extends graph prompt tuning to foundation models with test-time adaptation, improving generalization across domains—key for scaling GFMs.",
+        "topics": [
+          "Foundation model adaptation and generalization"
+        ]
+      },
+      {
+        "id": "arxiv:2605.14912",
+        "rank": 5,
+        "title": "From Sycophantic Consensus to Pluralistic Repair: Why AI Alignment Must Surface Disagreement",
+        "authors": "Varad Vishwarupe",
+        "url": "https://arxiv.org/abs/2605.14912",
+        "source": "arxiv",
+        "why_trending": "Reframes AI alignment beyond preference aggregation to surface genuine disagreement and pluralism, addressing critical limitation of current RLHF approaches.",
+        "topics": [
+          "AI alignment and pluralism"
+        ]
+      }
+    ],
+    "finance": [
+      {
+        "id": "arxiv:2605.12764",
+        "rank": 1,
+        "title": "Yield Curves Dynamics Using Variational Autoencoders Under No-arbitrage",
+        "authors": "Fusheng Luo",
+        "url": "https://arxiv.org/abs/2605.12764",
+        "source": "arxiv",
+        "why_trending": "Integrates physics-informed constraints (no-arbitrage) into deep generative models for yield curves, resolving 'manifold collapse' and achieving consistent term structure forecasting.",
+        "topics": [
+          "Neural networks for fixed-income modeling",
+          "No-arbitrage deep learning"
+        ]
+      },
+      {
+        "id": "arxiv:2605.13407",
+        "rank": 2,
+        "title": "Vector-Quantized Discrete Latent Factors Meet Financial Priors: Dynamic Cross-Sectional Stock Ranking Prediction for Portfolio Construction",
+        "authors": "Namhyoung Kim",
+        "url": "https://arxiv.org/abs/2605.13407",
+        "source": "arxiv",
+        "why_trending": "Combines expert financial priors with vector-quantized discrete latent factors for dynamic cross-sectional stock ranking, balancing interpretability and predictive power.",
+        "topics": [
+          "Stock prediction with financial priors",
+          "Factor models and machine learning"
+        ]
+      },
+      {
+        "id": "arxiv:2605.13998",
+        "rank": 3,
+        "title": "Synthetic American Option Pricing via Jump-HMM-Driven Heston Implied Volatility",
+        "authors": "Julia Sun",
+        "url": "https://arxiv.org/abs/2605.13998",
+        "source": "arxiv",
+        "why_trending": "Breaks circular dependency in synthetic option pricing by deriving implied volatility from structural models, enabling synthetic data generation for ML/risk applications.",
+        "topics": [
+          "Derivatives pricing and volatility",
+          "Synthetic data generation"
+        ]
+      },
+      {
+        "id": "arxiv:2605.12099",
+        "rank": 4,
+        "title": "Bayesian Dynamic Modeling of Realized Volatility in Financial Asset Price Forecasting",
+        "authors": "Patrick Woitschig",
+        "url": "https://arxiv.org/abs/2605.12099",
+        "source": "arxiv",
+        "why_trending": "Introduces dynamic gamma process models for realized volatility in Bayesian framework, improving volatility forecasting through integration of high-frequency data.",
+        "topics": [
+          "Volatility forecasting and modeling"
+        ]
+      },
+      {
+        "id": "arxiv:2605.12189",
+        "rank": 5,
+        "title": "A deep learning approach for pricing convertible bonds with path-dependent reset and call provisions",
+        "authors": "Qinwen Zhu",
+        "url": "https://arxiv.org/abs/2605.12189",
+        "source": "arxiv",
+        "why_trending": "Develops deep learning framework for path-dependent convertible bond pricing under complex contractual features, extending DL methods to realistic derivative valuation.",
+        "topics": [
+          "Derivatives pricing with deep learning"
+        ]
+      }
+    ],
+    "social_sciences": [
+      {
+        "id": "arxiv:2605.15115",
+        "rank": 1,
+        "title": "A Practical Guide to Instrumental Variables Methods with Heterogeneous Treatment Effects",
+        "authors": "Tymon Słoczyński",
+        "url": "https://arxiv.org/abs/2605.15115",
+        "source": "arxiv",
+        "why_trending": "Provides practical guide to IV methods accounting for heterogeneous treatment effects, aligning empirical econometric practice with recent LATE framework advances.",
+        "topics": [
+          "Causal inference and econometrics"
+        ]
+      },
+      {
+        "id": "arxiv:2605.15119",
+        "rank": 2,
+        "title": "Identification and Estimation of Staggered Difference-in-Differences with Network Spillovers",
+        "authors": "Hayato Tagawa",
+        "url": "https://arxiv.org/abs/2605.15119",
+        "source": "arxiv",
+        "why_trending": "Extends staggered difference-in-differences to settings with network spillovers, enabling policy evaluation under realistic interdependence structures.",
+        "topics": [
+          "Causal inference with spillovers"
+        ]
+      },
+      {
+        "id": "arxiv:2605.14493",
+        "rank": 3,
+        "title": "Deep Learning for Solving and Estimating Dynamic Models in Economics and Finance",
+        "authors": "Simon Scheidegger",
+        "url": "https://arxiv.org/abs/2605.14493",
+        "source": "arxiv",
+        "why_trending": "Comprehensive guide to deep learning for solving high-dimensional heterogeneous-agent and macro-finance models, addressing curse of dimensionality in economic modeling.",
+        "topics": [
+          "Deep learning for dynamic economic models"
+        ]
+      },
+      {
+        "id": "arxiv:2605.10291",
+        "rank": 4,
+        "title": "Generative AI Fuels Solo Entrepreneurship, but Teams Still Lead at the Top",
+        "authors": "Hyunso Kim",
+        "url": "https://arxiv.org/abs/2605.10291",
+        "source": "arxiv",
+        "why_trending": "Documents how generative AI reshapes entrepreneurial entry composition (solo vs. teams) using 160K+ product launches, revealing paradox where entry increases but top quality remains team-driven.",
+        "topics": [
+          "AI and labor economics",
+          "Entrepreneurship"
+        ]
+      },
+      {
+        "id": "arxiv:2605.14019",
+        "rank": 5,
+        "title": "Regret Equals Covariance: A Closed-Form Characterization for Stochastic Optimization",
+        "authors": "Irene Aldridge",
+        "url": "https://arxiv.org/abs/2605.14019",
+        "source": "arxiv",
+        "why_trending": "Proves exact closed-form decomposition of regret as covariance between uncertain parameters and optimal decisions, replacing expensive SAA simulation.",
+        "topics": [
+          "Decision theory and optimization"
+        ]
+      }
+    ]
+  },
+  "topics": [
+    {
+      "name": "LLM efficiency, safety, and adaptation",
+      "paper_ids": [
+        "arxiv:2605.14841",
+        "arxiv:2605.14844",
+        "arxiv:2605.14809",
+        "arxiv:2605.14786"
+      ],
+      "summary": "Papers focused on making large language models more efficient (via parameter-efficient fine-tuning and quantization), more secure (via agent fingerprinting), and more generalizable (via foundation model adaptation). Key concern: scaling LLMs and deploying them safely and efficiently."
+    },
+    {
+      "name": "Neural networks for derivatives pricing and volatility",
+      "paper_ids": [
+        "arxiv:2605.12764",
+        "arxiv:2605.13998",
+        "arxiv:2605.12189",
+        "arxiv:2605.12099"
+      ],
+      "summary": "Integration of deep learning with financial theory (no-arbitrage constraints, structural models, dynamic Bayesian frameworks) for pricing derivatives and forecasting volatility. Addresses the need to combine model flexibility with financial domain constraints."
+    },
+    {
+      "name": "Stock prediction and factor models",
+      "paper_ids": [
+        "arxiv:2605.13407",
+        "arxiv:2605.12977"
+      ],
+      "summary": "Machine learning approaches to cross-sectional stock return prediction that integrate financial priors (factor models, expert domain knowledge) with learned latent factors for improved interpretability and performance."
+    },
+    {
+      "name": "Causal inference and econometric methods",
+      "paper_ids": [
+        "arxiv:2605.15115",
+        "arxiv:2605.15119",
+        "arxiv:2605.12284"
+      ],
+      "summary": "Advances in econometric methodology for causal inference accounting for heterogeneous treatment effects, network spillovers, and functional estimation with proper uniform inference procedures."
+    },
+    {
+      "name": "Deep learning for high-dimensional economic and financial modeling",
+      "paper_ids": [
+        "arxiv:2605.14493",
+        "arxiv:2605.14019"
+      ],
+      "summary": "Computational methods that use deep learning and decision theory to overcome dimensionality constraints in solving heterogeneous-agent economies, macro-finance models, and stochastic optimization problems."
+    },
+    {
+      "name": "Market design, microstructure, and systemic risk",
+      "paper_ids": [
+        "arxiv:2605.11640",
+        "arxiv:2605.11645",
+        "arxiv:2605.10486",
+        "arxiv:2605.10400",
+        "arxiv:2605.10428",
+        "arxiv:2605.11180"
+      ],
+      "summary": "Analysis of prediction markets, perpetual futures, and decentralized exchanges including herding dynamics, market manipulation incentives, microstructure signatures, and risk design frameworks for novel instruments."
+    },
+    {
+      "name": "AI, labor markets, and economic behavior",
+      "paper_ids": [
+        "arxiv:2605.10291",
+        "arxiv:2605.11350",
+        "arxiv:2605.13679"
+      ],
+      "summary": "Studies of how generative AI affects labor supply, entrepreneurial entry, productivity, skill investments, and household economic decisions in contexts of changing technology and market structure."
+    },
+    {
+      "name": "Game theory, mechanism design, and social choice",
+      "paper_ids": [
+        "arxiv:2605.12094",
+        "arxiv:2605.11736",
+        "arxiv:2605.12802",
+        "arxiv:2605.13362",
+        "arxiv:2605.14485",
+        "arxiv:2605.13039"
+      ],
+      "summary": "Theoretical advances in Bayesian persuasion, strategic mechanisms, voting systems, fair allocation, and governance design under information asymmetry and value heterogeneity."
+    },
+    {
+      "name": "Explainability, interpretability, and AI alignment",
+      "paper_ids": [
+        "arxiv:2605.14912",
+        "arxiv:2605.14884",
+        "arxiv:2605.14897"
+      ],
+      "summary": "Methods and frameworks for understanding black-box ML systems (GNNs, deep RL), surfacing disagreement in pluralistic alignment, and distilling policies to interpretable surrogate models."
+    },
+    {
+      "name": "Clustering, data analysis, and statistical methods",
+      "paper_ids": [
+        "arxiv:2605.14824",
+        "arxiv:2605.14828",
+        "arxiv:2605.14796",
+        "arxiv:2605.14915"
+      ],
+      "summary": "Advances in unsupervised and semi-supervised learning including topological clustering refinements, ordinal clustering with interpretability, count-data models, and benchmark studies of imbalanced learning."
+    }
+  ]
+}
