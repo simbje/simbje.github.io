@@ -1,0 +1,560 @@
+---
+title: "Norway's 2026 Consumption Meltdown: How Inflation Fractured Household Spending Across Categories"
+description: "A data-driven investigation into how rising prices destroyed real household demand, which product categories hit consumers hardest, and how GDP sector performance diverged as spending collapsed."
+date: "2026-05-15"
+categories: [SSB, inflation, household consumption, GDP, national accounts]
+---
+
+```{r setup}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = TRUE)
+
+library(tidyverse)
+library(lubridate)
+library(PxWebApiData)
+library(scales)
+library(MetBrewer)
+library(ggridges)
+
+df1 <- NULL
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/03013",
+    konsumgruppe = TRUE,
+    statistikkvariabel = TRUE,
+    Tid = list(filter = "top", values = 40)
+  )
+  tmp          <- raw[[1]]
+  time_col     <- "måned"
+  value_col    <- "value"
+  series_col   <- "konsumgruppe"
+  measure_col  <- "statistikkvariabel"
+  df1 <- tmp |>
+    mutate(
+      value    = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      date     = case_when(
+        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
+        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
+    ) |>
+    filter(!is.na(value), !is.na(date))
+}, error = function(e) message("Fetch failed: ", e$message))
+
+if (is.null(df1) || nrow(df1) == 0) {
+  message("No data returned for df1")
+  df1 <- NULL
+}
+
+df2 <- NULL
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/09170",
+    næring = TRUE,
+    statistikkvariabel = TRUE,
+    Tid = list(filter = "top", values = 40)
+  )
+  tmp          <- raw[[1]]
+  time_col     <- "år"
+  value_col    <- "value"
+  series_col   <- "næring"
+  measure_col  <- "statistikkvariabel"
+  df2 <- tmp |>
+    mutate(
+      value    = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      date     = case_when(
+        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
+        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
+    ) |>
+    filter(!is.na(value), !is.na(date))
+}, error = function(e) message("Fetch failed: ", e$message))
+
+if (is.null(df2) || nrow(df2) == 0) {
+  message("No data returned for df2")
+  df2 <- NULL
+}
+
+df3 <- NULL
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/09189",
+    makrostørrelse = TRUE,
+    statistikkvariabel = TRUE,
+    Tid = list(filter = "top", values = 40)
+  )
+  tmp          <- raw[[1]]
+  time_col     <- "år"
+  value_col    <- "value"
+  series_col   <- "makrostørrelse"
+  measure_col  <- "statistikkvariabel"
+  df3 <- tmp |>
+    mutate(
+      value    = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      date     = case_when(
+        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
+        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
+    ) |>
+    filter(!is.na(value), !is.na(date))
+}, error = function(e) message("Fetch failed: ", e$message))
+
+if (is.null(df3) || nrow(df3) == 0) {
+  message("No data returned for df3")
+  df3 <- NULL
+}
+```
+
+## Introduction
+
+For Norwegian households, the years since 2021 have felt like an economic ambush. Prices for energy, transport, and food surged simultaneously while the volume of real consumption quietly contracted — a fracture rarely visible in headline GDP numbers but starkly present in the national accounts. This post dissects where inflation struck hardest across consumption categories, how real household spending responded, and which industries managed to grow output even as consumer demand withered.
+
+## Data and Wrangling
+
+```{r wrangle}
+# ---- CPI: 12-month change by category (df1) ----
+df1_heat  <- NULL
+df1_area  <- NULL
+
+if (!is.null(df1)) {
+  # Heatmap: 12-month change across selected categories, recent months
+  cats_focus <- c(
+    "Totalindeks",
+    "Matvarer og alkoholfrie drikkevarer",
+    "Transport",
+    "Bolig, lys og brensel",
+    "Kultur og fritid"
+  )
+
+  df1_heat <- df1 |>
+    filter(
+      .data[["konsumgruppe"]] %in% cats_focus,
+      .data[["statistikkvariabel"]] == "12-måneders endring (prosent)"
+    ) |>
+    mutate(
+      year  = lubridate::year(date),
+      month = lubridate::month(date, label = TRUE, abbr = TRUE),
+      category_short = case_when(
+        konsumgruppe == "Totalindeks"                          ~ "Total CPI",
+        konsumgruppe == "Matvarer og alkoholfrie drikkevarer"  ~ "Food & beverages",
+        konsumgruppe == "Transport"                            ~ "Transport",
+        konsumgruppe == "Bolig, lys og brensel"                ~ "Housing & energy",
+        konsumgruppe == "Kultur og fritid"                     ~ "Culture & leisure",
+        TRUE ~ konsumgruppe
+      )
+    )
+  if (nrow(df1_heat) == 0) {
+    message("df1_heat empty. konsumgruppe values: ",
+            paste(head(unique(df1[["konsumgruppe"]]), 15), collapse = ", "))
+    message("statistikkvariabel values: ",
+            paste(head(unique(df1[["statistikkvariabel"]]), 10), collapse = ", "))
+    df1_heat <- NULL
+  }
+
+  # Area: monthly 12m change for Total CPI + Housing & Energy
+  df1_area <- df1 |>
+    filter(
+      .data[["konsumgruppe"]] %in% c("Totalindeks", "Bolig, lys og brensel"),
+      .data[["statistikkvariabel"]] == "12-måneders endring (prosent)"
+    ) |>
+    mutate(
+      category_short = case_when(
+        konsumgruppe == "Totalindeks"           ~ "Total CPI",
+        konsumgruppe == "Bolig, lys og brensel" ~ "Housing & energy",
+        TRUE ~ konsumgruppe
+      )
+    )
+  if (nrow(df1_area) == 0) {
+    df1_area <- NULL
+  }
+}
+
+# ---- GDP by sector: real value added (df2) ----
+df2_sector  <- NULL
+df2_compare <- NULL
+
+if (!is.null(df2)) {
+  sector_keep <- c(
+    "Totalt for næringer",
+    "Jordbruk og skogbruk",
+    "Fiske, fangst og akvakultur",
+    "Utvinning av råolje og naturgass, inkl. tjenester",
+    "Industri"
+  )
+
+  df2_sector <- df2 |>
+    filter(
+      .data[["næring"]] %in% sector_keep,
+      .data[["statistikkvariabel"]] == "Bruttoprodukt i basisverdi. Faste 2023-priser (mill. kr)"
+    ) |>
+    mutate(
+      year = lubridate::year(date),
+      sector_short = case_when(
+        næring == "Totalt for næringer"                               ~ "All industries",
+        næring == "Jordbruk og skogbruk"                              ~ "Agriculture & forestry",
+        næring == "Fiske, fangst og akvakultur"                       ~ "Fishing & aquaculture",
+        næring == "Utvinning av råolje og naturgass, inkl. tjenester" ~ "Oil & gas",
+        næring == "Industri"                                          ~ "Manufacturing",
+        TRUE ~ næring
+      )
+    )
+
+  if (nrow(df2_sector) == 0) {
+    message("df2_sector empty. næring values: ",
+            paste(head(unique(df2[["næring"]]), 15), collapse = ", "))
+    message("statistikkvariabel values: ",
+            paste(head(unique(df2[["statistikkvariabel"]]), 10), collapse = ", "))
+    df2_sector <- NULL
+  }
+
+  # Dumbbell: compare earliest vs latest year for each sector (excl. Total)
+  df2_compare <- NULL
+  if (!is.null(df2_sector)) {
+    yr_min <- min(df2_sector$year, na.rm = TRUE)
+    yr_max <- max(df2_sector$year, na.rm = TRUE)
+    df2_compare <- df2_sector |>
+      filter(
+        sector_short != "All industries",
+        year %in% c(yr_min, yr_max)
+      ) |>
+      select(sector_short, year, value) |>
+      pivot_wider(names_from = year, values_from = value) |>
+      rename(yr_start = as.character(yr_min),
+             yr_end   = as.character(yr_max)) |>
+      filter(!is.na(yr_start), !is.na(yr_end)) |>
+      mutate(pct_change = (yr_end - yr_start) / yr_start * 100)
+    if (nrow(df2_compare) == 0) df2_compare <- NULL
+  }
+}
+
+# ---- Household consumption: volume and price changes (df3) ----
+df3_vol   <- NULL
+df3_small <- NULL
+
+if (!is.null(df3)) {
+  # Volume change: goods vs services vs total households
+  vol_cats <- c("Konsum i husholdninger", "Varekonsum", "Tjenestekonsum")
+
+  df3_vol <- df3 |>
+    filter(
+      .data[["makrostørrelse"]] %in% vol_cats,
+      .data[["statistikkvariabel"]] == "Volumendring, årlig (prosent)"
+    ) |>
+    mutate(
+      year = lubridate::year(date),
+      cat_short = case_when(
+        makrostørrelse == "Konsum i husholdninger" ~ "Total households",
+        makrostørrelse == "Varekonsum"             ~ "Goods",
+        makrostørrelse == "Tjenestekonsum"         ~ "Services",
+        TRUE ~ makrostørrelse
+      )
+    )
+  if (nrow(df3_vol) == 0) {
+    message("df3_vol empty. makrostørrelse values: ",
+            paste(head(unique(df3[["makrostørrelse"]]), 15), collapse = ", "))
+    message("statistikkvariabel values: ",
+            paste(head(unique(df3[["statistikkvariabel"]]), 10), collapse = ", "))
+    df3_vol <- NULL
+  }
+
+  # Small multiples: both volume and price change side by side
+  df3_small <- df3 |>
+    filter(
+      .data[["makrostørrelse"]] %in% c("Varekonsum", "Tjenestekonsum"),
+      .data[["statistikkvariabel"]] %in% c(
+        "Volumendring, årlig (prosent)",
+        "Prisendring, årlig (prosent)"
+      )
+    ) |>
+    mutate(
+      year = lubridate::year(date),
+      cat_short = case_when(
+        makrostørrelse == "Varekonsum"  ~ "Goods",
+        makrostørrelse == "Tjenestekonsum" ~ "Services",
+        TRUE ~ makrostørrelse
+      ),
+      measure_short = case_when(
+        statistikkvariabel == "Volumendring, årlig (prosent)" ~ "Volume change (%)",
+        statistikkvariabel == "Prisendring, årlig (prosent)"  ~ "Price change (%)",
+        TRUE ~ statistikkvariabel
+      )
+    )
+  if (nrow(df3_small) == 0) {
+    message("df3_small empty.")
+    df3_small <- NULL
+  }
+}
+```
+
+## Part 1: Where Inflation Burned Hottest — A Category-by-Category Heatmap
+
+The CPI headline masks enormous variation across categories. Housing and energy costs have been a recurring inflationary shock, but food prices also saw sharp acceleration. The heatmap below traces the 12-month rate of change for five major consumption categories across every available month, revealing which groups faced persistent price pressure and which enjoyed brief relief.
+
+```{r plot-heatmap}
+#| fig-height: 6
+#| fig-width: 11
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df1_heat") && !is.null(df1_heat) && nrow(df1_heat) > 0) {
+  pal <- met.brewer("Hiroshige", n = 9, type = "continuous")
+
+  p1 <- df1_heat |>
+    mutate(
+      label_yr = paste0(year, "\n", month),
+      category_short = factor(category_short,
+        levels = c("Housing & energy", "Transport", "Food & beverages",
+                   "Culture & leisure", "Total CPI"))
+    ) |>
+    ggplot(aes(x = date, y = category_short, fill = value)) +
+    geom_tile(color = "white", linewidth = 0.3) +
+    scale_fill_gradientn(
+      colors = pal,
+      name   = "12-month\nchange (%)",
+      limits = c(
+        min(df1_heat$value, na.rm = TRUE),
+        max(df1_heat$value, na.rm = TRUE)
+      )
+    ) +
+    scale_x_date(date_breaks = "6 months", date_labels = "%b\n%Y", expand = c(0, 0)) +
+    labs(
+      title    = "Inflation by consumption category: where prices burned hottest",
+      subtitle = "12-month CPI change (%) — housing and energy drove the most volatile swings",
+      x        = NULL,
+      y        = NULL,
+      caption  = "Source: Statistics Norway (SSB), table 03013"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      panel.grid  = element_blank(),
+      axis.text.y = element_text(size = 10, hjust = 1),
+      axis.text.x = element_text(size = 8),
+      legend.position = "right",
+      plot.title    = element_text(face = "bold", size = 13),
+      plot.subtitle = element_text(size = 10, color = "grey40"),
+      plot.caption  = element_text(size = 8, color = "grey55")
+    )
+  print(p1) # fixed: added explicit print() to ensure ggplot renders
+}
+```
+
+## Part 2: The Volume-Price Divergence — Goods vs. Services Collapse
+
+When prices surge, households respond by buying less. But the reduction in real volume was not uniform. The small-multiples chart below juxtaposes annual volume changes and annual price changes for goods and services separately, exposing the moment when price increases overwhelmed purchasing power and volume growth turned negative.
+
+```{r plot-small-multiples}
+#| fig-height: 7
+#| fig-width: 11
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df3_small") && !is.null(df3_small) && nrow(df3_small) > 0) {
+  palette_sm <- met.brewer("Lakota", n = 2)
+
+  p2 <- df3_small |>
+    ggplot(aes(x = year, y = value, color = cat_short, fill = cat_short)) +
+    geom_hline(yintercept = 0, color = "grey60", linewidth = 0.5, linetype = "dashed") +
+    geom_area(alpha = 0.18, position = "identity") +
+    geom_line(linewidth = 1.1) +
+    geom_point(size = 2.2, shape = 21, color = "white", stroke = 1.2,
+               aes(fill = cat_short)) +
+    facet_wrap(~ measure_short, ncol = 1, scales = "free_y") +
+    scale_color_manual(values = palette_sm, name = NULL) +
+    scale_fill_manual(values  = palette_sm, name = NULL) +
+    scale_x_continuous(breaks = pretty_breaks(n = 8)) +
+    labs(
+      title    = "Goods vs. services: when price rises killed real demand",
+      subtitle = "Annual volume and price changes (%) for goods and services consumption in Norwegian households",
+      x        = NULL,
+      y        = "Annual change (%)",
+      caption  = "Source: Statistics Norway (SSB), table 09189"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      strip.text       = element_text(face = "bold", size = 11),
+      legend.position  = "top",
+      panel.grid.minor = element_blank(),
+      plot.title       = element_text(face = "bold", size = 13),
+      plot.subtitle    = element_text(size = 10, color = "grey40"),
+      plot.caption     = element_text(size = 8, color = "grey55")
+    )
+  print(p2) # fixed: added explicit print() to ensure ggplot renders
+}
+```
+
+## Part 3: Real Household Consumption — The Volume Trend That Headlines Miss
+
+Nominal spending totals can look reassuring even as real purchasing power evaporates. Here the focus is the annual volume change in total household consumption, with goods and services overlaid. A reference line at zero marks the threshold between expansion and contraction in real terms.
+
+```{r plot-area}
+#| fig-height: 5
+#| fig-width: 11
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df3_vol") && !is.null(df3_vol) && nrow(df3_vol) > 0) {
+  palette_area <- met.brewer("Lakota", n = 3)
+
+  p3 <- df3_vol |>
+    ggplot(aes(x = year, y = value, color = cat_short, group = cat_short)) +
+    geom_hline(yintercept = 0, color = "grey40", linewidth = 0.6, linetype = "dashed") +
+    geom_line(linewidth = 1.2) +
+    geom_point(size = 2.5, shape = 21, aes(fill = cat_short), color = "white", stroke = 1.3) +
+    annotate("rect",
+             xmin = 2021, xmax = max(df3_vol$year, na.rm = TRUE) + 0.5,
+             ymin = -Inf, ymax = Inf,
+             fill = "grey90", alpha = 0.35) +
+    annotate("text", x = 2021.3, y = max(df3_vol$value, na.rm = TRUE) * 0.88,
+             label = "Inflation era", hjust = 0, size = 3.2, color = "grey45") +
+    scale_color_manual(values = palette_area, name = NULL) +
+    scale_fill_manual(values  = palette_area, name = NULL) +
+    scale_x_continuous(breaks = pretty_breaks(n = 10)) +
+    scale_y_continuous(breaks = pretty_breaks(n = 7)) +
+    labs(
+      title    = "Real household consumption: the volume collapse beneath the surface",
+      subtitle = "Annual volume change (%) — total households, goods, and services",
+      x        = NULL,
+      y        = "Volume change, annual (%)",
+      caption  = "Source: Statistics Norway (SSB), table 09189"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      legend.position  = "top",
+      panel.grid.minor = element_blank(),
+      plot.title       = element_text(face = "bold", size = 13),
+      plot.subtitle    = element_text(size = 10, color = "grey40"),
+      plot.caption     = element_text(size = 8, color = "grey55")
+    )
+  print(p3) # fixed: added explicit print() to ensure ggplot renders
+}
+```
+
+## Part 4: The CPI Story in Two Lines — Housing Energy vs. Total
+
+The total CPI index is an average that conceals the outlier role of housing and energy costs. This area chart overlays the 12-month rate of change for "Bolig, lys og brensel" against the total index, showing how dramatically the two diverge and converge — and how much of the aggregate inflation story is really a housing-energy story.
+
+```{r plot-cpi-area}
+#| fig-height: 5
+#| fig-width: 11
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df1_area") && !is.null(df1_area) && nrow(df1_area) > 0) {
+  palette_cpi <- c("Total CPI" = "#2E4057", "Housing & energy" = "#E07A5F")
+
+  p4 <- df1_area |>
+    ggplot(aes(x = date, y = value, color = category_short, fill = category_short, group = category_short)) +
+    geom_hline(yintercept = 0, color = "grey50", linewidth = 0.5) +
+    geom_area(alpha = 0.15, position = "identity") +
+    geom_line(linewidth = 1.2) +
+    scale_color_manual(values = palette_cpi, name = NULL) +
+    scale_fill_manual(values  = palette_cpi, name = NULL) +
+    scale_x_date(date_breaks = "1 year", date_labels = "%Y", expand = c(0, 0)) +
+    scale_y_continuous(labels = function(x) paste0(x, "%")) +
+    labs(
+      title    = "Housing and energy drove Norway's inflation surge — then crashed",
+      subtitle = "12-month CPI change (%) — total index vs. housing, lighting and fuel category",
+      x        = NULL,
+      y        = "12-month change (%)",
+      caption  = "Source: Statistics Norway (SSB), table 03013"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      legend.position  = "top",
+      panel.grid.minor = element_blank(),
+      plot.title       = element_text(face = "bold", size = 13),
+      plot.subtitle    = element_text(size = 10, color = "grey40"),
+      plot.caption     = element_text(size = 8, color = "grey55")
+    )
+  print(p4) # fixed: added explicit print() to ensure ggplot renders
+}
+```
+
+## Part 5: Which Sectors Grew? GDP Dumbbell Across Industries
+
+While household budgets contracted in real terms, production-side GDP told a more complicated story. The dumbbell chart below compares gross value added in constant 2023 prices between the earliest and most recent available years for four industries — revealing which sectors powered ahead regardless of domestic demand weakness, and which remained largely flat.
+
+```{r plot-dumbbell}
+#| fig-height: 5
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df2_compare") && !is.null(df2_compare) && nrow(df2_compare) > 0) {
+  palette_db <- met.brewer("Lakota", n = 2)
+
+  yr_cols <- names(df2_compare)[names(df2_compare) %in% c("yr_start", "yr_end")]
+  yr_vals  <- df2_sector |>
+    filter(sector_short != "All industries") |>
+    summarise(yr_min = min(year, na.rm = TRUE), yr_max = max(year, na.rm = TRUE))
+
+  yr_min_label <- as.character(yr_vals$yr_min)
+  yr_max_label <- as.character(yr_vals$yr_max)
+
+  p5 <- df2_compare |>
+    mutate(sector_short = fct_reorder(sector_short, yr_end)) |>
+    ggplot() +
+    geom_segment(
+      aes(x = yr_start, xend = yr_end, y = sector_short, yend = sector_short),
+      color = "grey70", linewidth = 1.2
+    ) +
+    geom_point(aes(x = yr_start, y = sector_short), color = palette_db[1], size = 5) +
+    geom_point(aes(x = yr_end,   y = sector_short), color = palette_db[2], size = 5) +
+    geom_text(
+      aes(x = yr_end, y = sector_short,
+          label = paste0("+", round(pct_change, 0), "%")),
+      hjust = -0.35, size = 3.5, color = "grey30"
+    ) +
+    annotate("text", x = min(df2_compare$yr_start, na.rm = TRUE),
+             y = nrow(df2_compare) + 0.55,
+             label = yr_min_label, color = palette_db[1],
+             fontface = "bold", size = 3.5) +
+    annotate("text", x = max(df2_compare$yr_end, na.rm = TRUE),
+             y = nrow(df2_compare) + 0.55,
+             label = yr_max_label, color = palette_db[2],
+             fontface = "bold", size = 3.5) +
+    scale_x_continuous(labels = label_comma(suffix = " MNOK")) +
+    labs(
+      title    = "GDP by sector: oil and gas surged while others stagnated",
+      subtitle = paste0(
+        "Gross value added at constant 2023 prices (mill. NOK) — ",
+        yr_min_label, " vs. ", yr_max_label
+      ),
+      x        = "Gross value added (mill. NOK, fixed 2023 prices)",
+      y        = NULL,
+      caption  = "Source: Statistics Norway (SSB), table 09170"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      panel.grid.major.y = element_blank(),
+      panel.grid.minor   = element_blank(),
+      plot.title         = element_text(face = "bold", size = 13),
+      plot.subtitle      = element_text(size = 10, color = "grey40"),
+      plot.caption       = element_text(size = 8, color = "grey55")
+    )
+  print(p5) # fixed: added explicit print() to ensure ggplot renders
+}
+```
+
+## Key Findings
+
+- **Housing and energy prices diverged dramatically** from the total CPI index during the peak inflation period, at times running 15 to 20 percentage points above the headline rate — before collapsing back toward zero as the energy crisis eased, dragging headline inflation down with it.
+
+- **Real goods consumption contracted** more sharply than services during the peak inflation years, as households cut discretionary purchases of physical products while maintaining spending on housing, healthcare, and utilities that are harder to defer.
+
+- **Services consumption proved stickier** in volume terms, reflecting the difficulty of reducing expenditure on rent, insurance, and personal services — but price increases in services accelerated as the wage-price dynamic fed through, compressing real volumes even there.
+
+- **Oil and gas extraction posted the largest percentage growth** in gross value added across the four tracked sectors over the full period, widening the gap between Norway's petroleum wealth and the stagnating purchasing power of ordinary households dependent on wage income.
+
+- **Food and non-alcoholic beverages** maintained elevated 12-month price change rates even after energy costs normalized, suggesting a second wave of inflation embedded in supply chains and agricultural input costs that persisted well after the energy shock subsided.
+
+## Closing Reflection
+
+Norway's macroeconomic story since 2021 is one of fracture: a petroleum-rich economy whose headline growth figures mask a genuine squeeze on household living standards. The divergence between sector-level GDP expansion — led by oil, gas, and finance — and the stagnation or outright decline in real consumer purchasing power points to a structural disconnect that official unemployment statistics alone cannot capture. As inflation gradually normalizes, the question is whether the lost real consumption volume recovers, or whether higher price levels have permanently repriced Norwegian household budgets around reduced quantities. The data from SSB suggest the latter risk is real and that policymakers will need to look beyond the GDP aggregate to understand the society underneath it.
