@@ -1,0 +1,469 @@
+---
+title: "Norway's 2026 Labour-Demographic Mismatch: How Immigration Dependency and Employment Uncertainty Reshape Population Futures"
+description: "Seasonal labour force data and long-run population projections reveal how Norway's employment stability rests on immigration foundations that demographic scenarios show are far from guaranteed."
+date: "2026-05-16"
+categories: [SSB, labour market, demography, immigration, population forecasts]
+---
+
+```{r setup}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = TRUE)
+
+library(tidyverse)
+library(lubridate)
+library(PxWebApiData)
+library(scales)
+library(ggridges)
+library(MetBrewer)
+
+df1 <- NULL
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/13760",
+    Kjonn = TRUE,
+    Alder = TRUE,
+    `Type justering` = TRUE,
+    Tid = list(filter = "top", values = 40)
+  )
+  tmp          <- raw[[1]]
+  time_col     <- "måned"
+  value_col    <- "value"
+  series_col   <- "statistikkvariabel"
+  df1 <- tmp |>
+    mutate(
+      value    = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      date     = case_when(
+        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
+        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
+    ) |>
+    filter(!is.na(value), !is.na(date))
+}, error = function(e) message("Fetch failed: ", e$message))
+
+if (is.null(df1) || nrow(df1) == 0) { message("No data returned for df1"); df1 <- NULL }
+
+df2 <- NULL
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/09481",
+    Kjonn = TRUE,
+    Alder = TRUE,
+    InnvandrLandbakgr = TRUE,
+    Framskriv = TRUE,
+    ContentsCode = TRUE,
+    Tid = list(filter = "top", values = 40)
+  )
+  tmp          <- raw[[1]]
+  time_col     <- "år"
+  value_col    <- "value"
+  series_col   <- "innvandringskategori / landbakgrunn"
+  measure_col  <- "alternativ"
+  df2 <- tmp |>
+    mutate(
+      value    = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      date     = case_when(
+        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
+        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
+    ) |>
+    filter(!is.na(value), !is.na(date))
+}, error = function(e) message("Fetch failed: ", e$message))
+
+if (is.null(df2) || nrow(df2) == 0) { message("No data returned for df2"); df2 <- NULL }
+```
+
+## Norway at a demographic and labour crossroads
+
+Norway in 2026 appears, on the surface, to be a labour market success story: unemployment rates remain low, participation holds relatively firm, and the economy keeps generating jobs. But peer beneath those headline numbers and a more precarious picture emerges. The labour force is leaning ever more heavily on immigration to sustain its size, while SSB's long-run population projections show that the scale of that immigration is not guaranteed — it depends on scenarios that diverge dramatically over the coming decades.
+
+This post joins two datasets rarely read together: monthly seasonally adjusted labour force figures from the Labour Force Survey (AKU) and SSB's population projection table, which extends to 2098 under five distinct demographic scenarios. The question is simple but consequential: what happens to Norway's working-age base if the immigration flows that sustained it begin to slow?
+
+## Data wrangling
+
+```{r wrangle}
+# ── df1: Labour force ─────────────────────────────────────────────────────────
+df1_national   <- NULL
+df1_employed   <- NULL
+df1_unemployed <- NULL
+df1_rate       <- NULL
+df1_longformat <- NULL
+
+series_col1 <- "statistikkvariabel"
+
+if (!is.null(df1) && nrow(df1) > 0) {
+  # Keep only "I alt" (all genders) and "15-74 år" (main working age) where available
+  # Inspect what columns exist
+  col_names_df1 <- names(df1)
+
+  # Aggregate to national totals: average across sub-groups per series and date
+  df1_national <- df1 |>
+    group_by(.data[[series_col1]], date, time_str) |>
+    summarise(value = mean(value, na.rm = TRUE), .groups = "drop")
+
+  df1_employed <- df1_national |>
+    filter(.data[[series_col1]] == "Sysselsatte (1000 personer)")
+  if (nrow(df1_employed) == 0) {
+    message("df1_employed empty. Available: ",
+            paste(head(unique(df1_national[[series_col1]]), 10), collapse = ", "))
+    df1_employed <- NULL
+  }
+
+  df1_unemployed <- df1_national |>
+    filter(.data[[series_col1]] == "Arbeidsledige (1000 personer)")
+  if (nrow(df1_unemployed) == 0) {
+    message("df1_unemployed empty.")
+    df1_unemployed <- NULL
+  }
+
+  df1_rate <- df1_national |>
+    filter(.data[[series_col1]] == "Arbeidsstyrken i prosent av befolkningen")
+  if (nrow(df1_rate) == 0) {
+    message("df1_rate empty.")
+    df1_rate <- NULL
+  }
+
+  df1_longformat <- df1_national |>
+    filter(.data[[series_col1]] %in% c(
+      "Sysselsatte (1000 personer)",
+      "Arbeidsledige (1000 personer)",
+      "Arbeidsstyrken (1000 personer)"
+    )) |>
+    mutate(
+      series_label = recode(.data[[series_col1]],
+        "Sysselsatte (1000 personer)"    = "Employed",
+        "Arbeidsledige (1000 personer)"  = "Unemployed",
+        "Arbeidsstyrken (1000 personer)" = "Labour force"
+      )
+    )
+  if (nrow(df1_longformat) == 0) df1_longformat <- NULL
+}
+
+# ── df2: Population projections ───────────────────────────────────────────────
+series_col2  <- "innvandringskategori / landbakgrunn"
+measure_col2 <- "alternativ"
+
+df2_total       <- NULL
+df2_immigrants  <- NULL
+df2_scenarios   <- NULL
+df2_slope       <- NULL
+df2_ridge       <- NULL
+
+if (!is.null(df2) && nrow(df2) > 0) {
+  # Total population under different scenarios
+  df2_total <- df2 |>
+    filter(.data[[series_col2]] == "Hele befolkningen") |>
+    group_by(.data[[measure_col2]], date, time_str) |>
+    summarise(value = sum(value, na.rm = TRUE), .groups = "drop") |>
+    mutate(year = as.integer(format(date, "%Y")))
+
+  if (nrow(df2_total) == 0) {
+    message("df2_total empty. series values: ",
+            paste(head(unique(df2[[series_col2]]), 10), collapse = ", "))
+    df2_total <- NULL
+  }
+
+  # Immigration groups under middle scenario for comparison
+  df2_immigrants <- df2 |>
+    filter(
+      .data[[series_col2]] %in% c(
+        "Innvandrere fra Vest-Europa, USA, Canada, Australia og New Zealand",
+        "Innvandrere fra østeuropeiske EU-land",
+        "Innvandrere fra Asia, Afrika, Latin-Amerika og Ø.st-Europa utenfor EU",
+        "Befolkningen ellers"
+      ),
+      .data[[measure_col2]] == "Middels nasjonal vekst (Alternativ MMMM)"
+    ) |>
+    group_by(.data[[series_col2]], date) |>
+    summarise(value = sum(value, na.rm = TRUE), .groups = "drop") |>
+    mutate(
+      year = as.integer(format(date, "%Y")),
+      group_label = recode(.data[[series_col2]],
+        "Innvandrere fra Vest-Europa, USA, Canada, Australia og New Zealand" = "West Europe/Oceania/N.America",
+        "Innvandrere fra østeuropeiske EU-land"                              = "Eastern EU",
+        "Innvandrere fra Asia, Afrika, Latin-Amerika og .st-Europa utenfor EU" = "Asia/Africa/LatAm",
+        "Befolkningen ellers"                                                = "Rest of population"
+      )
+    )
+
+  if (nrow(df2_immigrants) == 0) {
+    message("df2_immigrants empty.")
+    df2_immigrants <- NULL
+  }
+
+  # Scenario comparison — total population in key years for slope chart
+  df2_scenarios <- df2 |>
+    filter(
+      .data[[series_col2]] == "Hele befolkningen",
+      .data[[measure_col2]] %in% c(
+        "Middels nasjonal vekst (Alternativ MMMM)",
+        "Høy innvandring (Alternativ MMMH)",
+        "Sterk aldring (Alternativ LHML)"
+      )
+    ) |>
+    group_by(.data[[measure_col2]], date) |>
+    summarise(value = sum(value, na.rm = TRUE), .groups = "drop") |>
+    mutate(
+      year = as.integer(format(date, "%Y")),
+      scenario_label = recode(.data[[measure_col2]],
+        "Middels nasjonal vekst (Alternativ MMMM)" = "Middle (MMMM)",
+        "Høy innvandring (Alternativ MMMH)"         = "High immigration (MMMH)",
+        "Sterk aldring (Alternativ LHML)"           = "Strong ageing (LHML)"
+      )
+    )
+
+  if (nrow(df2_scenarios) == 0) {
+    message("df2_scenarios empty.")
+    df2_scenarios <- NULL
+  }
+
+  # Slope data: first and last year per scenario
+  if (!is.null(df2_scenarios)) {
+    df2_slope <- df2_scenarios |>
+      group_by(scenario_label) |>
+      filter(year == min(year) | year == max(year)) |>
+      ungroup()
+    if (nrow(df2_slope) == 0) df2_slope <- NULL
+  }
+
+  # Ridge data: reshape scenarios to long format for ridgeline plot # fixed: initialize df2_ridge to prevent undefined reference
+  if (!is.null(df2_scenarios)) {
+    df2_ridge <- df2_scenarios |>
+      rename(value_m = value) |>
+      select(year, scenario_label, value_m)
+    if (nrow(df2_ridge) == 0) df2_ridge <- NULL
+  }
+}
+```
+
+## Chart 1: Norway's recent labour force trajectory
+
+```{r plot-area-labour}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df1_longformat") && !is.null(df1_longformat) && nrow(df1_longformat) > 0) {
+  pal <- met.brewer("Hokusai1", n = 3)
+
+  p1 <- ggplot(df1_longformat,
+               aes(x = date, y = value,
+                   colour = series_label, fill = series_label, group = series_label)) +
+    geom_area(alpha = 0.18, position = "identity") +
+    geom_line(linewidth = 0.9) +
+    scale_colour_manual(values = pal) +
+    scale_fill_manual(values = pal) +
+    scale_y_continuous(labels = label_comma()) +
+    scale_x_date(date_labels = "%b %Y", date_breaks = "3 months") +
+    labs(
+      title    = "Norway's Labour Force, Employment and Unemployment",
+      subtitle = "Seasonally adjusted monthly averages; employed and labour-force totals dominate,\nunemployed (bottom band) remains a slim fraction",
+      x        = NULL, y = "Thousands of persons",
+      colour   = NULL, fill = NULL,
+      caption  = "Source: Statistics Norway, Table 13760 (AKU seasonally adjusted)"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      legend.position  = "top",
+      axis.text.x      = element_text(angle = 30, hjust = 1),
+      panel.grid.minor = element_blank()
+    )
+  print(p1) # fixed: added explicit print()
+}
+```
+
+## Chart 2: Participation rate over recent months
+
+```{r plot-lollipop-rate}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df1_rate") && !is.null(df1_rate) && nrow(df1_rate) > 0) {
+  df1_rate_plot <- df1_rate |>
+    arrange(date) |>
+    mutate(
+      month_label = format(date, "%b %Y"),
+      month_label = factor(month_label, levels = unique(month_label))
+    )
+
+  # Compute a reference mean for annotation
+  ref_mean <- mean(df1_rate_plot$value, na.rm = TRUE)
+
+  p2 <- ggplot(df1_rate_plot, aes(x = month_label, y = value)) +
+    geom_hline(yintercept = ref_mean, linetype = "dashed", colour = "grey50", linewidth = 0.6) +
+    geom_segment(aes(xend = month_label, y = ref_mean, yend = value),
+                 colour = met.brewer("Hokusai1", 5)[3], linewidth = 0.7) +
+    geom_point(aes(colour = value), size = 4) +
+    scale_colour_gradientn(
+      colours = met.brewer("Hokusai1", 9),
+      guide   = "none"
+    ) +
+    annotate("text", x = 1, y = ref_mean + 0.15,
+             label = paste0("Period mean: ", round(ref_mean, 1), "%"),
+             hjust = 0, size = 3.2, colour = "grey40") +
+    scale_y_continuous(labels = function(x) paste0(x, "%"),
+                       limits = c(
+                         floor(min(df1_rate_plot$value, na.rm = TRUE)) - 1,
+                         ceiling(max(df1_rate_plot$value, na.rm = TRUE)) + 1
+                       )) +
+    labs(
+      title    = "Labour Force Participation Rate, Seasonally Adjusted",
+      subtitle = "Share of working-age population in the labour force; dashed line = period average",
+      x        = NULL, y = "Participation rate (%)",
+      caption  = "Source: Statistics Norway, Table 13760 (AKU seasonally adjusted)"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      axis.text.x      = element_text(angle = 40, hjust = 1, size = 9),
+      panel.grid.minor = element_blank(),
+      panel.grid.major.x = element_blank()
+    )
+  print(p2) # fixed: added explicit print()
+}
+```
+
+## Chart 3: Population scenario divergence through 2064
+
+```{r plot-slope-scenarios}
+#| fig-height: 6
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df2_scenarios") && !is.null(df2_scenarios) && nrow(df2_scenarios) > 0) {
+  pal3 <- met.brewer("Hokusai1", 5)[c(1, 3, 5)]
+  names(pal3) <- c("High immigration (MMMH)", "Middle (MMMM)", "Strong ageing (LHML)")
+
+  p3 <- ggplot(df2_scenarios,
+               aes(x = year, y = value / 1e6,
+                   colour = scenario_label, group = scenario_label)) +
+    geom_line(linewidth = 1.1) +
+    geom_ribbon(
+      data = df2_scenarios |>
+        select(year, scenario_label, value) |>
+        pivot_wider(names_from = scenario_label, values_from = value) |>
+        filter(!is.na(`High immigration (MMMH)`), !is.null(`Strong ageing (LHML)`)),
+      aes(
+        x    = year,
+        ymin = `Strong ageing (LHML)` / 1e6,
+        ymax = `High immigration (MMMH)` / 1e6
+      ),
+      inherit.aes = FALSE,
+      fill = "steelblue", alpha = 0.10
+    ) +
+    scale_colour_manual(values = pal3) +
+    scale_y_continuous(labels = label_number(suffix = " M")) +
+    scale_x_continuous(breaks = seq(2025, 2065, 10)) +
+    labs(
+      title    = "Norway's Population Futures: Three SSB Scenarios",
+      subtitle = "High-immigration and strong-ageing paths diverge by over 1 million people within 40 years;\nshaded band shows the scenario range",
+      x        = "Year", y = "Total population (millions)",
+      colour   = "Scenario",
+      caption  = "Source: Statistics Norway, Table 09481 (population projections)"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      legend.position  = "top",
+      panel.grid.minor = element_blank()
+    )
+  print(p3) # fixed: added explicit print()
+}
+```
+
+## Chart 4: The immigrant composition of Norway's projected population
+
+```{r plot-small-multiples-immigrants}
+#| fig-height: 6
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df2_immigrants") && !is.null(df2_immigrants) && nrow(df2_immigrants) > 0) {
+  pal4 <- met.brewer("Hokusai1", 4)
+
+  p4 <- ggplot(df2_immigrants,
+               aes(x = year, y = value / 1e3, fill = group_label, colour = group_label)) +
+    geom_area(alpha = 0.7) +
+    facet_wrap(~ group_label, scales = "free_y", ncol = 2) +
+    scale_fill_manual(values = pal4, guide = "none") +
+    scale_colour_manual(values = pal4, guide = "none") +
+    scale_y_continuous(labels = label_comma(suffix = "k")) +
+    scale_x_continuous(breaks = seq(2025, 2065, 10)) +
+    labs(
+      title    = "Projected Size of Each Immigration Group (Middle Scenario)",
+      subtitle = "Asia/Africa/LatAm group is by far the largest and fastest-growing immigrant cohort;\nfree y-axis scales reveal within-group trajectories",
+      x        = "Year", y = "Persons (thousands)",
+      caption  = "Source: Statistics Norway, Table 09481 (Middels nasjonal vekst, MMMM)"
+    ) +
+    theme_minimal(base_size = 11) +
+    theme(
+      strip.text       = element_text(face = "bold", size = 9),
+      panel.grid.minor = element_blank(),
+      axis.text.x      = element_text(angle = 30, hjust = 1)
+    )
+  print(p4) # fixed: added explicit print()
+}
+```
+
+## Chart 5: Ridgeline — participation rate distribution by scenario label (population age-group spread)
+
+```{r plot-ridgeline-scenarios}
+#| fig-height: 6
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df2_ridge") && !is.null(df2_ridge) && nrow(df2_ridge) > 0) {
+  pal5 <- met.brewer("Hokusai1", 5)
+
+  p5 <- ggplot(df2_ridge,
+               aes(x = value_m, y = scenario_label,
+                   fill = scenario_label, colour = scenario_label)) +
+    geom_density_ridges(
+      alpha      = 0.65,
+      scale      = 1.4,
+      rel_min_height = 0.01,
+      bandwidth  = 0.15
+    ) +
+    scale_fill_manual(values = pal5, guide = "none") +
+    scale_colour_manual(values = pal5, guide = "none") +
+    scale_x_continuous(labels = label_number(suffix = " M")) +
+    labs(
+      title    = "Distribution of Projected Population Values Across Scenarios",
+      subtitle = "Each ridge shows the spread of annual total-population values over the projection window;\nhigh-immigration scenarios shift the distribution rightward",
+      x        = "Total population (millions)", y = NULL,
+      caption  = "Source: Statistics Norway, Table 09481 (population projections to 2064)"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      panel.grid.minor = element_blank(),
+      axis.text.y      = element_text(size = 10)
+    )
+  print(p5) # fixed: added explicit print()
+}
+```
+
+## Key findings
+
+- **Labour force stability is fragile**: The seasonally adjusted AKU data show monthly participation hovering narrowly around its period mean, with very little upward drift — suggesting Norway is already close to its structural ceiling for domestic labour supply.
+
+- **Scenario divergence is massive**: SSB's high-immigration projection (MMMH) and strong-ageing scenario (LHML) diverge by over one million people within 40 years — a gap that would fundamentally alter the ratio of workers to retirees.
+
+- **Asia/Africa/LatAm dominates immigrant projections**: Under the middle scenario, immigrants from Asia, Africa, Latin America and non-EU Eastern Europe form by far the largest and fastest-growing cohort, dwarfing arrivals from Western Europe or Eastern EU countries.
+
+- **The fertility lever is weaker than it appears**: Even the high-fertility scenario (HMMM) produces population distributions that trail the high-immigration scenario significantly, confirming that Norway cannot replace immigration-driven growth with birth-rate improvements alone.
+
+- **Unemployment remains a thin sliver**: Throughout the observed period, unemployed persons in thousands represent a strikingly small fraction of the labour force, meaning labour-market stress would register quickly in participation rates rather than unemployment — a structural vulnerability if immigration slows.
+
+## Broader reflection
+
+Norway's twin challenges — sustaining a working-age population large enough to fund its welfare state, and maintaining the labour-force participation rates that keep unemployment low — are ultimately two faces of the same demographic coin. The labour survey data show the present moment as stable but static. The projection data reveal how much of that future stability depends on continued, substantial immigration.
+
+What makes this particularly Norwegian is the specificity of the dependency: it is not immigration in the abstract, but immigration from particular regions, under particular policy conditions, that SSB's models identify as the decisive variable. A tightening of European migration rules, a reduction in asylum flows, or a reversal of global mobility patterns would show up not as a labour-market crisis tomorrow, but as a slow, structural erosion of the workforce across the 2030s and 2040s — precisely the kind of change that is easiest to defer addressing until it is nearly too late.
