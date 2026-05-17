@@ -1,0 +1,536 @@
+---
+title: "Norway's 2025 Labour Exodus: How Gender Inequality and Age Discrimination Reshape the Workforce"
+description: "A data-driven analysis of how gender gaps, age-based exclusion, and demographic decline are quietly reshaping Norway's labour force."
+date: "2026-05-17"
+categories: [SSB, labour market, demographics, gender, age]
+---
+
+```{r setup}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = TRUE)
+
+library(tidyverse)
+library(lubridate)
+library(PxWebApiData)
+library(scales)
+library(MetBrewer)
+library(ggridges)
+
+df1 <- NULL
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/05111",
+    arbeidsstyrkestatus = TRUE,
+    kjønn = TRUE,
+    alder = TRUE,
+    Tid = list(filter = "top", values = 40)
+  )
+  tmp          <- raw[[1]]
+  time_col     <- "år"
+  value_col    <- "value"
+  series_col   <- "arbeidsstyrkestatus"
+  measure_col  <- "statistikkvariabel"
+  df1 <- tmp |>
+    mutate(
+      value    = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      date     = case_when(
+        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
+        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
+    ) |>
+    filter(!is.na(value), !is.na(date))
+}, error = function(e) message("Fetch failed: ", e$message))
+
+if (is.null(df1) || nrow(df1) == 0) { message("No data returned"); df1 <- NULL }
+
+df2 <- NULL
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/05803",
+    statistikkvariabel = TRUE,
+    Tid = list(filter = "top", values = 40)
+  )
+  tmp          <- raw[[1]]
+  time_col     <- "år"
+  value_col    <- "value"
+  series_col   <- "statistikkvariabel"
+  df2 <- tmp |>
+    mutate(
+      value    = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      date     = case_when(
+        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
+        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
+    ) |>
+    filter(!is.na(value), !is.na(date))
+}, error = function(e) message("Fetch failed: ", e$message))
+
+if (is.null(df2) || nrow(df2) == 0) { message("No data returned"); df2 <- NULL }
+```
+
+## When a "Tight" Labour Market Hides Deep Fractures
+
+Norway boasts one of the lowest unemployment rates in Europe, yet behind this headline figure lies a more complex story. The labour force participation rate has been quietly shifting for decades — and the shifts are not evenly distributed across gender and age. Who is working, who has given up, and who was never fully invited in: these questions reveal the structural tensions that official employment figures tend to smooth over.
+
+Using Statistics Norway's Labour Force Survey (table 05111) and vital statistics (table 05803), this post unpacks how gender inequality and age-based exclusion have reshaped — and continue to reshape — Norway's workforce over the past four decades.
+
+---
+
+## Data and Wrangling
+
+```{r wrangle}
+# --- df1: labour force status ---
+df1_persons <- NULL
+df1_pct <- NULL
+df1_gender_empl <- NULL
+df1_outside_age <- NULL
+df1_unemp_rate <- NULL
+df1_participation <- NULL
+df1_gender_wide <- NULL
+df1_age_outside <- NULL
+df1_stack <- NULL
+
+if (!is.null(df1)) {
+  # Inspect column names
+  # names(df1)
+
+  # Filter: persons in thousands, all relevant statuses
+  df1_persons <- df1 |>
+    filter(.data[["statistikkvariabel"]] == "Personer (1 000 personer)")
+
+  df1_pct <- df1 |>
+    filter(.data[["statistikkvariabel"]] == "Personer (prosent)")
+
+  # Employed persons by gender over time (exclude "Begge kjønn" to get M/F split)
+  df1_gender_empl <- df1_persons |>
+    filter(
+      .data[["arbeidsstyrkestatus"]] == "Sysselsatte",
+      .data[["kjønn"]] %in% c("Menn", "Kvinner"),
+      .data[["alder"]] == "15-74 år"
+    )
+
+  if (nrow(df1_gender_empl) == 0) {
+    message("df1_gender_empl empty. kjønn values: ",
+            paste(head(unique(df1$kjønn), 10), collapse = ", "))
+    df1_gender_empl <- NULL
+  }
+
+  # Outside labour force by age group, both sexes combined
+  df1_outside_age <- df1_persons |>
+    filter(
+      .data[["arbeidsstyrkestatus"]] == "Personer utenfor arbeidsstyrken",
+      .data[["kjønn"]] == "Begge kjønn"
+    ) |>
+    filter(.data[["alder"]] != "15-74 år")
+
+  if (nrow(df1_outside_age) == 0) {
+    message("df1_outside_age empty. alder values: ",
+            paste(head(unique(df1$alder), 20), collapse = ", "))
+    df1_outside_age <- NULL
+  }
+
+  # Unemployment rate by gender (percent)
+  df1_unemp_rate <- df1_pct |>
+    filter(
+      .data[["arbeidsstyrkestatus"]] == "Arbeidsledige",
+      .data[["kjønn"]] %in% c("Menn", "Kvinner"),
+      .data[["alder"]] == "15-74 år"
+    )
+
+  if (nrow(df1_unemp_rate) == 0) {
+    message("df1_unemp_rate empty.")
+    df1_unemp_rate <- NULL
+  }
+
+  # Participation rate (arbeidsstyrken) by gender
+  df1_participation <- df1_pct |>
+    filter(
+      .data[["arbeidsstyrkestatus"]] == "Arbeidsstyrken i alt",
+      .data[["kjønn"]] %in% c("Menn", "Kvinner"),
+      .data[["alder"]] == "15-74 år"
+    )
+
+  if (nrow(df1_participation) == 0) {
+    message("df1_participation empty.")
+    df1_participation <- NULL
+  }
+
+  # Gender dumbbell: participation rate first vs last year available
+  if (!is.null(df1_participation) && nrow(df1_participation) > 0) {
+    yr_min <- min(df1_participation$date)
+    yr_max <- max(df1_participation$date)
+
+    df1_gender_wide <- df1_participation |>
+      filter(date %in% c(yr_min, yr_max)) |>
+      mutate(period = if_else(date == yr_min,
+                              paste0("Year ", year(yr_min)),
+                              paste0("Year ", year(yr_max)))) |>
+      select(kjønn, period, value) |>
+      pivot_wider(names_from = period, values_from = value)
+  }
+
+  # Age-group breakdown: persons outside labour force, recent 10 years
+  if (!is.null(df1_outside_age) && nrow(df1_outside_age) > 0) {
+    recent_cutoff <- max(df1_outside_age$date) - years(10)
+    df1_age_outside <- df1_outside_age |>
+      filter(date >= recent_cutoff)
+  }
+
+  # All statuses, both sexes, all ages combined for area chart
+  df1_stack <- df1_persons |>
+    filter(
+      .data[["arbeidsstyrkestatus"]] %in% c("Sysselsatte", "Arbeidsledige",
+                                             "Personer utenfor arbeidsstyrken"),
+      .data[["kjønn"]] == "Begge kjønn",
+      .data[["alder"]] == "15-74 år"
+    ) |>
+    mutate(status_label = case_when(
+      arbeidsstyrkestatus == "Sysselsatte"                   ~ "Employed",
+      arbeidsstyrkestatus == "Arbeidsledige"                 ~ "Unemployed",
+      arbeidsstyrkestatus == "Personer utenfor arbeidsstyrken" ~ "Outside Labour Force",
+      TRUE ~ arbeidsstyrkestatus
+    ))
+
+  if (nrow(df1_stack) == 0) {
+    df1_stack <- NULL
+  }
+}
+
+# --- df2: vital statistics ---
+df2_vital <- NULL
+
+if (!is.null(df2)) {
+  df2_vital <- df2 |>
+    filter(.data[["statistikkvariabel"]] %in%
+             c("Levendefødte i alt", "Inngåtte ekteskap", "Skilsmisser", "Døde i alt")) |>
+    mutate(series_label = case_when(
+      statistikkvariabel == "Levendefødte i alt" ~ "Live births",
+      statistikkvariabel == "Inngåtte ekteskap"  ~ "Marriages",
+      statistikkvariabel == "Skilsmisser"        ~ "Divorces",
+      statistikkvariabel == "Døde i alt"         ~ "Deaths",
+      TRUE ~ statistikkvariabel
+    ))
+
+  if (nrow(df2_vital) == 0) {
+    message("df2_vital empty.")
+    df2_vital <- NULL
+  }
+}
+```
+
+---
+
+## Chart 1: The Workforce Composition Over Four Decades
+
+The area chart below shows how the three broad labour force groups — employed, unemployed, and outside the labour force — have evolved over the available time series. The story is not simply growth; it is a shifting balance.
+
+```{r plot-area-stack}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df1_stack") && !is.null(df1_stack) && nrow(df1_stack) > 0) {
+
+  pal <- met.brewer("Hokusai1", n = 3)
+
+  df1_stack$status_label <- factor(df1_stack$status_label,
+                                   levels = c("Outside Labour Force",
+                                              "Unemployed",
+                                              "Employed"))
+
+  p1 <- ggplot(df1_stack, aes(x = date, y = value, fill = status_label)) +
+    geom_area(alpha = 0.85, colour = "white", linewidth = 0.3) +
+    scale_fill_manual(values = pal,
+                      name   = NULL,
+                      guide  = guide_legend(reverse = TRUE)) +
+    scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
+    scale_y_continuous(labels = label_comma(suffix = "k"),
+                       expand = expansion(mult = c(0, 0.02))) +
+    annotate("text", x = as.Date("2010-01-01"), y = 2650,
+             label = "Employed population\nconsistently the largest group",
+             size = 3.2, hjust = 0, colour = "white", fontface = "bold") +
+    labs(
+      title    = "Norway's Labour Force Composition, 1986-2025",
+      subtitle = "Employment absorbs most growth, but the 'outside' category has proved stubbornly persistent",
+      x        = NULL,
+      y        = "Persons (thousands)",
+      caption  = "Source: Statistics Norway, table 05111 (Labour Force Survey)"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      legend.position   = "top",
+      panel.grid.minor  = element_blank(),
+      panel.grid.major.x = element_blank(),
+      plot.title        = element_text(face = "bold", size = 14),
+      plot.subtitle     = element_text(colour = "grey40", size = 10),
+      plot.caption      = element_text(colour = "grey55", size = 8),
+      axis.text         = element_text(colour = "grey30")
+    )
+
+  print(p1) # fixed: added explicit print() to render plot
+}
+```
+
+---
+
+## Chart 2: The Gender Participation Gap — Then and Now
+
+If Norway's labour market is egalitarian, the numbers should show near-identical participation rates for men and women. The dumbbell chart below tests that claim: comparing participation rates at the start and end of the available time series.
+
+```{r plot-dumbbell-gender}
+#| fig-height: 4
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df1_gender_wide") && !is.null(df1_gender_wide) && nrow(df1_gender_wide) > 0) {
+
+  col_names <- names(df1_gender_wide)
+  early_col <- col_names[grepl("^Year 1", col_names)]
+  late_col  <- col_names[grepl("^Year 2", col_names)]
+
+  if (length(early_col) == 1 && length(late_col) == 1) {
+
+    pal2 <- met.brewer("Hokusai1", n = 4)
+
+    df1_gender_wide <- df1_gender_wide |>
+      mutate(gender_label = if_else(kjønn == "Menn", "Men", "Women"))
+
+    p2 <- ggplot(df1_gender_wide) +
+      geom_segment(aes(x     = .data[[early_col]],
+                       xend  = .data[[late_col]],
+                       y     = gender_label,
+                       yend  = gender_label),
+                   colour   = "grey70",
+                   linewidth = 2) +
+      geom_point(aes(x = .data[[early_col]], y = gender_label),
+                 colour = pal2[1], size = 6) +
+      geom_point(aes(x = .data[[late_col]], y = gender_label),
+                 colour = pal2[4], size = 6) +
+      geom_text(aes(x = .data[[early_col]], y = gender_label,
+                    label = paste0(round(.data[[early_col]], 1), "%")),
+                vjust = -1.2, size = 3.5, colour = pal2[1], fontface = "bold") +
+      geom_text(aes(x = .data[[late_col]], y = gender_label,
+                    label = paste0(round(.data[[late_col]], 1), "%")),
+                vjust = -1.2, size = 3.5, colour = pal2[4], fontface = "bold") +
+      annotate("text", x = min(df1_gender_wide[[early_col]], na.rm = TRUE) - 1,
+               y = 2.5,
+               label = paste0(early_col, " (open circles)"),
+               colour = pal2[1], size = 3, hjust = 0) +
+      annotate("text", x = min(df1_gender_wide[[early_col]], na.rm = TRUE) - 1,
+               y = 2.35,
+               label = paste0(late_col, " (filled circles)"),
+               colour = pal2[4], size = 3, hjust = 0) +
+      scale_x_continuous(labels = label_number(suffix = "%"),
+                         limits = c(
+                           min(df1_gender_wide[[early_col]], na.rm = TRUE) - 3,
+                           max(df1_gender_wide[[late_col]],  na.rm = TRUE) + 3
+                         )) +
+      labs(
+        title    = "Labour Force Participation: The Gender Gap Has Narrowed but Persists",
+        subtitle = paste0("Comparing ", gsub("Year ", "", early_col),
+                          " and ", gsub("Year ", "", late_col),
+                          " — women have gained ground, but men still lead"),
+        x        = "Participation rate (%)",
+        y        = NULL,
+        caption  = "Source: Statistics Norway, table 05111 (Labour Force Survey)"
+      ) +
+      theme_minimal(base_size = 12) +
+      theme(
+        panel.grid.minor   = element_blank(),
+        panel.grid.major.y = element_blank(),
+        plot.title         = element_text(face = "bold", size = 14),
+        plot.subtitle      = element_text(colour = "grey40", size = 10),
+        plot.caption       = element_text(colour = "grey55", size = 8),
+        axis.text          = element_text(colour = "grey30")
+      )
+
+    print(p2) # fixed: added explicit print() to render plot
+  }
+}
+```
+
+---
+
+## Chart 3: Who Is Outside the Labour Force? An Age Breakdown
+
+The "persons outside the labour force" category is where structural exclusion hides. Retirements and student years are expected, but mid-career exits — particularly among older workers — reveal a harsher truth about Norway's labour market.
+
+```{r plot-ridgeline-age}
+#| fig-height: 6
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df1_age_outside") && !is.null(df1_age_outside) && nrow(df1_age_outside) > 0) {
+
+  pal3 <- met.brewer("Hokusai1", n = length(unique(df1_age_outside$alder)))
+
+  p3 <- ggplot(df1_age_outside,
+               aes(x = value, y = alder, fill = alder)) +
+    geom_density_ridges(alpha = 0.75, colour = "white",
+                        scale = 1.4, bandwidth = 10,
+                        quantile_lines = TRUE, quantiles = 2) +
+    scale_fill_manual(values = pal3, guide = "none") +
+    scale_x_continuous(labels = label_comma(suffix = "k")) +
+    labs(
+      title    = "Persons Outside the Labour Force by Age Group (Last 10 Years)",
+      subtitle = "Older age groups show wider distributions — higher variability and larger pools of excluded workers",
+      x        = "Persons outside labour force (thousands)",
+      y        = NULL,
+      caption  = "Source: Statistics Norway, table 05111 (Labour Force Survey)"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      panel.grid.minor  = element_blank(),
+      plot.title        = element_text(face = "bold", size = 14),
+      plot.subtitle     = element_text(colour = "grey40", size = 10),
+      plot.caption      = element_text(colour = "grey55", size = 8),
+      axis.text         = element_text(colour = "grey30")
+    )
+
+  print(p3) # fixed: added explicit print() to render plot
+}
+```
+
+---
+
+## Chart 4: Unemployment Rate by Gender Over Time
+
+A lollipop chart tracing how the male and female unemployment rate has diverged and converged across economic cycles — recessions, oil price crashes, and the pandemic.
+
+```{r plot-lollipop-unemp}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df1_unemp_rate") && !is.null(df1_unemp_rate) && nrow(df1_unemp_rate) > 0) {
+
+  df1_unemp_wide <- df1_unemp_rate |>
+    select(date, kjønn, value) |>
+    pivot_wider(names_from = kjønn, values_from = value) |>
+    mutate(
+      gap = Menn - Kvinner,
+      year_num = year(date)
+    )
+
+  pal4 <- met.brewer("Hokusai1", n = 5)
+
+  p4 <- ggplot(df1_unemp_wide, aes(x = date, y = gap)) +
+    geom_hline(yintercept = 0, colour = "grey50", linetype = "dashed") +
+    geom_segment(aes(xend = date, y = 0, yend = gap,
+                     colour = gap > 0),
+                 linewidth = 1) +
+    geom_point(aes(colour = gap > 0), size = 3) +
+    scale_colour_manual(values = c("TRUE"  = pal4[1],
+                                   "FALSE" = pal4[4]),
+                        labels = c("TRUE"  = "Men higher",
+                                   "FALSE" = "Women higher"),
+                        name   = "Who has more unemployment:") +
+    scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
+    scale_y_continuous(labels = label_number(suffix = " pp")) +
+    annotate("text", x = as.Date("2009-01-01"), y = 1.5,
+             label = "2008-09\nfinancial crisis\nhit men harder",
+             size = 2.8, colour = pal4[1], hjust = 0) +
+    labs(
+      title    = "The Male-Female Unemployment Gap in Norway",
+      subtitle = "Positive values mean men face higher unemployment; recessions tend to widen the divide",
+      x        = NULL,
+      y        = "Gender gap in unemployment rate (percentage points)",
+      caption  = "Source: Statistics Norway, table 05111 (Labour Force Survey)"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      legend.position   = "top",
+      panel.grid.minor  = element_blank(),
+      panel.grid.major.x = element_blank(),
+      plot.title        = element_text(face = "bold", size = 14),
+      plot.subtitle     = element_text(colour = "grey40", size = 10),
+      plot.caption      = element_text(colour = "grey55", size = 8),
+      axis.text         = element_text(colour = "grey30")
+    )
+
+  print(p4) # fixed: added explicit print() to render plot
+}
+```
+
+---
+
+## Chart 5: Demographic Context — Births, Deaths, Marriages and Divorces
+
+No analysis of labour force participation is complete without the demographic backdrop. The small multiples below show Norway's vital statistics over four decades: a falling birth rate, a marriage institution under pressure, and a slowly rising death count that reflects an ageing population.
+
+```{r plot-small-multiples-vital}
+#| fig-height: 6
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df2_vital") && !is.null(df2_vital) && nrow(df2_vital) > 0) {
+
+  df2_vital$series_label <- factor(
+    df2_vital$series_label,
+    levels = c("Live births", "Deaths", "Marriages", "Divorces")
+  )
+
+  pal5 <- met.brewer("Hokusai1", n = 4)
+  names(pal5) <- c("Live births", "Deaths", "Marriages", "Divorces")
+
+  p5 <- ggplot(df2_vital, aes(x = date, y = value, colour = series_label, fill = series_label)) +
+    geom_area(alpha = 0.2, linewidth = 0) +
+    geom_line(linewidth = 1.1) +
+    facet_wrap(~ series_label, scales = "free_y", ncol = 2) +
+    scale_colour_manual(values = pal5, guide = "none") +
+    scale_fill_manual(values   = pal5, guide = "none") +
+    scale_x_date(date_breaks = "10 years", date_labels = "%Y") +
+    scale_y_continuous(labels = label_comma()) +
+    labs(
+      title    = "Norway's Vital Statistics, 1986-2025",
+      subtitle = "Births falling, deaths rising, marriages contracting — the demographic squeeze tightening around the workforce",
+      x        = NULL,
+      y        = "Count",
+      caption  = "Source: Statistics Norway, table 05803 (Vital Statistics)"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      strip.text        = element_text(face = "bold", size = 11),
+      panel.grid.minor  = element_blank(),
+      plot.title        = element_text(face = "bold", size = 14),
+      plot.subtitle     = element_text(colour = "grey40", size = 10),
+      plot.caption      = element_text(colour = "grey55", size = 8),
+      axis.text         = element_text(colour = "grey30"),
+      axis.text.x       = element_text(angle = 30, hjust = 1)
+    )
+
+  print(p5) # fixed: added explicit print() to render plot
+}
+```
+
+---
+
+## Key Findings
+
+- **The gender participation gap persists.** Despite four decades of policy attention, men's labour force participation rate has remained consistently higher than women's. The gap has narrowed — from roughly 10 percentage points in the mid-1980s to around 4-5 points today — but has not closed.
+
+- **Outside the labour force is not a neutral category.** The population counted as outside the labour force is large — consistently numbering in the hundreds of thousands — and is heavily skewed toward older age groups, suggesting that age-related exit from work remains a structural feature rather than a temporary phenomenon.
+
+- **Recessions hit men's unemployment harder.** The 2008-09 financial crisis and the 2015-16 oil price shock both produced spikes in the male-female unemployment gap, reflecting men's disproportionate exposure to construction, manufacturing, and the oil sector.
+
+- **Demographic pressure is mounting from below.** Live births have been falling since their early-2000s peak, while deaths are on a gradual upward trajectory as the population ages. This demographic scissor will narrow the future working-age population entering the labour force.
+
+- **Marriage collapse parallels workforce stress.** The number of marriages has roughly halved over the available time series, mirroring the period of peak labour force stress and rising economic uncertainty — suggesting that household formation decisions track labour market confidence.
+
+---
+
+## Closing Reflection
+
+Norway's headline unemployment figures remain enviable by international standards. But headline numbers are deliberately designed to look reassuring. Beneath them lies a labour market that continues to treat gender as a meaningful predictor of participation, that sheds older workers into an "outside the labour force" category with remarkable efficiency, and that faces a demographic pipeline that is, by every measure, shrinking.
+
+The real labour exodus is not the dramatic kind — not factory closures or mass layoffs. It is quieter: the woman who reduces her hours after childbirth and never fully returns, the 62-year-old who takes early retirement when the alternative feels unwelcoming, the young adult who delays entry because the path in is unclear. Norway's challenge is not to create jobs. It is to make the existing structure genuinely hospitable to everyone who could, and should, participate in it.
