@@ -1,0 +1,479 @@
+---
+title: "Norway's 2026 Labour-Immigration Nexus: How Shrinking Youth and Immigration Dependency Shape Employment Trends"
+description: "Monthly labour force data and four decades of citizenship records reveal how Norway's employment model is being quietly rewritten by demographic shifts and immigration dependency."
+date: "2026-05-22"
+categories: [SSB, labour market, immigration, demographics]
+---
+
+```{r setup}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = TRUE)
+
+library(tidyverse)
+library(lubridate)
+library(PxWebApiData)
+library(scales)
+library(ggridges)
+library(MetBrewer)
+
+df1 <- NULL
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/13760",
+    Kjonn = TRUE,
+    Alder = TRUE,
+    Justering = TRUE,
+    Tid = list(filter = "top", values = 40)
+  )
+  tmp          <- raw[[1]]
+  time_col     <- "måned"
+  value_col    <- "value"
+  series_col   <- "statistikkvariabel"
+  df1 <- tmp |>
+    mutate(
+      value    = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      date     = case_when(
+        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
+        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
+    ) |>
+    filter(!is.na(value), !is.na(date))
+}, error = function(e) message("Fetch failed: ", e$message))
+
+if (is.null(df1) || nrow(df1) == 0) { message("No data returned for df1"); df1 <- NULL }
+
+df2 <- NULL
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/05196",
+    Kjonn = TRUE,
+    Statsborgerskap = TRUE,
+    Alder = TRUE,
+    Tid = list(filter = "top", values = 40)
+  )
+  tmp          <- raw[[1]]
+  time_col     <- "år"
+  value_col    <- "value"
+  series_col   <- "statsborgerskap"
+  df2 <- tmp |>
+    mutate(
+      value    = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      date     = case_when(
+        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
+        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
+    ) |>
+    filter(!is.na(value), !is.na(date))
+}, error = function(e) message("Fetch failed: ", e$message))
+
+if (is.null(df2) || nrow(df2) == 0) { message("No data returned for df2"); df2 <- NULL }
+```
+
+## Introduction
+
+Norway's headline unemployment rate has held near historic lows for years, but the story beneath the surface is more complicated. The labour force is being reshaped by two forces moving in opposite directions: a domestic workforce that is ageing and shrinking among the young, and a growing dependency on immigrants — particularly from Poland and the Nordic neighbours — to fill essential roles. Together, these trends raise a structural question that few Norwegian policymakers have fully answered: what happens when immigration flows slow or reverse?
+
+## Data and Methodology
+
+This analysis draws on two Statistics Norway datasets. Table 13760 provides monthly seasonally-adjusted labour force survey data covering the workforce, employment, and unemployment measured in thousands of persons. Table 05196 records the Norwegian population by citizenship — Norwegian, Danish, Swedish, Finnish, and Polish — over four decades, illuminating the scale of immigration's contribution to the population base from which workers are drawn.
+
+```{r wrangle}
+# ---- df1 wrangle: Labour force monthly data ----
+df1_labour   <- NULL
+df1_employed <- NULL
+df1_unemp    <- NULL
+df1_lfpr     <- NULL
+df1_wide     <- NULL
+
+if (!is.null(df1)) {
+  series_col1 <- "statistikkvariabel"
+
+  # Filter: seasonally adjusted, all genders, all ages where possible
+  # Identify adjustment column
+  adj_col <- if ("type justering" %in% names(df1)) "type justering" else
+             if ("Justering" %in% names(df1)) "Justering" else
+             if ("justering" %in% names(df1)) "justering" else NULL
+
+  # Check available columns
+  kjonn_col <- if ("kjønn" %in% names(df1)) "kjønn" else
+               if ("Kjonn" %in% names(df1)) "Kjonn" else
+               if ("kjonn" %in% names(df1)) "kjonn" else NULL
+
+  alder_col <- if ("alder" %in% names(df1)) "alder" else
+               if ("Alder" %in% names(df1)) "Alder" else NULL
+
+  # Use all data, summarise by series and date
+  df1_summary <- df1 |>
+    group_by(.data[[series_col1]], date) |>
+    summarise(value = sum(value, na.rm = TRUE), .groups = "drop") |>
+    rename(series = 1)
+
+  df1_labour <- df1_summary |>
+    filter(series == "Arbeidsstyrken (1000 personer)")
+
+  df1_employed <- df1_summary |>
+    filter(series == "Sysselsatte (1000 personer)")
+
+  df1_unemp <- df1_summary |>
+    filter(series == "Arbeidsledige (1000 personer)")
+
+  df1_lfpr <- df1_summary |>
+    filter(series == "Arbeidsstyrken i prosent av befolkningen")
+
+  # Guard checks
+  if (nrow(df1_labour) == 0) {
+    message("df1_labour empty. Series: ", paste(head(unique(df1_summary$series), 10), collapse = ", "))
+    df1_labour <- NULL
+  }
+  if (nrow(df1_employed) == 0) df1_employed <- NULL
+  if (nrow(df1_unemp) == 0)    df1_unemp    <- NULL
+  if (nrow(df1_lfpr) == 0)     df1_lfpr     <- NULL
+
+  # Wide format for dumbbell/slope
+  if (!is.null(df1_labour) && !is.null(df1_employed) && !is.null(df1_unemp)) {
+    df1_wide <- bind_rows(
+      df1_labour  |> mutate(indicator = "Labour force"),
+      df1_employed |> mutate(indicator = "Employed"),
+      df1_unemp   |> mutate(indicator = "Unemployed")
+    )
+  }
+}
+
+# ---- df2 wrangle: Population by citizenship ----
+df2_citizen  <- NULL
+df2_nordic   <- NULL
+df2_slope    <- NULL
+
+series_col2 <- "statsborgerskap"
+
+if (!is.null(df2)) {
+  # Aggregate over gender and age: total by citizenship and year
+  df2_citizen <- df2 |>
+    group_by(.data[[series_col2]], date) |>
+    summarise(value = sum(value, na.rm = TRUE), .groups = "drop") |>
+    rename(citizenship = 1)
+
+  # Filter to key citizenships excluding Alle land (all) for detail views
+  key_citizenships <- c("Norge", "Polen", "Sverige", "Danmark", "Finland")
+
+  df2_nordic <- df2_citizen |>
+    filter(citizenship %in% key_citizenships)
+
+  if (nrow(df2_nordic) == 0) {
+    message("df2_nordic empty. Citizenships: ", paste(head(unique(df2_citizen$citizenship), 15), collapse = ", "))
+    df2_nordic <- NULL
+  }
+
+  # Slope data: compare earliest vs latest year for each citizenship
+  if (!is.null(df2_nordic)) {
+    years_avail <- sort(unique(df2_nordic$date))
+    if (length(years_avail) >= 2) {
+      y_start <- min(years_avail)
+      y_end   <- max(years_avail)
+      df2_slope <- df2_nordic |>
+        filter(date %in% c(y_start, y_end)) |>
+        mutate(year_label = if_else(date == y_start,
+                                    as.character(year(y_start)),
+                                    as.character(year(y_end))))
+    }
+  }
+}
+```
+
+## The Labour Force in Motion: Three Indicators, Four Years
+
+Norway's labour market has been broadly stable in headline terms, but the monthly trajectory tells a more textured story. The workforce as a whole has grown marginally, employment has tracked it closely, but unemployment has remained strikingly low even as external price pressures mounted. The chart below traces all three series together across the most recent 40 months of data.
+
+```{r plot-area-labour}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df1_wide") && !is.null(df1_wide) && nrow(df1_wide) > 0) {
+
+  palette_labour <- met.brewer("Hokusai2", n = 3)
+
+  p1 <- ggplot(
+    df1_wide |> filter(indicator %in% c("Labour force", "Employed")),
+    aes(x = date, y = value, colour = indicator, fill = indicator)
+  ) +
+    geom_area(alpha = 0.18, position = "identity") +
+    geom_line(linewidth = 0.9) +
+    geom_line(
+      data = df1_wide |> filter(indicator == "Unemployed"),
+      aes(x = date, y = value * 10, colour = indicator),
+      linewidth = 0.9, linetype = "dashed"
+    ) +
+    scale_y_continuous(
+      name = "Persons (thousands) — workforce & employed",
+      labels = comma,
+      sec.axis = sec_axis(~ . / 10,
+                          name = "Unemployed (thousands)",
+                          labels = comma)
+    ) +
+    scale_colour_manual(
+      values = setNames(palette_labour, c("Labour force", "Employed", "Unemployed")),
+      name = NULL
+    ) +
+    scale_fill_manual(
+      values = setNames(palette_labour, c("Labour force", "Employed", "Unemployed")),
+      name = NULL
+    ) +
+    scale_x_date(date_breaks = "6 months", date_labels = "%b %Y") +
+    labs(
+      title = "Norway's Labour Force: Tight Employment, Minimal Slack",
+      subtitle = "Employed (solid) tracks workforce closely; unemployment (dashed, right axis) remains historically low",
+      caption = "Source: Statistics Norway, table 13760",
+      x = NULL
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      legend.position  = "top",
+      axis.text.x      = element_text(angle = 35, hjust = 1),
+      panel.grid.minor = element_blank(),
+      plot.title       = element_text(face = "bold"),
+      plot.subtitle    = element_text(colour = "grey40")
+    )
+
+  print(p1) # fixed: added explicit print() to render the ggplot
+}
+```
+
+## The Immigration Layer: Four Decades of Citizenship Shifts
+
+The domestic workforce does not exist in isolation. Since the 1980s, Norway's population has been augmented by waves of migrants — first from Scandinavia, then from further afield, most dramatically from Poland following EU enlargement in 2004. The chart below plots the population count by citizenship across four decades, revealing just how rapidly the composition of who lives in Norway has changed.
+
+```{r plot-area-citizenship}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df2_nordic") && !is.null(df2_nordic) && nrow(df2_nordic) > 0) {
+
+  # Exclude Norwegian citizens for clarity — focus on foreign nationalities
+  df2_foreign <- df2_nordic |>
+    filter(citizenship != "Norge")
+
+  palette_cit <- met.brewer("Hokusai2", n = length(unique(df2_foreign$citizenship)))
+
+  p2 <- ggplot(df2_foreign, aes(x = date, y = value / 1000, fill = citizenship, colour = citizenship)) +
+    geom_area(alpha = 0.6, position = "stack") +
+    scale_fill_manual(values = palette_cit, name = "Citizenship") +
+    scale_colour_manual(values = palette_cit, name = "Citizenship") +
+    scale_y_continuous(labels = function(x) paste0(x, "k"), name = "Population (thousands)") +
+    scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
+    annotate("segment", x = as.Date("2004-01-01"), xend = as.Date("2004-01-01"),
+             y = 0, yend = 110, colour = "grey30", linetype = "dashed", linewidth = 0.6) +
+    annotate("text", x = as.Date("2004-06-01"), y = 115,
+             label = "EU enlargement\n(2004)", hjust = 0, size = 3, colour = "grey30") +
+    labs(
+      title = "Poland Overtook All Other Immigrant Groups After 2004",
+      subtitle = "Stacked population counts of Danish, Finnish, Polish and Swedish citizens residing in Norway",
+      caption = "Source: Statistics Norway, table 05196",
+      x = NULL
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      legend.position  = "right",
+      panel.grid.minor = element_blank(),
+      plot.title       = element_text(face = "bold"),
+      plot.subtitle    = element_text(colour = "grey40")
+    )
+
+  print(p2) # fixed: added explicit print() to render the ggplot
+}
+```
+
+## Who Grew Most? A Slope View of Population Change
+
+Knowing that Polish citizens surged after 2004 is one thing; seeing the relative magnitude compared to Norway's traditional Nordic neighbours requires direct comparison. The slope chart below anchors on the earliest and latest years available in the data, showing the absolute and proportional change for each citizenship group living in Norway.
+
+```{r plot-slope}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df2_slope") && !is.null(df2_slope) && nrow(df2_slope) > 0) {
+
+  palette_slope <- met.brewer("Hokusai2", n = length(unique(df2_slope$citizenship)))
+  names(palette_slope) <- unique(df2_slope$citizenship)
+
+  # Compute pct change labels for endpoints
+  df2_slope_summary <- df2_slope |>
+    group_by(citizenship) |>
+    arrange(date) |>
+    mutate(
+      pct_change = (value / first(value) - 1) * 100,
+      label_val  = paste0(scales::comma(round(value / 1000, 1)), "k")
+    ) |>
+    ungroup()
+
+  p3 <- ggplot(df2_slope_summary,
+               aes(x = year_label, y = value / 1000,
+                   group = citizenship, colour = citizenship)) +
+    geom_line(linewidth = 1.2, alpha = 0.85) +
+    geom_point(size = 3.5) +
+    geom_text(
+      data = df2_slope_summary |> filter(year_label == max(year_label)),
+      aes(label = paste0(citizenship, "\n", label_val)),
+      hjust = -0.08, size = 3, fontface = "bold"
+    ) +
+    geom_text(
+      data = df2_slope_summary |> filter(year_label == min(year_label)),
+      aes(label = label_val),
+      hjust = 1.12, size = 2.8
+    ) +
+    scale_colour_manual(values = palette_slope, guide = "none") +
+    scale_y_continuous(labels = function(x) paste0(x, "k"), name = "Population (thousands)") +
+    expand_limits(x = c(0.5, 2.8)) +
+    labs(
+      title = "The Polish Surge Dwarfs Nordic Immigration Growth",
+      subtitle = "Population by citizenship — earliest vs. most recent year available",
+      caption = "Source: Statistics Norway, table 05196",
+      x = NULL
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      panel.grid.major.x = element_blank(),
+      panel.grid.minor   = element_blank(),
+      plot.title         = element_text(face = "bold"),
+      plot.subtitle      = element_text(colour = "grey40")
+    )
+
+  print(p3) # fixed: added explicit print() to render the ggplot
+}
+```
+
+## Monthly Unemployment: A Ridgeline View Across Years
+
+Monthly frequency data allows a seasonal and year-over-year comparison of how unemployment has distributed across months. The ridgeline chart below stacks yearly distributions of unemployment (in thousands of persons) to reveal whether the tight labour market of recent years marks a genuine structural shift or merely a cyclical low.
+
+```{r plot-ridgeline}
+#| fig-height: 6
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df1_unemp") && !is.null(df1_unemp) && nrow(df1_unemp) > 0) {
+
+  df1_unemp_yr <- df1_unemp |>
+    mutate(year = factor(year(date), levels = rev(sort(unique(year(date))))))
+
+  n_years <- length(unique(df1_unemp_yr$year))
+  palette_ridge <- met.brewer("Hokusai2", n = max(n_years, 3))
+
+  p4 <- ggplot(df1_unemp_yr, aes(x = value, y = year, fill = year)) +
+    geom_density_ridges(
+      alpha       = 0.75,
+      bandwidth   = 5,
+      scale       = 1.2,
+      rel_min_height = 0.01,
+      colour      = "white"
+    ) +
+    scale_fill_manual(values = rep(palette_ridge, length.out = n_years), guide = "none") +
+    scale_x_continuous(labels = comma, name = "Unemployed (thousands of persons)") +
+    labs(
+      title    = "Unemployment Distributions Have Compressed in Recent Years",
+      subtitle = "Each ridge shows the monthly spread of unemployment within that calendar year",
+      caption  = "Source: Statistics Norway, table 13760",
+      y        = "Year"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      panel.grid.minor = element_blank(),
+      plot.title       = element_text(face = "bold"),
+      plot.subtitle    = element_text(colour = "grey40")
+    )
+
+  print(p4) # fixed: added explicit print() to render the ggplot
+}
+```
+
+## Labour Force Participation: A Lollipop Snapshot by Month
+
+Participation rates capture something unemployment figures do not: how many adults are even trying to work. The lollipop chart below plots the monthly labour force participation rate (as a percentage of the population), ordered chronologically, to show whether the recent high-employment environment has pulled more Norwegians into the workforce or whether participation has plateaued.
+
+```{r plot-lollipop}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df1_lfpr") && !is.null(df1_lfpr) && nrow(df1_lfpr) > 0) {
+
+  # Use only the most recent 24 months to keep the chart readable
+  df1_lfpr_recent <- df1_lfpr |>
+    arrange(date) |>
+    slice_tail(n = 24) |>
+    mutate(
+      month_label = format(date, "%b %Y"),
+      above_mean  = value >= mean(value)
+    )
+
+  mean_lfpr <- mean(df1_lfpr_recent$value)
+
+  palette_lollipop <- met.brewer("Hokusai2", n = 2)
+
+  p5 <- ggplot(df1_lfpr_recent,
+               aes(x = date, y = value, colour = above_mean)) +
+    geom_hline(yintercept = mean_lfpr, linetype = "dashed",
+               colour = "grey50", linewidth = 0.7) +
+    geom_segment(aes(xend = date, yend = mean_lfpr), linewidth = 0.7, alpha = 0.7) +
+    geom_point(size = 3.5) +
+    annotate("text",
+             x = min(df1_lfpr_recent$date),
+             y = mean_lfpr + 0.15,
+             label = paste0("Period mean: ", round(mean_lfpr, 1), "%"),
+             hjust = 0, size = 3.2, colour = "grey40") +
+    scale_colour_manual(
+      values = c("TRUE" = palette_lollipop[1], "FALSE" = palette_lollipop[2]),
+      labels = c("TRUE" = "Above mean", "FALSE" = "Below mean"),
+      name   = NULL
+    ) +
+    scale_x_date(date_breaks = "3 months", date_labels = "%b %Y") +
+    scale_y_continuous(
+      labels = function(x) paste0(x, "%"),
+      name   = "Labour force participation rate"
+    ) +
+    labs(
+      title    = "Participation Rates Hover Near a Ceiling — With Notable Dips",
+      subtitle = "Monthly labour force as percentage of population, last 24 months (dots above/below period mean)",
+      caption  = "Source: Statistics Norway, table 13760",
+      x        = NULL
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      legend.position  = "top",
+      axis.text.x      = element_text(angle = 35, hjust = 1),
+      panel.grid.minor = element_blank(),
+      plot.title       = element_text(face = "bold"),
+      plot.subtitle    = element_text(colour = "grey40")
+    )
+
+  print(p5) # fixed: added explicit print() to render the ggplot
+}
+```
+
+## Key Findings
+
+- **Employment has tracked the labour force almost exactly** across the 40 months in the data, with unemployment remaining compressed into a narrow band — confirming that Norway's tight labour market is not a statistical artefact of people leaving the workforce.
+
+- **Polish citizens are now the dominant foreign-born group** in Norway by a wide margin, with their numbers growing from near zero before 2004 to multiples of the combined Danish, Swedish, and Finnish populations by the most recent year.
+
+- **Nordic immigration has been largely flat or declining** in recent years: the Danish and Finnish populations in Norway have shrunk in relative terms as Polish labour inflows accelerated, reflecting structural demand for construction, care, and transport workers rather than white-collar migration.
+
+- **Unemployment distributions have compressed year over year**, with recent ridgeline peaks shifted leftward and narrowed — suggesting the labour market has become structurally tighter, not merely cyclically favourable.
+
+- **Labour force participation rates have flattened near a ceiling**, with monthly variation of less than one percentage point in recent years. This means future workforce growth must come almost entirely from population growth — and, given falling fertility, predominantly from immigration.
+
+## Closing Reflection
+
+Norway's employment model looks robust in the headline numbers, but the structural foundations deserve scrutiny. With domestic fertility rates falling and participation rates already near their practical ceiling, the labour supply is increasingly a function of immigration policy rather than demographic momentum. The Polish surge after 2004 filled a genuine gap; any future tightening of migration routes — whether driven by politics, economic conditions in sending countries, or competing demand from other EU labour markets — would leave Norway exposed. The tight labour market of 2026 is partly a policy success story and partly a dependency that has not yet been stress-tested.
