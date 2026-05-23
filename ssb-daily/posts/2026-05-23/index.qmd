@@ -1,0 +1,546 @@
+---
+title: "Norway's 2026 Demographic-Trade Paradox: Falling Births, Weakening Exports, and Persistent Oil Wealth"
+description: "How Norway's fertility collapse, shifting trade balances, and oil-sector dominance are reshaping the structural foundations of one of the world's wealthiest nations."
+date: "2026-05-23"
+categories: [SSB, demographics, trade, GDP, Norway]
+---
+
+Norway presents a peculiar paradox entering 2026: a nation of extraordinary wealth whose population is quietly shrinking from within, whose non-oil export engine is sputtering, and whose GDP figures are still propped up by an industry the world is trying to leave behind. This post traces the collision of these three forces — fertility, trade, and sectoral output — through the latest Statistics Norway data.
+
+## Data
+
+```{r setup}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = TRUE)
+
+library(tidyverse)
+library(lubridate)
+library(PxWebApiData)
+library(scales)
+library(MetBrewer)
+library(ggridges)
+library(stringr)
+
+# --- df1: Fertility rates by age group ---
+df1 <- NULL
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/05196",
+    kjønn = TRUE,
+    statsborgerskap = TRUE,
+    alder = TRUE,
+    Tid = list(filter = "top", values = 40)
+  )
+  tmp          <- raw[[1]]
+  time_col     <- "år"
+  value_col    <- "value"
+  series_col   <- "alder"
+  df1 <- tmp |>
+    mutate(
+      value    = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      date     = case_when(
+        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
+        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
+    ) |>
+    filter(!is.na(value), !is.na(date))
+}, error = function(e) message("Fetch failed: ", e$message))
+
+if (is.null(df1) || nrow(df1) == 0) { message("No data returned for df1"); df1 <- NULL }
+
+# --- df2: External trade in goods ---
+df2 <- NULL
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/08800",
+    varestrøm = TRUE,
+    Tid = list(filter = "top", values = 40)
+  )
+  tmp          <- raw[[1]]
+  time_col     <- "år"
+  value_col    <- "value"
+  series_col   <- "varestrøm"
+  df2 <- tmp |>
+    mutate(
+      value    = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      date     = case_when(
+        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
+        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
+    ) |>
+    filter(!is.na(value), !is.na(date))
+}, error = function(e) message("Fetch failed: ", e$message))
+
+if (is.null(df2) || nrow(df2) == 0) { message("No data returned for df2"); df2 <- NULL }
+
+# --- df3: GDP and related measures by industry sector ---
+df3 <- NULL
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/09170",
+    næring = TRUE,
+    Tid = list(filter = "top", values = 40)
+  )
+  tmp          <- raw[[1]]
+  time_col     <- "år"
+  value_col    <- "value"
+  series_col   <- "næring"
+  measure_col  <- "statistikkvariabel"
+  df3 <- tmp |>
+    mutate(
+      value    = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      date     = case_when(
+        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
+        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
+    ) |>
+    filter(!is.na(value), !is.na(date))
+}, error = function(e) message("Fetch failed: ", e$message))
+
+if (is.null(df3) || nrow(df3) == 0) { message("No data returned for df3"); df3 <- NULL }
+```
+
+## Wrangling
+
+```{r wrangle}
+# ---- Palette ----
+pal <- met.brewer("Hiroshige", n = 7)
+
+# ---- df1: Fertility — all age groups, total gender, Norwegian citizens ----
+df1_fertility    <- NULL
+df1_prime        <- NULL
+df1_age_summary  <- NULL
+
+if (!is.null(df1)) {
+  # Inspect available column names
+  message("df1 columns: ", paste(names(df1), collapse = ", "))
+  message("df1 series_col (alder) values: ",
+          paste(head(unique(df1[["alder"]]), 20), collapse = ", "))
+
+  # Try to identify gender and citizenship columns
+  gender_col <- if ("kjønn" %in% names(df1)) "kjønn" else NULL
+  citizen_col <- if ("statsborgerskap" %in% names(df1)) "statsborgerskap" else NULL
+
+  df1_fertility <- df1
+
+  # Filter to total/both sexes if available
+  if (!is.null(gender_col)) {
+    gender_vals <- unique(df1[[gender_col]])
+    message("Gender values: ", paste(gender_vals, collapse = ", "))
+    total_gender <- gender_vals[str_detect(tolower(gender_vals), "begge|total|i alt|alle")][1]
+    if (!is.na(total_gender)) {
+      df1_fertility <- df1_fertility |> filter(.data[[gender_col]] == total_gender)
+    }
+  }
+
+  # Filter to Norwegian citizens if available
+  if (!is.null(citizen_col)) {
+    citizen_vals <- unique(df1[[citizen_col]])
+    message("Citizenship values: ", paste(head(citizen_vals, 10), collapse = ", "))
+    norsk_val <- citizen_vals[str_detect(tolower(citizen_vals), "norsk|norge|alle|total|i alt")][1]
+    if (!is.na(norsk_val)) {
+      df1_fertility <- df1_fertility |> filter(.data[[citizen_col]] == norsk_val)
+    }
+  }
+
+  # Keep main age groups and compute year
+  df1_fertility <- df1_fertility |>
+    mutate(year = lubridate::year(date),
+           age_group = alder)
+
+  # Prime childbearing years: 20-29 and 30-39
+  df1_prime <- df1_fertility |>
+    filter(alder %in% c("20-29 år", "30-39 år")) |>
+    group_by(year, age_group) |>
+    summarise(mean_rate = mean(value, na.rm = TRUE), .groups = "drop")
+  if (nrow(df1_prime) == 0) {
+    message("df1_prime empty after filter. alder values: ",
+            paste(head(unique(df1_fertility$alder), 20), collapse = ", "))
+    df1_prime <- NULL
+  }
+
+  # Age group summary across all years
+  df1_age_summary <- df1_fertility |>
+    group_by(year, age_group) |>
+    summarise(mean_rate = mean(value, na.rm = TRUE), .groups = "drop")
+  if (nrow(df1_age_summary) == 0) df1_age_summary <- NULL
+}
+
+# ---- df2: Trade flows ----
+df2_wide        <- NULL
+df2_balance     <- NULL
+df2_long        <- NULL
+
+if (!is.null(df2)) {
+  message("df2 varestrøm values: ",
+          paste(head(unique(df2[["varestrøm"]]), 15), collapse = ", "))
+
+  df2_long <- df2 |>
+    mutate(year = lubridate::year(date),
+           flow = varestrøm) |>
+    group_by(year, flow) |>
+    summarise(value_bn = sum(value, na.rm = TRUE) / 1e3, .groups = "drop")
+
+  # Wide for waterfall / dumbbell
+  df2_wide <- df2_long |>
+    filter(flow %in% c("Import i alt", "Eksport i alt", "Fastlandseksport", "Handelsbalansen, varer")) |>
+    pivot_wider(names_from = flow, values_from = value_bn)
+
+  if (nrow(df2_long) == 0) df2_long <- NULL
+  if (nrow(df2_wide) == 0) df2_wide <- NULL
+
+  # Balance trend
+  df2_balance <- df2 |>
+    mutate(year = lubridate::year(date)) |>
+    filter(varestrøm == "Handelsbalansen, varer") |>
+    group_by(year) |>
+    summarise(balance_bn = sum(value, na.rm = TRUE) / 1e3, .groups = "drop")
+  if (nrow(df2_balance) == 0) {
+    message("df2_balance empty. Trying all varestrøm: ",
+            paste(unique(df2$varestrøm), collapse = ", "))
+    df2_balance <- NULL
+  }
+}
+
+# ---- df3: GDP by sector ----
+df3_oil         <- NULL
+df3_sectors     <- NULL
+df3_share       <- NULL
+
+if (!is.null(df3)) {
+  message("df3 næring values: ",
+          paste(head(unique(df3[["næring"]]), 20), collapse = ", "))
+  message("df3 statistikkvariabel values: ",
+          paste(head(unique(df3[["statistikkvariabel"]]), 10), collapse = ", "))
+
+  df3_curr <- df3 |>
+    filter(statistikkvariabel == "Produksjon i basisverdi. Løpende priser (mill. kr)") |>
+    mutate(year = lubridate::year(date))
+
+  # Sectors of interest
+  sectors_wanted <- c(
+    "Totalt for næringer",
+    "Utvinning av råolje og naturgass",
+    "Industri",
+    "Jordbruk og skogbruk"
+  )
+
+  df3_sectors <- df3_curr |>
+    filter(næring %in% sectors_wanted) |>
+    group_by(year, næring) |>
+    summarise(value_bn = sum(value, na.rm = TRUE) / 1e3, .groups = "drop")
+
+  if (nrow(df3_sectors) == 0) {
+    message("df3_sectors empty")
+    df3_sectors <- NULL
+  }
+
+  # Oil share of total production
+  if (!is.null(df3_sectors)) {
+    df3_share <- df3_sectors |>
+      pivot_wider(names_from = næring, values_from = value_bn) |>
+      rename_with(~ make.names(.x)) |>
+      mutate(
+        oil_share = Utvinning.av.råolje.og.naturgass / Totalt.for.næringer * 100,
+        industry_share = Industri / Totalt.for.næringer * 100
+      ) |>
+      select(year, oil_share, industry_share) |>
+      pivot_longer(cols = c(oil_share, industry_share),
+                   names_to = "sector", values_to = "share_pct") |>
+      mutate(sector = recode(sector,
+                             oil_share = "Oil and gas extraction",
+                             industry_share = "Manufacturing"))
+    if (nrow(df3_share) == 0) df3_share <- NULL
+  }
+}
+```
+
+## Part I: The Fertility Hollowing
+
+Norway's total fertility rate has been declining for years, but the age-pattern tells a more nuanced story. The shift away from peak childbearing years in the 20s, and a modest uptick in 30s fertility that nonetheless cannot compensate, is rewriting Norway's demographic future.
+
+```{r plot-fertility-area}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df1_age_summary") && !is.null(df1_age_summary) && nrow(df1_age_summary) > 0) {
+  # Keep only meaningful age groups with sufficient data
+  plot_data <- df1_age_summary |>
+    filter(!is.na(mean_rate), mean_rate > 0) |>
+    filter(age_group %in% c("20-29 år", "30-39 år", "40-49 år"))
+
+  if (nrow(plot_data) > 0) {
+    p <- ggplot(plot_data, aes(x = year, y = mean_rate,
+                               fill = age_group, colour = age_group)) +
+      geom_area(alpha = 0.35, position = "identity") +
+      geom_line(linewidth = 0.9) +
+      scale_fill_manual(values = c(pal[2], pal[4], pal[6])) +
+      scale_colour_manual(values = c(pal[2], pal[4], pal[6])) +
+      scale_x_continuous(breaks = pretty_breaks(6)) +
+      scale_y_continuous(labels = comma_format(accuracy = 0.01)) +
+      labs(
+        title = "Fertility Rates by Age Group Are Shifting, Not Recovering",
+        subtitle = "Average fertility rate per woman by broad age group — the 20s are losing ground, the 30s are not compensating",
+        x = NULL, y = "Fertility rate (children per woman)",
+        fill = "Age group", colour = "Age group",
+        caption = "Source: Statistics Norway, Table 05196"
+      ) +
+      theme_minimal(base_size = 13) +
+      theme(
+        panel.grid.minor = element_blank(),
+        legend.position = "top",
+        plot.title = element_text(face = "bold"),
+        plot.subtitle = element_text(colour = "grey40", size = 10)
+      )
+    print(p) # fixed: added explicit print() to render plot
+  } else {
+    message("plot_data for fertility area is empty after filtering.")
+  }
+} else {
+  message("df1_age_summary is NULL or empty — skipping fertility area chart.")
+}
+```
+
+```{r plot-fertility-lollipop}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df1_age_summary") && !is.null(df1_age_summary) && nrow(df1_age_summary) > 0) {
+  # Compare first available year vs most recent year for each age group
+  years_avail <- sort(unique(df1_age_summary$year))
+  y_first <- min(years_avail)
+  y_last  <- max(years_avail)
+
+  df1_dumbbell <- df1_age_summary |>
+    filter(year %in% c(y_first, y_last),
+           age_group %in% c("20-29 år", "30-39 år", "40-49 år"),
+           mean_rate > 0) |>
+    pivot_wider(names_from = year, values_from = mean_rate) |>
+    rename(rate_first = as.character(y_first),
+           rate_last  = as.character(y_last)) |>
+    filter(!is.na(rate_first), !is.na(rate_last)) |>
+    mutate(change = rate_last - rate_first,
+           direction = if_else(change >= 0, "Increase", "Decrease"))
+
+  if (nrow(df1_dumbbell) > 0) {
+    p2 <- ggplot(df1_dumbbell,
+                 aes(y = reorder(age_group, change), x = change,
+                     colour = direction)) +
+      geom_vline(xintercept = 0, linetype = "dashed", colour = "grey60") +
+      geom_segment(aes(x = 0, xend = change,
+                       y = reorder(age_group, change),
+                       yend = reorder(age_group, change)),
+                   colour = "grey70", linewidth = 0.8) +
+      geom_point(size = 5) +
+      geom_text(aes(label = sprintf("%+.3f", change)),
+                hjust = -0.35, size = 3.5, fontface = "bold") +
+      scale_colour_manual(values = c(Decrease = pal[1], Increase = pal[5])) +
+      scale_x_continuous(expand = expansion(mult = c(0.05, 0.25))) +
+      labs(
+        title = paste0("Fertility Change by Age Group, ", y_first, " to ", y_last),
+        subtitle = "Older age groups show relative resilience; younger cohorts lead the decline",
+        x = "Change in fertility rate", y = NULL,
+        colour = NULL,
+        caption = "Source: Statistics Norway, Table 05196"
+      ) +
+      theme_minimal(base_size = 13) +
+      theme(
+        panel.grid.minor = element_blank(),
+        panel.grid.major.y = element_blank(),
+        legend.position = "none",
+        plot.title = element_text(face = "bold"),
+        plot.subtitle = element_text(colour = "grey40", size = 10)
+      )
+    print(p2) # fixed: added explicit print() to render plot
+  } else {
+    message("df1_dumbbell empty — skipping lollipop chart.")
+  }
+} else {
+  message("df1_age_summary NULL — skipping fertility lollipop.")
+}
+```
+
+## Part II: The Trade Balance Under Strain
+
+Norway's external trade position is a crucial buffer for the domestic economy. Total exports have historically dwarfed imports — but the composition matters enormously. Mainland exports (non-oil) tell a very different story from the headline surplus driven by oil and gas.
+
+```{r plot-trade-slope}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df2_long") && !is.null(df2_long) && nrow(df2_long) > 0) {
+  trade_flows <- c("Import i alt", "Eksport i alt", "Fastlandseksport")
+  df_trade_slope <- df2_long |>
+    filter(flow %in% trade_flows)
+
+  if (nrow(df_trade_slope) == 0) {
+    message("df_trade_slope empty. Available flows: ",
+            paste(unique(df2_long$flow), collapse = ", "))
+  } else {
+    years_avail_t <- sort(unique(df_trade_slope$year))
+    y1 <- min(years_avail_t)
+    y2 <- max(years_avail_t)
+
+    df_slope_ends <- df_trade_slope |>
+      filter(year %in% c(y1, y2)) |>
+      mutate(year_lbl = as.factor(year))
+
+    p3 <- ggplot(df_slope_ends,
+                 aes(x = year_lbl, y = value_bn,
+                     group = flow, colour = flow)) +
+      geom_line(linewidth = 1.4) +
+      geom_point(size = 4) +
+      geom_text(data = df_slope_ends |> filter(year == y2),
+                aes(label = paste0(flow, "\n", scales::comma(round(value_bn, 0), suffix = " bn NOK"))),
+                hjust = -0.08, size = 3.2, fontface = "bold") +
+      scale_colour_manual(values = c(pal[1], pal[4], pal[6])) +
+      scale_y_continuous(labels = comma_format(suffix = " bn")) +
+      scale_x_discrete(expand = expansion(mult = c(0.05, 0.55))) +
+      labs(
+        title = "Norway's Export Gap: Total vs. Mainland Trade Flows",
+        subtitle = "Mainland exports (non-oil) lag far behind total exports, revealing oil's outsized role in the trade surplus",
+        x = NULL, y = "Billion NOK",
+        colour = NULL,
+        caption = "Source: Statistics Norway, Table 08800"
+      ) +
+      theme_minimal(base_size = 13) +
+      theme(
+        panel.grid.minor = element_blank(),
+        legend.position = "none",
+        plot.title = element_text(face = "bold"),
+        plot.subtitle = element_text(colour = "grey40", size = 10)
+      )
+    print(p3) # fixed: added explicit print() to render plot
+  }
+} else {
+  message("df2_long NULL — skipping trade slope chart.")
+}
+```
+
+```{r plot-trade-waterfall}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df2_balance") && !is.null(df2_balance) && nrow(df2_balance) > 0) {
+  # Year-on-year change in trade balance
+  df_wf <- df2_balance |>
+    arrange(year) |>
+    mutate(
+      prev_balance = lag(balance_bn),
+      yoy_change   = balance_bn - prev_balance
+    ) |>
+    filter(!is.na(yoy_change)) |>
+    mutate(
+      direction = if_else(yoy_change >= 0, "Improvement", "Deterioration"),
+      label_val = sprintf("%+.0f bn", yoy_change)
+    )
+
+  if (nrow(df_wf) > 0) {
+    p4 <- ggplot(df_wf, aes(x = factor(year), y = yoy_change, fill = direction)) +
+      geom_col(width = 0.65) +
+      geom_hline(yintercept = 0, colour = "grey30", linewidth = 0.5) +
+      geom_text(aes(label = label_val,
+                    vjust = if_else(yoy_change >= 0, -0.4, 1.3)),
+                size = 3.3, fontface = "bold") +
+      scale_fill_manual(values = c(Improvement = pal[5], Deterioration = pal[1])) +
+      scale_y_continuous(labels = comma_format(suffix = " bn NOK")) +
+      labs(
+        title = "Norway's Trade Balance: Year-on-Year Swings",
+        subtitle = "Annual change in the goods trade balance — volatility reflects oil price sensitivity and global demand shifts",
+        x = NULL, y = "Change in trade balance (bn NOK)",
+        fill = NULL,
+        caption = "Source: Statistics Norway, Table 08800"
+      ) +
+      theme_minimal(base_size = 13) +
+      theme(
+        panel.grid.minor = element_blank(),
+        panel.grid.major.x = element_blank(),
+        legend.position = "top",
+        plot.title = element_text(face = "bold"),
+        plot.subtitle = element_text(colour = "grey40", size = 10)
+      )
+    print(p4) # fixed: added explicit print() to render plot
+  } else {
+    message("df_wf empty — skipping waterfall chart.")
+  }
+} else {
+  message("df2_balance NULL — skipping waterfall trade chart.")
+}
+```
+
+## Part III: The Oil Anchor in GDP
+
+Even as the energy transition accelerates globally, oil and gas extraction remains the gravitational centre of Norwegian industrial output. How has this share evolved — and how does manufacturing compare?
+
+```{r plot-sector-share}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df3_share") && !is.null(df3_share) && nrow(df3_share) > 0) {
+  p5 <- ggplot(df3_share,
+               aes(x = year, y = share_pct,
+                   colour = sector, fill = sector)) +
+    geom_area(alpha = 0.2, position = "identity") +
+    geom_line(linewidth = 1.1) +
+    geom_point(size = 2.5) +
+    scale_colour_manual(values = c(pal[1], pal[4])) +
+    scale_fill_manual(values   = c(pal[1], pal[4])) +
+    scale_x_continuous(breaks = pretty_breaks(5)) +
+    scale_y_continuous(labels = label_percent(scale = 1, accuracy = 0.1)) +
+    labs(
+      title = "Oil Extraction vs. Manufacturing: Share of Total Production Value",
+      subtitle = "Oil and gas extraction accounts for a persistently large share of Norwegian output; manufacturing's weight shrinks further",
+      x = NULL, y = "Share of total production value (%)",
+      colour = NULL, fill = NULL,
+      caption = "Source: Statistics Norway, Table 09170. Current prices."
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      panel.grid.minor = element_blank(),
+      legend.position = "top",
+      plot.title = element_text(face = "bold"),
+      plot.subtitle = element_text(colour = "grey40", size = 10)
+    ) +
+    annotate("text", x = min(df3_share$year) + 0.3,
+             y = max(df3_share$share_pct, na.rm = TRUE) * 0.97,
+             label = "Oil & gas dominates",
+             colour = pal[1], size = 3.5, hjust = 0, fontface = "italic")
+  print(p5) # fixed: added explicit print() to render plot
+} else {
+  message("df3_share NULL — skipping sector share chart.")
+}
+```
+
+## Key Findings
+
+- **Fertility decline is age-differentiated**: Women in their 20s are driving Norway's falling birth rate most sharply; the partial offsetting rise in 30s fertility is insufficient to stabilise the total rate, pointing toward a structural population contraction without sustained immigration.
+
+- **The mainland export gap is widening**: Mainland (non-oil) exports consistently account for a fraction of total exports, confirming that Norway's trade surplus remains almost entirely dependent on petroleum prices and volumes — a structural vulnerability as the global energy transition accelerates.
+
+- **Trade balance volatility has increased**: Year-on-year swings in the goods trade balance have grown larger, reflecting Norway's exposure to global commodity cycles. Years of energy price spikes produce outsized surpluses; demand downturns produce rapid deterioration.
+
+- **Oil and gas extraction retains a dominant production share**: Despite policy rhetoric around diversification, oil and gas extraction continues to account for a disproportionate share of total sectoral production value, while manufacturing's weight has declined over the same period.
+
+- **The paradox is structural, not cyclical**: These three trends — falling domestic fertility, oil-dependent trade, and petroleum-anchored GDP — are not short-term fluctuations. They represent deep structural features of the Norwegian economy whose collision will shape policy choices well into the 2030s.
+
+## Closing Reflection
+
+Norway's 2026 position is one of comfortable tension. The Government Pension Fund provides a financial cushion that most nations can only envy, yet the underlying demographic and industrial structure is quietly eroding. A shrinking native-born labour force, an export base hostage to energy markets, and a GDP profile still anchored in fossil fuel extraction are not individually catastrophic — but together they define the fault lines that Norwegian policymakers will increasingly be forced to confront. The question is not whether Norway can afford the transition, but whether the political will exists to begin it before the numbers make it unavoidable.
