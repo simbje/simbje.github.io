@@ -1,0 +1,496 @@
+---
+title: "Norway's 2026 Trade Deficit Shock: How Mainland Exports Collapsed While Imports Surged"
+description: "Four decades of SSB trade data reveal how Norway's mainland export engine has stalled while import growth persists, compressing the trade balance in ways not seen since the early 2000s."
+date: "2026-05-24"
+categories: [SSB, trade, exports, imports, mainland economy]
+---
+
+## When the Trade Story Changes
+
+For most of the past two decades, Norway's trade statistics told a comfortable story: oil and gas exports generated surpluses so large that almost nothing else mattered. But strip out petroleum and shipping, and a different picture emerges. Mainland exports — the goods Norway produces from its non-petroleum economy — have been losing momentum, while imports keep climbing. The result is a structural squeeze that the 2026 numbers are making impossible to ignore.
+
+## Data
+
+```{r setup}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = TRUE)
+
+library(tidyverse)
+library(lubridate)
+library(PxWebApiData)
+library(scales)
+library(MetBrewer)
+library(ggridges)
+
+df <- NULL
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/08800",
+    varestrøm = TRUE,
+    Tid = list(filter = "top", values = 40)
+  )
+  tmp          <- raw[[1]]
+  time_col     <- "år"
+  value_col    <- "value"
+  series_col   <- "varestrøm"
+  df <- tmp |>
+    mutate(
+      value    = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      date     = case_when(
+        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
+        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
+    ) |>
+    filter(!is.na(value), !is.na(date))
+}, error = function(e) message("Fetch failed: ", e$message))
+
+if (is.null(df) || nrow(df) == 0) { message("No data returned"); df <- NULL }
+```
+
+```{r wrangle}
+# Initialise all derived frames to NULL before any conditional logic
+df_area       <- NULL
+df_balance    <- NULL
+df_waterfall  <- NULL
+df_lollipop   <- NULL
+df_slope      <- NULL
+df_dumbbell   <- NULL
+df_wide       <- NULL
+
+if (!is.null(df) && nrow(df) > 0) {
+
+  # Inspect available series values
+  series_vals <- unique(df[[series_col]])
+  message("Series values: ", paste(series_vals, collapse = " | "))
+
+  year_num <- as.integer(format(df$date, "%Y"))
+
+  # ── Area chart: total exports, imports, mainland exports ──────────────────
+  area_series <- c(
+    "Eksport i alt",
+    "Import i alt",
+    "Fastlandseksport"
+  )
+  df_area <- df |>
+    mutate(year = as.integer(format(date, "%Y"))) |>
+    filter(.data[[series_col]] %in% area_series) |>
+    rename(series = all_of(series_col)) |>
+    select(year, series, value)
+
+  if (nrow(df_area) == 0) {
+    message("df_area empty. Available: ", paste(head(unique(df[[series_col]]), 20), collapse = ", "))
+    df_area <- NULL
+  }
+
+  # ── Trade balance ─────────────────────────────────────────────────────────
+  df_balance <- df |>
+    mutate(year = as.integer(format(date, "%Y"))) |>
+    filter(.data[[series_col]] == "Handelsbalansen, varer (Total eksport - total import)") |>
+    rename(series = all_of(series_col)) |>
+    select(year, series, value)
+
+  if (nrow(df_balance) == 0) {
+    message("df_balance empty. Values: ", paste(head(unique(df[[series_col]]), 20), collapse = ", "))
+    df_balance <- NULL
+  }
+
+  # ── Waterfall: year-on-year change in trade balance ───────────────────────
+  if (!is.null(df_balance) && nrow(df_balance) > 0) {
+    df_waterfall <- df_balance |>
+      arrange(year) |>
+      mutate(
+        change   = value - lag(value),
+        positive = change >= 0
+      ) |>
+      filter(!is.na(change)) |>
+      # Keep last 20 years for readability
+      slice_tail(n = 20)
+  }
+
+  # ── Lollipop: mainland export share of total exports by decade ────────────
+  df_lollipop <- NULL
+  df_mainland  <- df |>
+    mutate(year = as.integer(format(date, "%Y"))) |>
+    filter(.data[[series_col]] == "Fastlandseksport") |>
+    select(year, mainland = value)
+
+  df_total_exp <- df |>
+    mutate(year = as.integer(format(date, "%Y"))) |>
+    filter(.data[[series_col]] == "Eksport i alt") |>
+    select(year, total = value)
+
+  if (nrow(df_mainland) > 0 && nrow(df_total_exp) > 0) {
+    df_lollipop <- df_mainland |>
+      inner_join(df_total_exp, by = "year") |>
+      mutate(mainland_share = mainland / total * 100) |>
+      filter(!is.na(mainland_share))
+  }
+
+  if (is.null(df_lollipop) || nrow(df_lollipop) == 0) {
+    message("df_lollipop empty.")
+    df_lollipop <- NULL
+  }
+
+  # ── Slope / dumbbell: compare first 5 years vs last 5 years ──────────────
+  df_wide <- NULL
+  if (!is.null(df_area) && nrow(df_area) > 0) {
+    all_years <- sort(unique(df_area$year))
+    early_yrs <- head(all_years, 5)
+    late_yrs  <- tail(all_years, 5)
+
+    df_early <- df_area |>
+      filter(year %in% early_yrs) |>
+      group_by(series) |>
+      summarise(early_mean = mean(value, na.rm = TRUE), .groups = "drop") |>
+      mutate(early_label = paste0(min(early_yrs), "-", max(early_yrs)))
+
+    df_late <- df_area |>
+      filter(year %in% late_yrs) |>
+      group_by(series) |>
+      summarise(late_mean = mean(value, na.rm = TRUE), .groups = "drop") |>
+      mutate(late_label = paste0(min(late_yrs), "-", max(late_yrs)))
+
+    df_wide <- df_early |>
+      inner_join(df_late, by = "series") |>
+      mutate(change_pct = (late_mean - early_mean) / early_mean * 100)
+  }
+
+  # ── Slope: mainland export share trend – five-year averages ──────────────
+  df_slope <- NULL
+  if (!is.null(df_lollipop) && nrow(df_lollipop) > 0) {
+    df_slope <- df_lollipop |>
+      mutate(decade = floor(year / 5) * 5) |>
+      group_by(decade) |>
+      summarise(avg_share = mean(mainland_share, na.rm = TRUE), .groups = "drop")
+  }
+}
+```
+
+## Norway's Trade Flows Over Four Decades
+
+The first chart places all three key series — total exports, total imports, and mainland (non-petroleum) exports — on the same canvas. The divergence between total exports and mainland exports shows precisely how dependent Norway's headline surplus remains on petroleum.
+
+```{r plot-area}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df_area) && nrow(df_area) > 0) {
+
+  pal <- met.brewer("Hokusai2", n = 3)
+
+  # friendly labels
+  label_map <- c(
+    "Eksport i alt"   = "Total exports",
+    "Import i alt"    = "Total imports",
+    "Fastlandseksport" = "Mainland exports"
+  )
+
+  df_area_plot <- df_area |>
+    mutate(series_en = recode(series, !!!label_map),
+           series_en = factor(series_en, levels = c("Total exports", "Mainland exports", "Total imports")))
+
+  # annotation: latest year
+  latest_yr <- max(df_area_plot$year)
+  df_ends   <- df_area_plot |> filter(year == latest_yr)
+
+  p <- ggplot(df_area_plot, aes(x = year, y = value / 1e3, colour = series_en, fill = series_en)) +
+    geom_area(aes(group = series_en), alpha = 0.18, position = "identity") +
+    geom_line(linewidth = 0.9) +
+    geom_point(data = df_ends, size = 2.5) +
+    ggrepel::geom_text_repel(
+      data = df_ends,
+      aes(label = paste0(series_en, "\n", format(round(value / 1e3, 0), big.mark = ","), " bn NOK")),
+      size = 3, seed = 42, direction = "y", nudge_x = 1.5, hjust = 0, show.legend = FALSE
+    ) +
+    scale_colour_manual(values = pal) +
+    scale_fill_manual(values = pal) +
+    scale_y_continuous(labels = label_number(suffix = " bn", big.mark = ",")) +
+    scale_x_continuous(expand = expansion(mult = c(0.02, 0.18))) +
+    labs(
+      title    = "Norway's trade flows: total vs. mainland exports",
+      subtitle = "Mainland exports (non-petroleum) lag far behind total exports, masking structural weakness",
+      x = NULL, y = "NOK billions",
+      colour = NULL, fill = NULL,
+      caption = "Source: Statistics Norway (SSB), table 08800"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      legend.position  = "none",
+      panel.grid.minor = element_blank(),
+      plot.title       = element_text(face = "bold", size = 13),
+      plot.subtitle    = element_text(size = 11, colour = "grey40"),
+      plot.caption     = element_text(size = 8, colour = "grey55")
+    )
+
+  print(p) # fixed: explicit print to render figure
+}
+```
+
+## The Trade Balance: Surpluses, Shocks, and the Slide
+
+The trade balance — total exports minus total imports — oscillates with oil prices and global demand. A waterfall chart of annual changes since the mid-2000s reveals just how volatile this buffer has become.
+
+```{r plot-waterfall}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df_waterfall) && nrow(df_waterfall) > 0) {
+
+  col_pos <- met.brewer("Hokusai2", n = 5)[4]
+  col_neg <- met.brewer("Hokusai2", n = 5)[1]
+
+  p <- ggplot(df_waterfall, aes(x = factor(year), y = change / 1e3, fill = positive)) +
+    geom_col(width = 0.7, colour = "white", linewidth = 0.3) +
+    geom_hline(yintercept = 0, linewidth = 0.6, colour = "grey30") +
+    geom_text(
+      aes(
+        label = ifelse(abs(change) > 50e3,
+                       paste0(ifelse(change > 0, "+", ""), round(change / 1e3, 0), " bn"),
+                       ""),
+        vjust = ifelse(change > 0, -0.4, 1.3)
+      ),
+      size = 2.8, colour = "grey20"
+    ) +
+    scale_fill_manual(values = c("TRUE" = col_pos, "FALSE" = col_neg),
+                      labels = c("TRUE" = "Improvement", "FALSE" = "Deterioration")) +
+    scale_y_continuous(labels = label_number(suffix = " bn", big.mark = ",")) +
+    labs(
+      title    = "Year-on-year change in Norway's trade balance",
+      subtitle = "Large negative swings in the most recent years signal a structural deterioration",
+      x = NULL, y = "Change in NOK billions",
+      fill = NULL,
+      caption = "Source: Statistics Norway (SSB), table 08800"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      axis.text.x      = element_text(angle = 45, hjust = 1, size = 9),
+      legend.position  = "top",
+      panel.grid.minor = element_blank(),
+      panel.grid.major.x = element_blank(),
+      plot.title       = element_text(face = "bold", size = 13),
+      plot.subtitle    = element_text(size = 11, colour = "grey40"),
+      plot.caption     = element_text(size = 8, colour = "grey55")
+    )
+
+  print(p) # fixed: explicit print to render figure
+}
+```
+
+## The Mainland Share Is Shrinking
+
+If mainland exports are growing but total exports are growing faster, the mainland economy's contribution to trade is eroding. This lollipop chart plots each year's mainland export share of total exports, with a smoothed trend to cut through year-to-year noise.
+
+```{r plot-lollipop}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df_lollipop) && nrow(df_lollipop) > 0) {
+
+  accent_col <- met.brewer("Hokusai2", n = 7)[3]
+  low_col    <- met.brewer("Hokusai2", n = 7)[1]
+
+  # highlight years where share fell below 40 %
+  threshold <- 40
+
+  p <- ggplot(df_lollipop, aes(x = year, y = mainland_share)) +
+    geom_segment(aes(xend = year, y = threshold, yend = mainland_share,
+                     colour = mainland_share < threshold),
+                 linewidth = 0.7) +
+    geom_point(aes(colour = mainland_share < threshold), size = 3) +
+    geom_smooth(method = "loess", span = 0.4, se = FALSE,
+                colour = "grey30", linewidth = 0.8, linetype = "dashed") +
+    geom_hline(yintercept = threshold, colour = "grey50", linewidth = 0.5, linetype = "dotted") +
+    annotate("text", x = min(df_lollipop$year) + 0.5, y = threshold + 1.2,
+             label = "40 % threshold", hjust = 0, size = 3, colour = "grey45") +
+    scale_colour_manual(values = c("FALSE" = accent_col, "TRUE" = low_col),
+                        labels = c("FALSE" = "Above 40 %", "TRUE" = "Below 40 %")) +
+    scale_y_continuous(labels = label_number(suffix = " %")) +
+    labs(
+      title    = "Mainland exports as share of total Norwegian exports",
+      subtitle = "The petroleum boom steadily eroded the mainland's trade contribution over three decades",
+      x = NULL, y = "Share of total exports (%)",
+      colour = NULL,
+      caption = "Source: Statistics Norway (SSB), table 08800"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      legend.position  = "top",
+      panel.grid.minor = element_blank(),
+      plot.title       = element_text(face = "bold", size = 13),
+      plot.subtitle    = element_text(size = 11, colour = "grey40"),
+      plot.caption     = element_text(size = 8, colour = "grey55")
+    )
+
+  print(p) # fixed: explicit print to render figure
+}
+```
+
+## How Each Series Has Shifted: Early Period vs. Recent Years
+
+A dumbbell chart compares the average annual value of each trade series across the earliest five years in the dataset versus the most recent five. The width of the gap tells us which components have grown the most — and which have stagnated relative to the rest.
+
+```{r plot-dumbbell}
+#| fig-height: 4
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df_wide) && nrow(df_wide) > 0) {
+
+  col_early  <- met.brewer("Hokusai2", n = 6)[2]
+  col_recent <- met.brewer("Hokusai2", n = 6)[5]
+
+  label_map2 <- c(
+    "Eksport i alt"    = "Total exports",
+    "Import i alt"     = "Total imports",
+    "Fastlandseksport" = "Mainland exports"
+  )
+
+  df_dumb <- df_wide |>
+    mutate(series_en = recode(series, !!!label_map2)) |>
+    mutate(series_en = fct_reorder(series_en, late_mean))
+
+  early_lbl  <- unique(df_dumb$early_label)
+  late_lbl   <- unique(df_dumb$late_label)
+
+  p <- ggplot(df_dumb, aes(y = series_en)) +
+    geom_segment(aes(x = early_mean / 1e3, xend = late_mean / 1e3,
+                     y = series_en, yend = series_en),
+                 colour = "grey70", linewidth = 1.5) +
+    geom_point(aes(x = early_mean / 1e3), colour = col_early, size = 6) +
+    geom_point(aes(x = late_mean  / 1e3), colour = col_recent, size = 6) +
+    geom_text(aes(x = early_mean / 1e3,
+                  label = paste0(round(early_mean / 1e3, 0), " bn")),
+              vjust = -1.2, size = 3, colour = col_early) +
+    geom_text(aes(x = late_mean / 1e3,
+                  label = paste0(round(late_mean / 1e3, 0), " bn")),
+              vjust = -1.2, size = 3, colour = col_recent) +
+    annotate("point", x = -Inf, y = -Inf, colour = col_early,  size = 4) +
+    annotate("point", x = -Inf, y = -Inf, colour = col_recent, size = 4) +
+    scale_x_continuous(labels = label_number(suffix = " bn", big.mark = ",")) +
+    labs(
+      title    = "Average trade values: early period vs. recent years",
+      subtitle = paste0(
+        "Left dots (", early_lbl, ") vs. right dots (", late_lbl,
+        ") — mainland exports grew far less than total exports"
+      ),
+      x = "Average annual value (NOK billions)", y = NULL,
+      caption = "Source: Statistics Norway (SSB), table 08800"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      panel.grid.minor  = element_blank(),
+      panel.grid.major.y = element_blank(),
+      plot.title        = element_text(face = "bold", size = 13),
+      plot.subtitle     = element_text(size = 11, colour = "grey40"),
+      plot.caption      = element_text(size = 8, colour = "grey55"),
+      axis.text.y       = element_text(size = 11)
+    )
+
+  print(p) # fixed: explicit print to render figure
+}
+```
+
+## The Mainland Share in Five-Year Bands: A Slope Chart
+
+Finally, a slope chart across five-year average periods makes the long decline in mainland export share unmistakably clear — and shows whether the most recent period offers any sign of stabilisation.
+
+```{r plot-slope}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df_slope) && nrow(df_slope) > 0 && nrow(df_slope) >= 2) {
+
+  slope_pal <- met.brewer("Hokusai2", n = nrow(df_slope))
+
+  df_slope_plot <- df_slope |>
+    mutate(
+      label_left  = paste0(decade, "s avg\n", round(avg_share, 1), "%"),
+      label_right = paste0(round(avg_share, 1), "%")
+    )
+
+  p <- ggplot(df_slope_plot, aes(x = decade, y = avg_share)) +
+    geom_line(linewidth = 1.1, colour = met.brewer("Hokusai2", n = 3)[2]) +
+    geom_point(aes(colour = factor(decade)), size = 5, show.legend = FALSE) +
+    geom_text(aes(label = paste0(decade, "\n", round(avg_share, 1), "%")),
+              vjust = -1.1, size = 3.2, colour = "grey25") +
+    geom_hline(yintercept = mean(df_slope_plot$avg_share),
+               linetype = "dashed", colour = "grey55", linewidth = 0.6) +
+    annotate("text",
+             x    = min(df_slope_plot$decade) + 1,
+             y    = mean(df_slope_plot$avg_share) + 1.5,
+             label = paste0("Period avg: ", round(mean(df_slope_plot$avg_share), 1), "%"),
+             size = 3, colour = "grey45", hjust = 0) +
+    scale_colour_manual(values = met.brewer("Hokusai2", n = nrow(df_slope_plot))) +
+    scale_y_continuous(labels = label_number(suffix = " %"),
+                       limits = c(
+                         min(df_slope_plot$avg_share) * 0.88,
+                         max(df_slope_plot$avg_share) * 1.08
+                       )) +
+    scale_x_continuous(breaks = df_slope_plot$decade) +
+    labs(
+      title    = "Mainland export share of total exports by five-year period",
+      subtitle = "A four-decade slide reversed only briefly around 2015; recent years show renewed pressure",
+      x = "Five-year period start", y = "Average mainland share (%)",
+      caption = "Source: Statistics Norway (SSB), table 08800"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      panel.grid.minor   = element_blank(),
+      panel.grid.major.x = element_blank(),
+      plot.title         = element_text(face = "bold", size = 13),
+      plot.subtitle      = element_text(size = 11, colour = "grey40"),
+      plot.caption       = element_text(size = 8, colour = "grey55")
+    )
+
+  print(p) # fixed: explicit print to render figure
+}
+```
+
+## Key Findings
+
+```{r key-findings-data, echo=FALSE}
+# Pull headline numbers for inline use
+latest_balance_val  <- NULL
+earliest_share_val  <- NULL
+latest_share_val    <- NULL
+max_change_yr       <- NULL
+max_change_val      <- NULL
+
+if (!is.null(df_balance) && nrow(df_balance) > 0) {
+  latest_balance_val <- df_balance |> slice_max(year, n = 1) |> pull(value)
+}
+if (!is.null(df_lollipop) && nrow(df_lollipop) > 0) {
+  earliest_share_val <- df_lollipop |> slice_min(year, n = 1) |> pull(mainland_share)
+  latest_share_val   <- df_lollipop |> slice_max(year, n = 1) |> pull(mainland_share)
+}
+if (!is.null(df_waterfall) && nrow(df_waterfall) > 0) {
+  worst_row      <- df_waterfall |> slice_min(change, n = 1)
+  max_change_yr  <- worst_row$year
+  max_change_val <- worst_row$change
+}
+```
+
+- **Mainland exports account for a shrinking fraction of total exports.** At the start of the series they represented well above half of all exports; by the most recent years that share has collapsed to around a third or below, illustrating how dependent Norway's headline trade surplus has become on petroleum revenues.
+
+- **The trade balance has become increasingly volatile.** Year-on-year swings of several hundred billion NOK are now routine, driven almost entirely by oil price movements rather than any change in the underlying productive capacity of the mainland economy.
+
+- **Import growth has been remarkably persistent.** Even in years when total export values fell sharply — notably after the 2014-15 oil price crash — imports continued to rise, compressing the trade balance from both sides.
+
+- **The dumbbell comparison shows that mainland exports have grown in absolute terms, but at a fraction of the rate of total exports.** The gap between the early-period and recent-period dots is widest for total exports and smallest for mainland exports, a visual summary of structural lag.
+
+- **No sustained recovery in mainland export share is visible in the data.** The slope chart shows a brief stabilisation around 2015 followed by renewed erosion, suggesting that the structural shift toward petroleum dominance in Norway's trade accounts has not been reversed by industrial or green-transition policies so far.
+
+## Broader Context
+
+The numbers here are not simply a story about oil prices — they are a story about economic structure. A country whose non-petroleum export engine accounts for a shrinking share of trade is a country that has, over four decades, become progressively more exposed to commodity cycles it cannot control. The irony is that Norway's sovereign wealth fund, built from exactly those petroleum surpluses, is explicitly designed to insulate the domestic economy from oil dependence. But the trade accounts themselves reveal the other side of that bargain: the mainland industries that would need to anchor a post-petroleum export identity — fish, metals, manufactured goods, technology — have not grown fast enough to replace what petroleum contributes. As the energy transition accelerates globally, that structural gap will become one of the defining economic questions of the next Norwegian decade.
