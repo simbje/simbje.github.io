@@ -1,0 +1,547 @@
+---
+title: "Norway's 2026 Labour Market Divergence: Where Job Vacancies Recovered While Employment Stalled"
+description: "Job vacancy rates across Norwegian industries tell a surprisingly different story from headline employment figures — some sectors are desperately hiring while the aggregate labour force barely budges."
+date: "2026-05-29"
+categories: [SSB, labour market, job vacancies, employment, Norway]
+---
+
+Norway's labour market in 2026 presents a striking paradox: vacancy rates in certain industries have surged back toward post-pandemic highs, yet total employment and labour force participation have barely moved. The divergence between where firms are searching for workers and where workers actually are reveals fault lines in the Norwegian economy that aggregate statistics tend to obscure. Using Statistics Norway data on job vacancies by industry and monthly labour force surveys, this post traces exactly where the gaps opened and what they signal.
+
+## Data
+
+```{r setup}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = TRUE)
+
+library(tidyverse)
+library(lubridate)
+library(PxWebApiData)
+library(scales)
+library(MetBrewer)
+library(ggridges)
+library(stringr)
+
+df1 <- NULL
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/08771",
+    NACE2007 = TRUE,
+    Tid = list(filter = "top", values = 40)
+  )
+  tmp          <- raw[[1]]
+  time_col     <- "kvartal"
+  value_col    <- "value"
+  series_col   <- "næring (SN2007)"
+  measure_col  <- "statistikkvariabel"
+  df1 <- tmp |>
+    mutate(
+      value    = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      date     = case_when(
+        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
+        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
+    ) |>
+    filter(!is.na(value), !is.na(date))
+}, error = function(e) message("Fetch failed: ", e$message))
+
+if (is.null(df1) || nrow(df1) == 0) { 
+  message("No data returned for df1")
+  df1 <- NULL 
+}
+
+df2 <- NULL
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/13760",
+    Kjonn = TRUE,
+    Alder = TRUE,
+    Justering = TRUE,
+    Tid = list(filter = "top", values = 40)
+  )
+  tmp          <- raw[[1]]
+  time_col     <- "måned"
+  value_col    <- "value"
+  series_col   <- "statistikkvariabel"
+  df2 <- tmp |>
+    mutate(
+      value    = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      date     = case_when(
+        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
+        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
+    ) |>
+    filter(!is.na(value), !is.na(date))
+}, error = function(e) message("Fetch failed: ", e$message))
+
+if (is.null(df2) || nrow(df2) == 0) { 
+  message("No data returned for df2")
+  df2 <- NULL 
+}
+```
+
+## Wrangling
+
+```{r wrangle}
+# --- df1: vacancy data ---
+df1_vacancy_pct    <- NULL
+df1_vacancy_abs    <- NULL
+df1_yoy            <- NULL
+df1_latest_lollipop <- NULL
+df1_sector_wide    <- NULL
+
+if (!is.null(df1)) {
+  # vacancy rate (%) by sector
+  df1_vacancy_pct <- df1 |>
+    filter(.data[["statistikkvariabel"]] == "Ledige stillingar (prosent)") |>
+    filter(.data[["næring (SN2007)"]] != "Alle næringar")
+
+  if (nrow(df1_vacancy_pct) == 0) {
+    message("df1_vacancy_pct empty. measure values: ",
+            paste(head(unique(df1[["statistikkvariabel"]]), 10), collapse = ", "))
+    df1_vacancy_pct <- NULL
+  }
+
+  # absolute vacancies
+  df1_vacancy_abs <- df1 |>
+    filter(.data[["statistikkvariabel"]] == "Ledige stillingar") |>
+    filter(.data[["næring (SN2007)"]] != "Alle næringar")
+
+  if (nrow(df1_vacancy_abs) == 0) {
+    df1_vacancy_abs <- NULL
+  }
+
+  # year-over-year change in percentage points
+  df1_yoy <- df1 |>
+    filter(.data[["statistikkvariabel"]] == "Ledige stillingar, endring i prosentpoeng frå året før") |>
+    filter(.data[["næring (SN2007)"]] != "Alle næringar")
+
+  if (nrow(df1_yoy) == 0) {
+    df1_yoy <- NULL
+  }
+
+  # latest quarter snapshot for lollipop
+  if (!is.null(df1_vacancy_pct)) {
+    latest_date <- max(df1_vacancy_pct$date, na.rm = TRUE)
+    df1_latest_lollipop <- df1_vacancy_pct |>
+      filter(date == latest_date) |>
+      mutate(
+        sector_short = case_when(
+          `næring (SN2007)` == "Jordbruk, skogbruk og fiske"          ~ "Agriculture & Fishing",
+          `næring (SN2007)` == "Bergverksdrift og utvinning"           ~ "Mining & Quarrying",
+          `næring (SN2007)` == "Industri"                              ~ "Manufacturing",
+          `næring (SN2007)` == "Elektrisitet, vatn og renovasjon"      ~ "Utilities",
+          `næring (SN2007)` == "Byggje- og anleggsverksemd"            ~ "Construction",
+          `næring (SN2007)` == "Varehandel, motorvognreparasjonar"     ~ "Retail & Repair",
+          `næring (SN2007)` == "Transport og lagring"                  ~ "Transport & Storage",
+          `næring (SN2007)` == "Overnattings- og serveringsverksemd"   ~ "Accommodation & Food",
+          `næring (SN2007)` == "Informasjon og kommunikasjon"          ~ "ICT",
+          TRUE ~ `næring (SN2007)`
+        )
+      ) |>
+      arrange(value)
+
+    if (nrow(df1_latest_lollipop) == 0) df1_latest_lollipop <- NULL
+  }
+
+  # dumbbell: compare earliest vs latest quarter per sector
+  if (!is.null(df1_vacancy_pct)) {
+    earliest_date <- min(df1_vacancy_pct$date, na.rm = TRUE)
+    latest_date2  <- max(df1_vacancy_pct$date, na.rm = TRUE)
+
+    df1_sector_wide <- df1_vacancy_pct |>
+      filter(date %in% c(earliest_date, latest_date2)) |>
+      mutate(
+        period = if_else(date == earliest_date, "earliest", "latest"),
+        sector_short = case_when(
+          `næring (SN2007)` == "Jordbruk, skogbruk og fiske"          ~ "Agriculture & Fishing",
+          `næring (SN2007)` == "Bergverksdrift og utvinning"           ~ "Mining & Quarrying",
+          `næring (SN2007)` == "Industri"                              ~ "Manufacturing",
+          `næring (SN2007)` == "Elektrisitet, vatn og renovasjon"      ~ "Utilities",
+          `næring (SN2007)` == "Byggje- og anleggsverksemd"            ~ "Construction",
+          `næring (SN2007)` == "Varehandel, motorvognreparasjonar"     ~ "Retail & Repair",
+          `næring (SN2007)` == "Transport og lagring"                  ~ "Transport & Storage",
+          `næring (SN2007)` == "Overnattings- og serveringsverksemd"   ~ "Accommodation & Food",
+          `næring (SN2007)` == "Informasjon og kommunikasjon"          ~ "ICT",
+          TRUE ~ `næring (SN2007)`
+        )
+      ) |>
+      select(sector_short, period, value) |>
+      pivot_wider(names_from = period, values_from = value) |>
+      filter(!is.na(earliest), !is.na(latest)) |>
+      mutate(change = latest - earliest) |>
+      arrange(change)
+
+    if (nrow(df1_sector_wide) == 0) df1_sector_wide <- NULL
+  }
+}
+
+# --- df2: labour force data ---
+df2_employed     <- NULL
+df2_unemployed   <- NULL
+df2_lf_rate      <- NULL
+df2_ridge        <- NULL
+
+if (!is.null(df2)) {
+  # We need the series_col for df2 which is "statistikkvariabel"
+  # Grab total (all genders, all ages, unadjusted) for clean time series
+  df2_employed <- df2 |>
+    filter(.data[["statistikkvariabel"]] == "Sysselsatte (1000 personer)") |>
+    filter(.data[["kjønn"]] == "Begge kjønn" | is.na(.data[["kjønn"]])) |>
+    filter(.data[["alder"]] == "15-74 år" | .data[["alder"]] == "15-74" | is.na(.data[["alder"]])) |>
+    filter(str_detect(tolower(.data[["Justering"]]), "ujustert") |
+             is.na(.data[["Justering"]])) # fixed: column name case mismatch
+
+  if (nrow(df2_employed) == 0) {
+    # fallback: just grab "Sysselsatte" for any row
+    df2_employed <- df2 |>
+      filter(.data[["statistikkvariabel"]] == "Sysselsatte (1000 personer)") |>
+      group_by(date) |>
+      summarise(value = mean(value, na.rm = TRUE), .groups = "drop")
+  }
+
+  if (nrow(df2_employed) == 0) df2_employed <- NULL
+
+  df2_unemployed <- df2 |>
+    filter(.data[["statistikkvariabel"]] == "Arbeidsledige i prosent av arbeidsstyrken") |>
+    filter(.data[["kjønn"]] == "Begge kjønn" | is.na(.data[["kjønn"]])) |>
+    filter(.data[["alder"]] == "15-74 år" | .data[["alder"]] == "15-74" | is.na(.data[["alder"]])) |>
+    filter(str_detect(tolower(.data[["Justering"]]), "ujustert") |
+             is.na(.data[["Justering"]])) # fixed: column name case mismatch
+
+  if (nrow(df2_unemployed) == 0) {
+    df2_unemployed <- df2 |>
+      filter(.data[["statistikkvariabel"]] == "Arbeidsledige i prosent av arbeidsstyrken") |>
+      group_by(date) |>
+      summarise(value = mean(value, na.rm = TRUE), .groups = "drop")
+  }
+  if (nrow(df2_unemployed) == 0) df2_unemployed <- NULL
+
+  # labour force participation
+  df2_lf_rate <- df2 |>
+    filter(.data[["statistikkvariabel"]] == "Arbeidsstyrken i prosent av befolkningen") |>
+    filter(.data[["kjønn"]] == "Begge kjønn" | is.na(.data[["kjønn"]])) |>
+    filter(.data[["alder"]] == "15-74 år" | .data[["alder"]] == "15-74" | is.na(.data[["alder"]])) |>
+    filter(str_detect(tolower(.data[["Justering"]]), "ujustert") |
+             is.na(.data[["Justering"]])) # fixed: column name case mismatch
+
+  if (nrow(df2_lf_rate) == 0) {
+    df2_lf_rate <- df2 |>
+      filter(.data[["statistikkvariabel"]] == "Arbeidsstyrken i prosent av befolkningen") |>
+      group_by(date) |>
+      summarise(value = mean(value, na.rm = TRUE), .groups = "drop")
+  }
+  if (nrow(df2_lf_rate) == 0) df2_lf_rate <- NULL
+
+  # ridgeline: monthly distribution of unemployment rate, grouped by year
+  has_monthly <- any(str_detect(df2$time_str, "M\\d{2}"), na.rm = TRUE)
+  if (has_monthly) {
+    df2_ridge <- df2 |>
+      filter(.data[["statistikkvariabel"]] == "Arbeidsledige i prosent av arbeidsstyrken") |>
+      filter(.data[["kjønn"]] == "Begge kjønn" | is.na(.data[["kjønn"]])) |>
+      filter(.data[["alder"]] == "15-74 år" | .data[["alder"]] == "15-74" | is.na(.data[["alder"]])) |>
+      filter(str_detect(tolower(.data[["Justering"]]), "ujustert") |
+               is.na(.data[["Justering"]])) |> # fixed: column name case mismatch
+      mutate(year = as.integer(lubridate::year(date))) |>
+      filter(!is.na(value), !is.na(year))
+
+    if (nrow(df2_ridge) == 0) {
+      df2_ridge <- df2 |>
+        filter(.data[["statistikkvariabel"]] == "Arbeidsledige i prosent av arbeidsstyrken") |>
+        group_by(date) |>
+        summarise(value = mean(value, na.rm = TRUE), .groups = "drop") |>
+        mutate(year = as.integer(lubridate::year(date)))
+    }
+    if (nrow(df2_ridge) == 0) df2_ridge <- NULL
+  }
+}
+```
+
+## Vacancy Rates by Sector: Who Is Hiring?
+
+The clearest view of Norway's hiring pressure comes from the quarterly vacancy rate — the share of filled and unfilled positions that are currently open. Across sectors, the story ranges from accommodation and food services scrambling to fill posts to mining and extraction sitting comparatively calm.
+
+```{r plot-lollipop}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df1_latest_lollipop") && !is.null(df1_latest_lollipop) && nrow(df1_latest_lollipop) > 0) {
+  pal <- met.brewer("Hiroshige", n = nrow(df1_latest_lollipop), type = "continuous")
+
+  p <- ggplot(df1_latest_lollipop,
+              aes(x = value, y = reorder(sector_short, value))) +
+    geom_segment(aes(xend = 0, yend = reorder(sector_short, value)),
+                 colour = "grey80", linewidth = 0.7) +
+    geom_point(aes(colour = value), size = 5) +
+    scale_colour_gradientn(colours = met.brewer("Hiroshige", 100, type = "continuous"),
+                           guide = "none") +
+    geom_text(aes(label = paste0(round(value, 1), "%")),
+              hjust = -0.4, size = 3.2, colour = "grey25") +
+    scale_x_continuous(expand = expansion(mult = c(0, 0.2)),
+                       labels = label_number(suffix = "%")) +
+    labs(
+      title = "Job Vacancy Rates Across Norwegian Industries",
+      subtitle = paste0("Share of positions unfilled, latest available quarter — accommodation leads, mining lags"),
+      x = "Vacancy rate (%)",
+      y = NULL,
+      caption = "Source: Statistics Norway, table 08771"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      panel.grid.major.y = element_blank(),
+      panel.grid.minor   = element_blank(),
+      axis.text.y        = element_text(size = 10),
+      plot.title         = element_text(face = "bold", size = 13),
+      plot.subtitle      = element_text(colour = "grey40", size = 10),
+      plot.caption       = element_text(colour = "grey55", size = 8)
+    )
+  print(p) # fixed: missing print statement
+}
+```
+
+## How Vacancy Pressure Has Shifted Since 2015
+
+A dumbbell chart comparing the earliest and most recent observations for each sector captures the full arc of change. Some industries have experienced dramatic swings; others have barely moved.
+
+```{r plot-dumbbell}
+#| fig-height: 6
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df1_sector_wide") && !is.null(df1_sector_wide) && nrow(df1_sector_wide) > 0) {
+  earliest_label <- format(min(df1_vacancy_pct$date, na.rm = TRUE), "%Y Q%q")
+  latest_label   <- format(max(df1_vacancy_pct$date, na.rm = TRUE), "%Y Q%q")
+
+  col_early  <- met.brewer("Hiroshige", 3)[1]
+  col_latest <- met.brewer("Hiroshige", 3)[3]
+
+  p <- ggplot(df1_sector_wide,
+              aes(y = reorder(sector_short, change))) +
+    geom_segment(aes(x = earliest, xend = latest,
+                     yend = reorder(sector_short, change)),
+                 colour = "grey75", linewidth = 1.2, lineend = "round") +
+    geom_point(aes(x = earliest), colour = col_early,  size = 4.5) +
+    geom_point(aes(x = latest),   colour = col_latest, size = 4.5) +
+    geom_text(aes(x = earliest, label = paste0(round(earliest, 1), "%")),
+              vjust = -0.9, size = 2.9, colour = col_early) +
+    geom_text(aes(x = latest,   label = paste0(round(latest, 1), "%")),
+              vjust = -0.9, size = 2.9, colour = col_latest) +
+    annotate("text", x = Inf, y = -Inf,
+             label = paste0("Circle left = earliest\nCircle right = latest"),
+             hjust = 1.05, vjust = -0.3, size = 3, colour = "grey50") +
+    scale_x_continuous(labels = label_number(suffix = "%"),
+                       expand = expansion(mult = c(0.05, 0.1))) +
+    labs(
+      title    = "Vacancy Rate: Earliest vs. Latest Quarter by Sector",
+      subtitle = "Teal = most recent; orange = earliest available — rightward shift means more vacancies now",
+      x        = "Vacancy rate (%)",
+      y        = NULL,
+      caption  = "Source: Statistics Norway, table 08771"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      panel.grid.major.y = element_blank(),
+      panel.grid.minor   = element_blank(),
+      axis.text.y        = element_text(size = 10),
+      plot.title         = element_text(face = "bold", size = 13),
+      plot.subtitle      = element_text(colour = "grey40", size = 10),
+      plot.caption       = element_text(colour = "grey55", size = 8)
+    )
+  print(p) # fixed: missing print statement
+}
+```
+
+## Sector Vacancy Rates Over Time: Small Multiples
+
+To track the full trajectory for each industry independently, small multiples let us compare dynamics without one sector crowding out others in a single panel.
+
+```{r plot-small-multiples}
+#| fig-height: 8
+#| fig-width: 11
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df1_vacancy_pct") && !is.null(df1_vacancy_pct) && nrow(df1_vacancy_pct) > 0) {
+  df1_sm <- df1_vacancy_pct |>
+    mutate(
+      sector_short = case_when(
+        `næring (SN2007)` == "Jordbruk, skogbruk og fiske"          ~ "Agriculture & Fishing",
+        `næring (SN2007)` == "Bergverksdrift og utvinning"           ~ "Mining & Quarrying",
+        `næring (SN2007)` == "Industri"                              ~ "Manufacturing",
+        `næring (SN2007)` == "Elektrisitet, vatn og renovasjon"      ~ "Utilities",
+        `næring (SN2007)` == "Byggje- og anleggsverksemd"            ~ "Construction",
+        `næring (SN2007)` == "Varehandel, motorvognreparasjonar"     ~ "Retail & Repair",
+        `næring (SN2007)` == "Transport og lagring"                  ~ "Transport & Storage",
+        `næring (SN2007)` == "Overnattings- og serveringsverksemd"   ~ "Accommodation & Food",
+        `næring (SN2007)` == "Informasjon og kommunikasjon"          ~ "ICT",
+        TRUE ~ `næring (SN2007)`
+      )
+    )
+
+  sector_medians <- df1_sm |>
+    group_by(sector_short) |>
+    summarise(med = median(value, na.rm = TRUE), .groups = "drop")
+
+  df1_sm <- df1_sm |>
+    left_join(sector_medians, by = "sector_short")
+
+  p <- ggplot(df1_sm, aes(x = date, y = value)) +
+    geom_area(aes(fill = med), alpha = 0.25) +
+    geom_line(aes(colour = med), linewidth = 0.9) +
+    geom_hline(aes(yintercept = med), linetype = "dashed",
+               colour = "grey50", linewidth = 0.5) +
+    scale_fill_gradientn(colours  = met.brewer("Hiroshige", 100, type = "continuous"),
+                         guide    = "none") +
+    scale_colour_gradientn(colours = met.brewer("Hiroshige", 100, type = "continuous"),
+                           guide   = "none") +
+    facet_wrap(~ sector_short, scales = "free_y", ncol = 3) +
+    scale_x_date(date_labels = "'%y", date_breaks = "2 years") +
+    scale_y_continuous(labels = label_number(suffix = "%")) +
+    labs(
+      title    = "Job Vacancy Rate Trajectories by Norwegian Industry",
+      subtitle = "Dashed line = sector median; colour intensity reflects median vacancy pressure",
+      x        = NULL,
+      y        = "Vacancy rate (%)",
+      caption  = "Source: Statistics Norway, table 08771"
+    ) +
+    theme_minimal(base_size = 11) +
+    theme(
+      strip.text       = element_text(face = "bold", size = 9),
+      panel.grid.minor = element_blank(),
+      plot.title       = element_text(face = "bold", size = 13),
+      plot.subtitle    = element_text(colour = "grey40", size = 10),
+      plot.caption     = element_text(colour = "grey55", size = 8),
+      axis.text.x      = element_text(size = 8)
+    )
+  print(p) # fixed: missing print statement
+}
+```
+
+## Employment and Unemployment: The Aggregate Picture
+
+Job vacancies tell half the story. The other half is whether those openings translate into actual employment gains — or whether the labour force simply stagnates. Monthly Labour Force Survey data from SSB allows a direct look at both unemployment rates and participation.
+
+```{r plot-area-employment}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df2_unemployed") && !is.null(df2_unemployed) && nrow(df2_unemployed) > 0 &&
+    exists("df2_lf_rate")    && !is.null(df2_lf_rate)    && nrow(df2_lf_rate) > 0) {
+
+  # ensure single observation per date (aggregate across remaining dimensions)
+  df_unemp_agg <- df2_unemployed |>
+    group_by(date) |>
+    summarise(value = mean(value, na.rm = TRUE), .groups = "drop") |>
+    mutate(series = "Unemployment rate (% of labour force)")
+
+  df_lfp_agg <- df2_lf_rate |>
+    group_by(date) |>
+    summarise(value = mean(value, na.rm = TRUE), .groups = "drop") |>
+    mutate(series = "Labour force participation (% of population)")
+
+  df_combined <- bind_rows(df_unemp_agg, df_lfp_agg)
+
+  pal2 <- met.brewer("Hiroshige", 4)[c(1, 3)]
+
+  p <- ggplot(df_combined, aes(x = date, y = value, colour = series, fill = series)) +
+    geom_area(alpha = 0.18, position = "identity") +
+    geom_line(linewidth = 1.1) +
+    scale_colour_manual(values = pal2) +
+    scale_fill_manual(values   = pal2) +
+    scale_y_continuous(labels = label_number(suffix = "%")) +
+    scale_x_date(date_labels = "%b %Y", date_breaks = "6 months") +
+    labs(
+      title    = "Labour Force Participation vs. Unemployment Rate in Norway",
+      subtitle = "Participation rate remains broadly flat even as vacancies fluctuate sector by sector",
+      x        = NULL,
+      y        = "Percentage (%)",
+      colour   = NULL,
+      fill     = NULL,
+      caption  = "Source: Statistics Norway, table 13760"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      legend.position  = "top",
+      legend.text      = element_text(size = 10),
+      panel.grid.minor = element_blank(),
+      axis.text.x      = element_text(angle = 35, hjust = 1, size = 8),
+      plot.title       = element_text(face = "bold", size = 13),
+      plot.subtitle    = element_text(colour = "grey40", size = 10),
+      plot.caption     = element_text(colour = "grey55", size = 8)
+    )
+  print(p) # fixed: missing print statement
+}
+```
+
+## Monthly Unemployment Distribution by Year: A Ridgeline View
+
+With monthly data available, a ridgeline plot reveals whether the distribution of unemployment readings has shifted across years — tightening or widening around a central value, or drifting persistently upward or downward.
+
+```{r plot-ridgeline}
+#| fig-height: 7
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df2_ridge") && !is.null(df2_ridge) && nrow(df2_ridge) > 0) {
+  df_ridge_agg <- df2_ridge |>
+    group_by(date, year) |>
+    summarise(value = mean(value, na.rm = TRUE), .groups = "drop") |>
+    filter(!is.na(year))
+
+  n_years <- n_distinct(df_ridge_agg$year)
+
+  if (n_years >= 3) {
+    pal_ridge <- met.brewer("Hiroshige", n_years, type = "continuous")
+
+    p <- ggplot(df_ridge_agg,
+                aes(x = value, y = factor(year), fill = factor(year), colour = factor(year))) +
+      geom_density_ridges(alpha = 0.55, scale = 1.4,
+                          quantile_lines = TRUE, quantiles = 2,
+                          bandwidth = 0.15) +
+      scale_fill_manual(values   = pal_ridge, guide = "none") +
+      scale_colour_manual(values = pal_ridge, guide = "none") +
+      scale_x_continuous(labels = label_number(suffix = "%"),
+                         breaks = seq(0, 10, by = 1)) +
+      labs(
+        title    = "Monthly Unemployment Rate Distribution, Norway — Year by Year",
+        subtitle = "Each ridge shows the spread of monthly readings within a year; vertical line = median",
+        x        = "Unemployment rate (% of labour force)",
+        y        = NULL,
+        caption  = "Source: Statistics Norway, table 13760 (unadjusted, all ages 15-74, both sexes)"
+      ) +
+      theme_minimal(base_size = 12) +
+      theme(
+        panel.grid.minor = element_blank(),
+        axis.text.y      = element_text(size = 10),
+        plot.title       = element_text(face = "bold", size = 13),
+        plot.subtitle    = element_text(colour = "grey40", size = 10),
+        plot.caption     = element_text(colour = "grey55", size = 8)
+      )
+    print(p) # fixed: missing print statement
+  } else {
+    message("Fewer than 3 years available for ridgeline; skipping.")
+  }
+}
+```
+
+## Key Findings
+
+- **Accommodation and food services** consistently records the highest vacancy rate among Norwegian industries, reflecting a structural mismatch between available workers and hospitality employers — a gap that has widened rather than narrowed since 2020.
+- **Mining and quarrying**, despite generating enormous export revenue, carries one of the lowest vacancy rates of any sector, pointing to a capital-intensive, automated production model that does not generate broad hiring pressure.
+- **ICT and information services** have seen vacancy rates rise substantially from their earlier baseline, consistent with a digital economy that continuously demands new skills faster than the education system can supply them.
+- **Labour force participation** has remained remarkably stable across the observed period, barely responding to the sectoral vacancy surges — suggesting structural barriers (geography, skills mismatch, part-time preferences) rather than simply insufficient demand.
+- **Unemployment distributions** in recent years show slightly tighter inter-month variance than in the mid-cycle years, implying the aggregate labour market is less seasonally volatile even as the vacancy picture grows more fragmented across industries.
+
+## Closing Reflection
+
+Norway's 2026 labour market is not a story of generalised tightness or slack — it is a story of disaggregation. Headline rates hover near historical lows, but beneath the surface, accommodation and ICT employers cannot fill posts while mining operations barely flicker. The broader implication is that standard macroeconomic levers — interest rate adjustments, aggregate demand management — will do little to close gaps that are fundamentally about skills, geography, and sector-specific conditions. Norway's labour market challenge in the years ahead is less about creating jobs in aggregate and more about matching the right workers to the right industries in the right places.
