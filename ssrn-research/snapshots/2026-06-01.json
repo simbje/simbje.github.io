@@ -1,0 +1,294 @@
+{
+  "run_date": "2026-06-01",
+  "candidates_count": 72,
+  "sources_used": ["arxiv:stat.ML", "arxiv:cs.LG", "arxiv:stat.AP", "arxiv:stat.ME", "arxiv:econ.EM", "arxiv:q-fin.GN", "arxiv:econ.GN", "arxiv:q-fin.MF", "arxiv:q-fin.PM", "arxiv:q-fin.RM", "arxiv:q-fin.ST", "arxiv:q-fin.CP", "arxiv:q-fin.TR", "arxiv:econ.TH"],
+  "bucket_counts": {
+    "data_science": 26,
+    "finance": 25,
+    "social_sciences": 26
+  },
+  "top_papers": {
+    "data_science": [
+      {
+        "id": "arxiv:2605.31244",
+        "rank": 1,
+        "title": "Spectral Reach: Understanding Neural Scaling as Progress into the Spectral Tail",
+        "authors": "Konstantin Nikolaou",
+        "url": "https://arxiv.org/abs/2605.31244",
+        "source": "arxiv",
+        "why_trending": "Introduces 'spectral position' as a scalable measure for understanding neural scaling laws through eigenvalue analysis of the empirical neural tangent kernel, directly advancing foundation model development.",
+        "topics": [
+          "Neural Scaling Laws and Mechanistic Interpretability"
+        ]
+      },
+      {
+        "id": "arxiv:2605.31245",
+        "rank": 2,
+        "title": "Toward Identifiable Sparse Autoencoders",
+        "authors": "Walter Nelson",
+        "url": "https://arxiv.org/abs/2605.31245",
+        "source": "arxiv",
+        "why_trending": "Proves sparse autoencoders are unstable across training runs and provides architectural fixes for identifiable SAEs, advancing neural network interpretability with theoretical guarantees.",
+        "topics": [
+          "Sparse Autoencoders and Representation Disentanglement"
+        ]
+      },
+      {
+        "id": "arxiv:2605.31250",
+        "rank": 3,
+        "title": "Entropic Projection Alignment: Estimating, Explaining, and Improving Model Performance Under Distribution Shift",
+        "authors": "Salim I. Amoukou",
+        "url": "https://arxiv.org/abs/2605.31250",
+        "source": "arxiv",
+        "why_trending": "Unified framework (EPA) for addressing distribution shift through importance weighting with closed-form solution, applicable to performance estimation, feature attribution, and domain adaptation.",
+        "topics": [
+          "Distribution Shift and Domain Adaptation"
+        ]
+      },
+      {
+        "id": "arxiv:2605.31278",
+        "rank": 4,
+        "title": "Industrializing Prediction-Powered Inference: The GLIDE Library for Reliable GenAI and Agentic Systems Evaluation",
+        "authors": "Grégoire Martinon",
+        "url": "https://arxiv.org/abs/2605.31278",
+        "source": "arxiv",
+        "why_trending": "GLIDE library industrializes prediction-powered inference for evaluating LLM and agentic systems with valid uncertainty, unifying scattered PPI methods into production-ready code.",
+        "topics": [
+          "LLM-Driven Applications in Finance and Economics"
+        ]
+      },
+      {
+        "id": "arxiv:2605.31261",
+        "rank": 5,
+        "title": "Why Linear Recurrent Memory Works in Partially Observable Reinforcement Learning",
+        "authors": "Yike Zhao",
+        "url": "https://arxiv.org/abs/2605.31261",
+        "source": "arxiv",
+        "why_trending": "Provides theoretical justification for why linear recurrent networks work as memory units in partially observable RL by showing they reproduce belief-state sufficient statistics.",
+        "topics": [
+          "Reinforcement Learning for Decision-Making"
+        ]
+      }
+    ],
+    "finance": [
+      {
+        "id": "arxiv:2605.27945",
+        "rank": 1,
+        "title": "Stochastic Volatility, Jumps, and Rates: A Unified Framework for Option Pricing and Term-Structure Simulation",
+        "authors": "Nunik Srikandi Putri",
+        "url": "https://arxiv.org/abs/2605.27945",
+        "source": "arxiv",
+        "why_trending": "Develops integrated stochastic framework combining Heston, Bates, and CIR models with FFT calibration for multi-asset option pricing and interest-rate risk, advancing derivatives valuation.",
+        "topics": [
+          "Stochastic Processes and Volatility Modeling"
+        ]
+      },
+      {
+        "id": "arxiv:2605.30464",
+        "rank": 2,
+        "title": "Distributional Portfolio Optimization (DPO): A Unified Framework for Distributions over Weights, Returns, and Parameters",
+        "authors": "Miquel Noguer i Alonso",
+        "url": "https://arxiv.org/abs/2605.30464",
+        "source": "arxiv",
+        "why_trending": "Introduces Distributional Portfolio Optimization (DPO) as unified framework treating weights, returns, and parameters as distributions, unifying Bayesian, robust, and stochastic allocation approaches.",
+        "topics": [
+          "Portfolio Optimization and Asset Pricing Frameworks"
+        ]
+      },
+      {
+        "id": "arxiv:2605.27887",
+        "rank": 3,
+        "title": "PortBench: A Correlation-Aware, Full-Pipeline Benchmark for LLM-Driven Portfolio Management",
+        "authors": "Yuxuan Zhao",
+        "url": "https://arxiv.org/abs/2605.27887",
+        "source": "arxiv",
+        "why_trending": "PortBench establishes first correlation-aware, end-to-end benchmark for LLM-driven portfolio management with 6,269 QA pairs spanning six asset classes over a decade.",
+        "topics": [
+          "LLM-Driven Applications in Finance and Economics"
+        ]
+      },
+      {
+        "id": "arxiv:2605.29413",
+        "rank": 4,
+        "title": "From Classical Optimization to Bayesian Integration: A Comprehensive Analysis of Systematic Portfolio Management",
+        "authors": "Ajay Kumar Verma",
+        "url": "https://arxiv.org/abs/2605.29413",
+        "source": "arxiv",
+        "why_trending": "Comprehensive systematic comparison of mean-variance, constrained optimization, factor models, Monte Carlo, and Black-Litterman approaches on real portfolio data from 2023-2025.",
+        "topics": [
+          "Portfolio Optimization and Asset Pricing Frameworks"
+        ]
+      }
+    ],
+    "social_sciences": [
+      {
+        "id": "arxiv:2605.30843",
+        "rank": 1,
+        "title": "A Lecture Note on Offline RL and IRL, Part II: Foundations of Inverse Reinforcement Learning and Dynamic Discrete Choice Models",
+        "authors": "Enoch Hyunwook Kang",
+        "url": "https://arxiv.org/abs/2605.30843",
+        "source": "arxiv",
+        "why_trending": "Proves equivalence between structural econometric discrete-choice models and entropy-regularized inverse RL, establishing theoretical foundations linking two communities and enabling method transfer.",
+        "topics": [
+          "Reinforcement Learning for Decision-Making",
+          "Causal Inference and Treatment Effects"
+        ]
+      },
+      {
+        "id": "arxiv:2605.30879",
+        "rank": 2,
+        "title": "Competitive Many-to-One Matching: Sorting vs. Equality",
+        "authors": "Anton Kolotilin",
+        "url": "https://arxiv.org/abs/2605.30879",
+        "source": "arxiv",
+        "why_trending": "Characterizes competitive equilibrium with peer effects in many-to-one matching, showing when workforces segregate by skill versus compress, with implications for labor market inequality.",
+        "topics": [
+          "Market Mechanisms and Institutional Efficiency"
+        ]
+      },
+      {
+        "id": "arxiv:2605.29785",
+        "rank": 3,
+        "title": "Long-Term Health and Human Capital Effects of Universal Health Care and Mass Literacy: Evidence from Cuba",
+        "authors": "Giovanni Mellace",
+        "url": "https://arxiv.org/abs/2605.29785",
+        "source": "arxiv",
+        "why_trending": "Estimates causal impacts of Cuba's 1961 health service and literacy campaign using synthetic control on newly assembled 122-year historical data, finding persistent 15-29% mortality reduction.",
+        "topics": [
+          "Causal Inference and Treatment Effects"
+        ]
+      },
+      {
+        "id": "arxiv:2605.31072",
+        "rank": 4,
+        "title": "Comparing Market Mechanism Efficiencies",
+        "authors": "Irene Aldridge",
+        "url": "https://arxiv.org/abs/2605.31072",
+        "source": "arxiv",
+        "why_trending": "Game-theoretic framework comparing welfare efficiency of lit exchanges, dark pools, and batch auctions, showing dark pools dominate under moderate conditions through cost-benefit analysis.",
+        "topics": [
+          "Market Mechanisms and Institutional Efficiency"
+        ]
+      },
+      {
+        "id": "arxiv:2605.30718",
+        "rank": 5,
+        "title": "Moment-Based Inference for Regression with Latent Dirichlet Covariates",
+        "authors": "Ziyu Jiang",
+        "url": "https://arxiv.org/abs/2605.30718",
+        "source": "arxiv",
+        "why_trending": "Develops moment-based inference for regression with latent Dirichlet covariates, addressing plug-in bias from topic models in downstream analysis with rigorous uncertainty propagation.",
+        "topics": [
+          "Causal Inference and Treatment Effects"
+        ]
+      }
+    ]
+  },
+  "topics": [
+    {
+      "name": "Neural Scaling Laws and Mechanistic Interpretability",
+      "paper_ids": [
+        "arxiv:2605.31244",
+        "arxiv:2605.31304",
+        "arxiv:2605.31245",
+        "arxiv:2605.31295"
+      ],
+      "summary": "Papers investigating how neural networks scale with size/compute and mechanistic interpretability through spectral analysis, sparse autoencoders, polysemanticity disentanglement, and activation steering to understand what models learn."
+    },
+    {
+      "name": "Sparse Autoencoders and Representation Disentanglement",
+      "paper_ids": [
+        "arxiv:2605.31245",
+        "arxiv:2605.31304",
+        "arxiv:2605.31249",
+        "arxiv:2605.31266",
+        "arxiv:2605.31295"
+      ],
+      "summary": "Methods for decomposing entangled neural representations into interpretable, monosemantic features via sparse coding, disentangled semantics, and activation steering for improved understanding and control."
+    },
+    {
+      "name": "Distribution Shift and Domain Adaptation",
+      "paper_ids": [
+        "arxiv:2605.31250",
+        "arxiv:2605.31282",
+        "arxiv:2605.31272"
+      ],
+      "summary": "Frameworks for handling distribution shift through importance weighting, estimating target-domain performance, explaining shifts, and providing algorithmic recourse under domain mismatch."
+    },
+    {
+      "name": "Portfolio Optimization and Asset Pricing Frameworks",
+      "paper_ids": [
+        "arxiv:2605.30464",
+        "arxiv:2605.29413",
+        "arxiv:2605.27945",
+        "arxiv:2605.30562"
+      ],
+      "summary": "Unified and integrated frameworks for portfolio construction combining classical optimization, Bayesian methods, factor models, and distributional approaches with empirical validation."
+    },
+    {
+      "name": "Reinforcement Learning for Decision-Making",
+      "paper_ids": [
+        "arxiv:2605.31261",
+        "arxiv:2605.31273",
+        "arxiv:2605.31289",
+        "arxiv:2605.30843",
+        "arxiv:2605.27848"
+      ],
+      "summary": "Theoretical foundations and applications of RL including memory mechanisms in partially-observable settings, survival RL, terminal representations, offline RL equivalences, and portfolio allocation."
+    },
+    {
+      "name": "Market Mechanisms and Institutional Efficiency",
+      "paper_ids": [
+        "arxiv:2605.31072",
+        "arxiv:2605.30879",
+        "arxiv:2605.30515",
+        "arxiv:2605.30566",
+        "arxiv:2605.30643"
+      ],
+      "summary": "Game-theoretic and economic analyses comparing welfare efficiency of different market structures (auctions, exchanges, matching), studying matching mechanisms, strategy-proofness, and market-making."
+    },
+    {
+      "name": "Causal Inference and Treatment Effects",
+      "paper_ids": [
+        "arxiv:2605.30718",
+        "arxiv:2605.31443",
+        "arxiv:2605.29785",
+        "arxiv:2605.30843",
+        "arxiv:2605.31306",
+        "arxiv:2605.29315"
+      ],
+      "summary": "Statistical methods for causal estimation including moment-based inference with latent covariates, longitudinal treatment effects, synthetic controls, sensitivity analysis, and specification testing."
+    },
+    {
+      "name": "Stochastic Processes and Volatility Modeling",
+      "paper_ids": [
+        "arxiv:2605.27945",
+        "arxiv:2605.30562",
+        "arxiv:2605.29541",
+        "arxiv:2605.30442",
+        "arxiv:2605.26890",
+        "arxiv:2605.30943"
+      ],
+      "summary": "Advanced time-series models for financial returns including stochastic volatility, jumps, copulas, regime-switching, and heavy-tailed dynamics for option pricing and risk assessment."
+    },
+    {
+      "name": "LLM-Driven Applications in Finance and Economics",
+      "paper_ids": [
+        "arxiv:2605.31278",
+        "arxiv:2605.27887",
+        "arxiv:2605.28359",
+        "arxiv:2605.28647"
+      ],
+      "summary": "Using large language models for financial decision-making including portfolio management, trading agents, evaluation frameworks, and risk assessment with reliability and ethics considerations."
+    },
+    {
+      "name": "Anomaly Detection and Predictive Maintenance",
+      "paper_ids": [
+        "arxiv:2605.31259",
+        "arxiv:2605.31241",
+        "arxiv:2605.31277"
+      ],
+      "summary": "ML methods for detecting equipment faults, remaining useful life prediction, and encrypted traffic analysis in operational systems using CNNs, autoencoders, and protocol-agnostic models."
+    }
+  ]
+}
