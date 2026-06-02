@@ -450,7 +450,7 @@ if (!is.null(df3_ridgeline) && nrow(df3_ridgeline) > 0) {
       plot.subtitle = element_text(colour = "grey40", size = 10),
       panel.grid.minor = element_blank()
     )
-  print(p_ridge) # fixed: explicit print() to render ggplot object
+  print(p_ridge)
 }
 ```
 
