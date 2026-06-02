@@ -107,8 +107,18 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git stash --include-untracked
           git pull --rebase origin main
-          git stash pop || true
+          if ! git stash pop; then
+            echo "::warning::stash pop conflicted — resolving in favour of the freshly generated post"
+            # Keep the freshly generated content (the stashed side = 'theirs') for any conflict
+            git checkout --theirs -- ssb-daily/ _freeze/ 2>/dev/null || true
+            git add ssb-daily/ _freeze/
+          fi
           git add ssb-daily/posts/ _freeze/
+          # Safety net: never commit unresolved conflict markers
+          if git grep --cached -nE '^(<<<<<<<|>>>>>>>)' ; then
+            echo "::error::conflict markers found in staged files — aborting to avoid a broken commit"
+            exit 1
+          fi
           if git diff --staged --quiet; then
             echo "Nothing to commit"
           else
