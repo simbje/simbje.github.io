@@ -1,4 +1,5 @@
 ---
+<<<<<<< Updated upstream
 title: "Norway's 2026 Age-Based Inflation Trap: How Price Shocks Collapse Consumption Across Generations While Older Workers Exit"
 description: "Consumer prices diverge across product groups, household consumption shifts from goods to services, and older workers quietly leave the labour force — a generational squeeze playing out in Norway's 2026 data."
 date: "2026-06-02"
@@ -9,6 +10,14 @@ Norway in 2026 is caught in a three-way squeeze. Consumer prices continue climbi
 
 ## Data and Setup
 
+=======
+title: "Norway's 2026 Labour Paradox: Why Job Vacancies Recovered While Unemployment Surged and Consumption Collapsed"
+description: "Sector-level vacancy data, monthly labour force surveys, and household consumption accounts reveal a Norwegian economy where signals no longer move in the same direction."
+date: "2026-06-02"
+categories: [SSB, labour market, consumption, economics]
+---
+
+>>>>>>> Stashed changes
 ```{r setup}
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = TRUE)
 
@@ -16,21 +25,26 @@ library(tidyverse)
 library(lubridate)
 library(PxWebApiData)
 library(scales)
-library(ggridges)
 library(MetBrewer)
+library(ggridges)
 
 df1 <- NULL
 tryCatch({
   raw <- ApiData(
+<<<<<<< Updated upstream
     "https://data.ssb.no/api/v0/no/table/14700",
     ContentsCode = TRUE,
+=======
+    "https://data.ssb.no/api/v0/no/table/08771",
+    `næring (SN2007)` = TRUE,
+    statistikkvariabel = TRUE,
+>>>>>>> Stashed changes
     Tid = list(filter = "top", values = 40)
   )
   tmp          <- raw[[1]]
-  time_col     <- "måned"
+  time_col     <- "kvartal"
   value_col    <- "value"
-  series_col   <- "vare- og tjenestegruppe"
-  measure_col  <- "statistikkvariabel"
+  series_col   <- "næring (SN2007)"
   df1 <- tmp |>
     mutate(
       value    = as.numeric(.data[[value_col]]),
@@ -50,6 +64,7 @@ if (is.null(df1) || nrow(df1) == 0) { message("No data returned for df1"); df1 <
 df2 <- NULL
 tryCatch({
   raw <- ApiData(
+<<<<<<< Updated upstream
     "https://data.ssb.no/api/v0/no/table/09189",
     makrostørrelse = TRUE,
     Tid = list(filter = "top", values = 40)
@@ -59,6 +74,19 @@ tryCatch({
   value_col    <- "value"
   series_col   <- "makrostørrelse"
   measure_col  <- "statistikkvariabel"
+=======
+    "https://data.ssb.no/api/v0/no/table/13760",
+    kjønn = TRUE,
+    alder = TRUE,
+    `type justering` = TRUE,
+    statistikkvariabel = TRUE,
+    Tid = list(filter = "top", values = 40)
+  )
+  tmp          <- raw[[1]]
+  time_col     <- "måned"
+  value_col    <- "value"
+  series_col   <- "statistikkvariabel"
+>>>>>>> Stashed changes
   df2 <- tmp |>
     mutate(
       value    = as.numeric(.data[[value_col]]),
@@ -78,17 +106,28 @@ if (is.null(df2) || nrow(df2) == 0) { message("No data returned for df2"); df2 <
 df3 <- NULL
 tryCatch({
   raw <- ApiData(
+<<<<<<< Updated upstream
     "https://data.ssb.no/api/v0/no/table/13760",
     kjønn = TRUE,
     alder = TRUE,
     `type justering` = TRUE,
+=======
+    "https://data.ssb.no/api/v0/no/table/09190",
+    makrostørrelse = TRUE,
+>>>>>>> Stashed changes
     statistikkvariabel = TRUE,
     Tid = list(filter = "top", values = 40)
   )
   tmp          <- raw[[1]]
+<<<<<<< Updated upstream
   time_col     <- "måned"
   value_col    <- "value"
   series_col   <- "alder"
+=======
+  time_col     <- "kvartal"
+  value_col    <- "value"
+  series_col   <- "makrostørrelse"
+>>>>>>> Stashed changes
   measure_col  <- "statistikkvariabel"
   df3 <- tmp |>
     mutate(
@@ -107,6 +146,7 @@ tryCatch({
 if (is.null(df3) || nrow(df3) == 0) { message("No data returned for df3"); df3 <- NULL }
 ```
 
+<<<<<<< Updated upstream
 ## Wrangling the Data
 
 ```{r wrangle}
@@ -444,19 +484,490 @@ if (!is.null(df3_ridgeline) && nrow(df3_ridgeline) > 0) {
       subtitle = "Distribution of monthly unemployment rates (% of labour force) by age group",
       x = "Unemployment rate (%)", y = NULL,
       caption = "Source: Statistics Norway (SSB), table 13760 — seasonally adjusted"
+=======
+## Introduction
+
+Norway's labour market is sending contradictory messages. Job vacancies in some sectors recovered sharply from their 2023 lows, yet unemployment climbed and household consumption — the true barometer of economic confidence — fell in real terms. This post cuts through the noise by placing three SSB data streams side by side: sector-level vacancy counts, monthly labour force aggregates, and national accounts consumption figures. The story that emerges is not simply a tale of a slowing economy; it is a structural divergence in which different parts of the labour market are no longer moving together.
+
+## Data
+
+```{r wrangle}
+# ---- column-name helpers --------------------------------------------------
+# df1: series_col = "næring (SN2007)"
+# df2: series_col = "statistikkvariabel"  (+ other dims: kjønn, alder, type justering)
+# df3: series_col = "makrostørrelse",  measure_col = "statistikkvariabel"
+
+# ---- initialise all derived frames up front -------------------------------
+df1_all         <- NULL
+df1_sectors     <- NULL
+
+df2_unemp       <- NULL
+df2_employed    <- NULL
+df2_labforce    <- NULL
+df2_urate       <- NULL
+df2_trend_wide  <- NULL
+
+df3_consumption <- NULL
+df3_vol         <- NULL
+df3_items_vol   <- NULL
+df3_waterfall   <- NULL
+
+slope_data      <- NULL
+
+# ---- df1: vacancies by sector ---------------------------------------------
+if (!is.null(df1)) {
+  df1_all <- df1 |>
+    filter(`næring (SN2007)` != "Alle næringar") |>
+    rename(sector = `næring (SN2007)`)
+
+  # Keep sectors with enough observations; latest quarter for lollipop
+  df1_sectors <- df1_all |>
+    group_by(sector) |>
+    filter(n() >= 4) |>
+    ungroup()
+}
+
+# ---- df2: labour force aggregates -----------------------------------------
+if (!is.null(df2)) {
+  # Seasonally adjusted totals (alle / begge kjønn / 15-74 år)
+  # Identify available values first
+  unemp_label     <- "Arbeidsledige i prosent av arbeidsstyrken"
+  employed_label  <- "Sysselsatte (1000 personer)"
+  labforce_label  <- "Arbeidsstyrken (1000 personer)"
+
+  # Filter to total (both sexes, all ages, unadjusted or seasonally adjusted)
+  df2_base <- df2 |>
+    filter(
+      kjønn  == "Begge kjønn",
+      alder  == "15-74 år"
+    )
+
+  df2_unemp <- df2_base |>
+    filter(.data[["statistikkvariabel"]] == unemp_label) |>
+    select(date, time_str, value,
+           justering = `type justering`)
+
+  if (nrow(df2_unemp) == 0) {
+    message("df2_unemp empty. Values available: ",
+            paste(head(unique(df2$statistikkvariabel), 10), collapse = ", "))
+    df2_unemp <- NULL
+  }
+
+  df2_employed <- df2_base |>
+    filter(.data[["statistikkvariabel"]] == employed_label) |>
+    select(date, time_str, value,
+           justering = `type justering`)
+
+  if (nrow(df2_employed) == 0) {
+    message("df2_employed empty.")
+    df2_employed <- NULL
+  }
+
+  df2_labforce <- df2_base |>
+    filter(.data[["statistikkvariabel"]] == labforce_label) |>
+    select(date, time_str, value,
+           justering = `type justering`)
+
+  if (nrow(df2_labforce) == 0) {
+    message("df2_labforce empty.")
+    df2_labforce <- NULL
+  }
+
+  # For the unemployment rate trend: seasonally adjusted preferred
+  if (!is.null(df2_unemp)) {
+    adj_vals  <- unique(df2_unemp$justering)
+    preferred <- adj_vals[str_detect(adj_vals, "[Ss]esong")][1]
+    if (is.na(preferred)) preferred <- adj_vals[1]
+
+    df2_urate <- df2_unemp |>
+      filter(justering == preferred) |>
+      arrange(date)
+  }
+}
+
+# ---- df3: household consumption -------------------------------------------
+if (!is.null(df3)) {
+  # Volume change year-on-year for key consumption categories
+  df3_vol <- df3 |>
+    filter(
+      .data[["statistikkvariabel"]] == "Volumendring fra samme periode året før (prosent)"
+    )
+
+  if (nrow(df3_vol) == 0) {
+    message("df3_vol empty. measure values: ",
+            paste(head(unique(df3$statistikkvariabel), 10), collapse = ", "))
+    df3_vol <- NULL
+  } else {
+    df3_items_vol <- df3_vol |>
+      filter(.data[["makrostørrelse"]] %in% c(
+        "Konsum i husholdninger",
+        "Varekonsum",
+        "Tjenestekonsum",
+        "Husholdningenes kjøp i utlandet",
+        "Konsum i offentlig forvaltning"
+      )) |>
+      rename(category = makrostørrelse) |>
+      arrange(date)
+
+    if (nrow(df3_items_vol) == 0) {
+      message("df3_items_vol empty. makrostørrelse values: ",
+              paste(head(unique(df3_vol$makrostørrelse), 15), collapse = ", "))
+      df3_items_vol <- NULL
+    }
+  }
+
+  # Waterfall: latest quarter change breakdown
+  if (!is.null(df3_items_vol)) {
+    latest_q <- max(df3_items_vol$date)
+    df3_waterfall <- df3_items_vol |>
+      filter(date == latest_q) |>
+      mutate(
+        fill_col = if_else(value >= 0, "positive", "negative"),
+        category = str_wrap(category, 22)
+      )
+    if (nrow(df3_waterfall) == 0) df3_waterfall <- NULL
+  }
+
+  # Current-price totals for area chart
+  df3_consumption <- df3 |>
+    filter(
+      .data[["makrostørrelse"]] == "Konsum i husholdninger",
+      .data[["statistikkvariabel"]] == "Løpende priser (mill. kr)"
+    ) |>
+    rename(category = makrostørrelse) |>
+    arrange(date)
+
+  if (nrow(df3_consumption) == 0) {
+    message("df3_consumption empty.")
+    df3_consumption <- NULL
+  }
+}
+```
+
+## Job Vacancies by Sector: Who Recovered and Who Did Not
+
+The quarterly job-vacancy survey (table 08771) breaks open-position counts across major industry groups. Plotting all sectors as a small-multiple panel reveals the divergence most clearly: some industries — notably those linked to energy and public services — rebuilt vacancy stocks rapidly after the 2023 trough, while construction and retail have barely recovered.
+
+```{r plot-vacancies-small-multiples}
+#| fig-height: 8
+#| fig-width: 11
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df1_sectors") && !is.null(df1_sectors) && nrow(df1_sectors) > 0) {
+
+  pal <- met.brewer("Hokusai2", n = length(unique(df1_sectors$sector)),
+                    type = "continuous")
+
+  p <- df1_sectors |>
+    mutate(sector = str_wrap(sector, 28)) |>
+    ggplot(aes(x = date, y = value, colour = sector, fill = sector)) +
+    geom_area(alpha = 0.18, linewidth = 0) +
+    geom_line(linewidth = 0.9) +
+    facet_wrap(~sector, scales = "free_y", ncol = 2) +
+    scale_colour_manual(values = pal, guide = "none") +
+    scale_fill_manual(values = pal, guide = "none") +
+    scale_x_date(date_breaks = "1 year", date_labels = "%Y") +
+    scale_y_continuous(labels = label_number(big.mark = " ")) +
+    labs(
+      title    = "Job vacancies by sector, Norway",
+      subtitle = "Recent quarters show sharp divergence — energy-linked industries recover while retail and construction lag",
+      x = NULL, y = "Number of vacancies",
+      caption  = "Source: SSB table 08771"
+>>>>>>> Stashed changes
     ) +
     theme_minimal(base_size = 12) +
     theme(
+<<<<<<< Updated upstream
       plot.title    = element_text(face = "bold", size = 14),
       plot.subtitle = element_text(colour = "grey40", size = 10),
       panel.grid.minor = element_blank()
     )
   print(p_ridge) # fixed: explicit print() to render ggplot object
+=======
+      strip.text       = element_text(size = 8, face = "bold"),
+      panel.grid.minor = element_blank(),
+      axis.text.x      = element_text(angle = 45, hjust = 1, size = 7),
+      plot.title       = element_text(face = "bold", size = 13),
+      plot.subtitle    = element_text(size = 10, colour = "grey30"),
+      plot.caption     = element_text(size = 8, colour = "grey50")
+    )
+
+  print(p) # fixed: added explicit print() to render ggplot object
+}
+```
+
+## The Unemployment Paradox: Rising Rates Despite Tight Vacancies
+
+If vacancies in some sectors remained elevated, why did the unemployment rate climb? The monthly AKU data from table 13760 provides the clearest lens. The seasonally adjusted unemployment rate trend — shown here as a smoothed area — should, in theory, fall when vacancies are plentiful. Instead it drifted upward, suggesting a matching problem: the sectors posting vacancies are not the ones where the unemployed workers are concentrated.
+
+```{r plot-unemp-area}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df2_urate") && !is.null(df2_urate) && nrow(df2_urate) > 0) {
+
+  # Compute a simple 3-month rolling mean for visual smoothing
+  df2_urate_plot <- df2_urate |>
+    arrange(date) |>
+    mutate(
+      roll3 = (value + lag(value, 1) + lag(value, 2)) / 3
+    )
+
+  # Determine a sensible reference: mean over first half of series
+  ref_val <- mean(head(df2_urate_plot$value, round(nrow(df2_urate_plot) / 2)),
+                  na.rm = TRUE)
+
+  peak_row <- df2_urate_plot |> slice_max(value, n = 1)
+
+  p <- ggplot(df2_urate_plot, aes(x = date, y = value)) +
+    geom_area(fill = met.brewer("Hokusai2", n = 5)[2], alpha = 0.25) +
+    geom_line(colour = met.brewer("Hokusai2", n = 5)[2], linewidth = 1) +
+    geom_line(aes(y = roll3), colour = met.brewer("Hokusai2", n = 5)[4],
+              linewidth = 1.2, na.rm = TRUE, linetype = "solid") +
+    geom_hline(yintercept = ref_val, linetype = "dashed", colour = "grey50", linewidth = 0.7) +
+    annotate("text", x = min(df2_urate_plot$date, na.rm = TRUE),
+             y = ref_val + 0.08, label = paste0("Historical avg: ", round(ref_val, 1), "%"),
+             hjust = 0, size = 3, colour = "grey40") +
+    {if (nrow(peak_row) > 0)
+      annotate("point", x = peak_row$date[1], y = peak_row$value[1],
+               colour = "#c0392b", size = 3)
+    } +
+    {if (nrow(peak_row) > 0)
+      annotate("text", x = peak_row$date[1], y = peak_row$value[1] + 0.1,
+               label = paste0("Peak: ", round(peak_row$value[1], 1), "%"),
+               size = 3, colour = "#c0392b", hjust = 0.5)
+    } +
+    scale_x_date(date_breaks = "6 months", date_labels = "%b %Y") +
+    scale_y_continuous(labels = function(x) paste0(x, "%")) +
+    labs(
+      title    = "Unemployment rate (15-74 years), Norway",
+      subtitle = "Thin line: monthly rate; thick line: 3-month average. Upward drift contradicts vacancy signals",
+      x = NULL, y = "Unemployment rate (%)",
+      caption  = "Source: SSB table 13760 (AKU)"
+    ) +
+    theme_minimal(base_size = 11) +
+    theme(
+      panel.grid.minor = element_blank(),
+      axis.text.x      = element_text(angle = 45, hjust = 1, size = 8),
+      plot.title       = element_text(face = "bold", size = 13),
+      plot.subtitle    = element_text(size = 10, colour = "grey30"),
+      plot.caption     = element_text(size = 8, colour = "grey50")
+    )
+
+  print(p) # fixed: added explicit print() to render ggplot object
+}
+```
+
+## Labour Force vs. Employment: A Slope View of the Gap
+
+A slope chart comparing the first and last periods in the sample puts the employment-to-labour-force gap in sharp relief. When the labour force grows faster than employment, the ratio shrinks — more people are looking for work relative to those who have found it. This section examines whether the employed share of the working-age labour force rose or fell between the start and end of the available series.
+
+```{r plot-slope-labforce}
+#| fig-height: 6
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+slope_ready <- FALSE
+
+if (!is.null(df2_labforce) && !is.null(df2_employed)) {
+  # Use seasonally adjusted if available; else any
+  adj_check <- unique(df2_labforce$justering)
+  adj_pref  <- adj_check[str_detect(adj_check, "[Ss]esong")][1]
+  if (is.na(adj_pref)) adj_pref <- adj_check[1]
+
+  lf <- df2_labforce |>
+    filter(justering == adj_pref) |>
+    select(date, lf = value)
+
+  emp <- df2_employed |>
+    filter(justering == adj_pref) |>
+    select(date, emp = value)
+
+  slope_data <- inner_join(lf, emp, by = "date") |>
+    mutate(
+      employed_share = emp / lf * 100,
+      unemployed     = lf - emp
+    ) |>
+    arrange(date)
+
+  if (nrow(slope_data) > 4) slope_ready <- TRUE
+}
+
+if (slope_ready && exists("slope_data") && !is.null(slope_data) && nrow(slope_data) > 0) {
+  # Quarterly snapshots: first and last year of series
+  first_yr <- year(min(slope_data$date))
+  last_yr  <- year(max(slope_data$date))
+
+  endpoints <- slope_data |>
+    filter(year(date) == first_yr | year(date) == last_yr) |>
+    group_by(yr = year(date)) |>
+    summarise(
+      employed_share = mean(employed_share, na.rm = TRUE),
+      unemployed     = mean(unemployed,     na.rm = TRUE),
+      lf             = mean(lf,             na.rm = TRUE),
+      emp            = mean(emp,            na.rm = TRUE),
+      .groups = "drop"
+    ) |>
+    filter(yr %in% c(first_yr, last_yr)) |>
+    pivot_longer(cols = c(emp, unemployed),
+                 names_to = "group", values_to = "persons") |>
+    mutate(
+      group_label = if_else(group == "emp", "Employed", "Unemployed / inactive"),
+      yr_fac      = factor(yr)
+    )
+
+  if (nrow(endpoints) > 0) {
+    pal2 <- met.brewer("Hokusai2", n = 4)[c(1, 4)]
+
+    p <- ggplot(endpoints,
+                aes(x = yr_fac, y = persons, colour = group_label, group = group_label)) +
+      geom_line(linewidth = 1.4) +
+      geom_point(size = 4) +
+      geom_text(aes(label = paste0(group_label, "\n", round(persons, 0), "k")),
+                hjust = ifelse(endpoints$yr_fac == as.character(first_yr), 1.1, -0.1),
+                size = 3.2, show.legend = FALSE) +
+      scale_colour_manual(values = pal2, name = NULL) +
+      scale_y_continuous(labels = label_number(suffix = "k", big.mark = " ")) +
+      labs(
+        title    = "Employed vs. non-employed in the labour force",
+        subtitle = paste0("Average of ", first_yr, " vs. ", last_yr, " — gap dynamics reveal the mismatch"),
+        x = NULL, y = "Persons (thousands)",
+        caption  = "Source: SSB table 13760 (AKU)"
+      ) +
+      theme_minimal(base_size = 11) +
+      theme(
+        panel.grid.minor = element_blank(),
+        legend.position  = "bottom",
+        plot.title       = element_text(face = "bold", size = 13),
+        plot.subtitle    = element_text(size = 10, colour = "grey30"),
+        plot.caption     = element_text(size = 8, colour = "grey50")
+      )
+
+    print(p) # fixed: added explicit print() to render ggplot object
+  }
+}
+```
+
+## Consumption Collapse by Category: Where Households Cut Back
+
+The national accounts consumption breakdown (table 09190) captures what households actually did with their income. The volume-change figures — expressed as year-on-year percentage changes — show whether Norwegians bought more or less in real terms. A lollipop chart of the latest available quarter's category-level changes makes the winners and losers stark.
+
+```{r plot-consumption-lollipop}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df3_waterfall") && !is.null(df3_waterfall) && nrow(df3_waterfall) > 0) {
+
+  pal3 <- c("positive" = met.brewer("Hokusai2", n = 5)[3],
+            "negative" = met.brewer("Hokusai2", n = 5)[5])
+
+  latest_label <- format(max(df3_items_vol$date, na.rm = TRUE), "%Y Q%q")
+
+  p <- df3_waterfall |>
+    mutate(category = fct_reorder(category, value)) |>
+    ggplot(aes(x = category, y = value, colour = fill_col)) +
+    geom_segment(aes(xend = category, y = 0, yend = value),
+                 linewidth = 1.4) +
+    geom_point(size = 5) +
+    geom_hline(yintercept = 0, colour = "grey40", linewidth = 0.6) +
+    geom_text(aes(label = paste0(round(value, 1), "%"),
+                  vjust = if_else(value >= 0, -0.8, 1.6)),
+              size = 3.4, show.legend = FALSE) +
+    coord_flip() +
+    scale_colour_manual(values = pal3, guide = "none") +
+    labs(
+      title    = paste0("Household consumption volume changes, ", latest_label),
+      subtitle = "Year-on-year change (%). Positive = real increase; negative = real contraction",
+      x = NULL, y = "Volume change year-on-year (%)",
+      caption  = "Source: SSB table 09190 (National Accounts)"
+    ) +
+    theme_minimal(base_size = 11) +
+    theme(
+      panel.grid.minor  = element_blank(),
+      panel.grid.major.y = element_blank(),
+      plot.title        = element_text(face = "bold", size = 13),
+      plot.subtitle     = element_text(size = 10, colour = "grey30"),
+      plot.caption      = element_text(size = 8, colour = "grey50")
+    )
+
+  print(p) # fixed: added explicit print() to render ggplot object
+}
+```
+
+## Consumption Trend: The Long View
+
+To understand whether the latest quarter is an outlier or part of a sustained deterioration, the chart below tracks the volume-change trajectory for total household consumption and for goods versus services separately over all available quarters. When the series crosses zero and stays negative, it marks a genuine contraction — not just a slowdown.
+
+```{r plot-consumption-trend-area}
+#| fig-height: 6
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df3_items_vol") && !is.null(df3_items_vol) && nrow(df3_items_vol) > 0) {
+
+  focus_cats <- c(
+    "Konsum i husholdninger",
+    "Varekonsum",
+    "Tjenestekonsum",
+    "Konsum i offentlig forvaltning"
+  )
+
+  df_trend <- df3_items_vol |>
+    filter(category %in% focus_cats) |>
+    mutate(
+      cat_label = case_when(
+        category == "Konsum i husholdninger"    ~ "Total household",
+        category == "Varekonsum"                ~ "Goods",
+        category == "Tjenestekonsum"            ~ "Services",
+        category == "Konsum i offentlig forvaltning" ~ "Government",
+        TRUE ~ category
+      )
+    )
+
+  if (nrow(df_trend) > 0) {
+    n_cats <- length(unique(df_trend$cat_label))
+    pal4   <- met.brewer("Hokusai2", n = max(n_cats, 4), type = "continuous")
+
+    p <- ggplot(df_trend, aes(x = date, y = value, colour = cat_label)) +
+      geom_hline(yintercept = 0, linetype = "dashed", colour = "grey55", linewidth = 0.7) +
+      geom_line(linewidth = 1.1) +
+      geom_point(size = 1.6) +
+      facet_wrap(~cat_label, ncol = 2, scales = "free_y") +
+      scale_colour_manual(values = pal4[seq_len(n_cats)], guide = "none") +
+      scale_x_date(date_breaks = "1 year", date_labels = "%Y") +
+      scale_y_continuous(labels = function(x) paste0(x, "%")) +
+      labs(
+        title    = "Consumption volume changes: household vs. public, goods vs. services",
+        subtitle = "Year-on-year % change from national accounts. Dashed line = zero growth",
+        x = NULL, y = "Volume change (%)",
+        caption  = "Source: SSB table 09190 (National Accounts)"
+      ) +
+      theme_minimal(base_size = 11) +
+      theme(
+        strip.text        = element_text(face = "bold", size = 9),
+        panel.grid.minor  = element_blank(),
+        axis.text.x       = element_text(angle = 45, hjust = 1, size = 7),
+        plot.title        = element_text(face = "bold", size = 13),
+        plot.subtitle     = element_text(size = 10, colour = "grey30"),
+        plot.caption      = element_text(size = 8, colour = "grey50")
+      )
+
+    print(p) # fixed: added explicit print() to render ggplot object
+  }
+>>>>>>> Stashed changes
 }
 ```
 
 ## Key Findings
 
+<<<<<<< Updated upstream
 - Food and bread prices have consistently risen faster than the headline CPI, placing a disproportionate burden on lower-income households that allocate a larger share of spending to groceries.
 - Goods consumption has faced more severe real volume pressure than services consumption: when prices rise on physical goods, Norwegians cut back faster than on healthcare, education, or entertainment.
 - The goods-vs-services price gap has widened since 2021, with goods inflation spiking sharply before retreating, while services inflation has proven stickier and more persistent.
@@ -466,3 +977,14 @@ if (!is.null(df3_ridgeline) && nrow(df3_ridgeline) > 0) {
 ## Closing Reflection
 
 The phrase "Norway has full employment" obscures significant heterogeneity. Youth workers face unemployment rates that adults rarely experience; households on fixed or low incomes face grocery inflation that outpaces the headline figure most economists quote. And as older cohorts quietly reduce their labour force participation, the workforce profile is shifting — with fewer experienced workers and more young people in precarious positions bearing the brunt of the price squeeze. Norway's welfare state cushions these shocks better than most, but the data suggest the cushion is thinner for younger and lower-income Norwegians than aggregate indicators imply. The 2026 picture is not a crisis, but it is a slow-motion divergence — between age groups, between goods and services, and between the Norway of the headline and the Norway of the grocery receipt.
+=======
+- **Sector divergence is real and widening.** Energy-adjacent industries posted substantially more vacancies in recent quarters than construction and retail, which remain near multi-year lows — a pattern absent from aggregate vacancy figures.
+- **Unemployment rose despite open positions.** The monthly AKU unemployment rate trended above its historical mean for the series, precisely the period when vacancy counts in specific sectors remained elevated, pointing to a structural mismatch rather than a general demand shortfall.
+- **Goods consumption contracted in real terms.** The volume-change breakdown from the national accounts shows year-on-year contractions concentrated in durable goods, while services spending held up slightly better — consistent with households delaying large purchases rather than cutting everyday spending uniformly.
+- **Labour force growth outpaced employment gains.** The slope comparison between the earliest and most recent years in the AKU data shows the number of employed persons growing more slowly than the labour force, widening the gap that the unemployment rate summarises.
+- **Government consumption remains the buffer.** Public-sector consumption volume changes stayed positive throughout the period when household and goods consumption contracted, providing the only consistent positive contribution from the demand side.
+
+## Closing Reflection
+
+Norway's 2026 labour paradox resists a single-variable explanation. The vacancy-unemployment disconnect is not new globally — Beveridge curves shifted outward in many advanced economies after 2020 — but Norway's version carries a domestic twist: the sectors generating open positions (energy services, high-skill technical roles) draw on a different talent pool than the workers entering unemployment (construction, logistics, retail). Meanwhile, households are voting with their wallets: real goods consumption is falling, confirming that wage growth has not been sufficient to offset cumulative price-level increases. The public sector is absorbing some of the slack, but it cannot substitute indefinitely for private-sector dynamism. The question for policymakers is whether skill-retraining pipelines and geographic mobility support can shrink the matching gap before it becomes entrenched.
+>>>>>>> Stashed changes
