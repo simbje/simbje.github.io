@@ -1,7 +1,7 @@
 ---
-title: "Asker kommune i tall — vekst, bolig, sysselsetting og befolkning"
+title: "Asker kommune i tall — vekst, bolig, økonomi og befolkning"
 description: "SSB- og KOSTRA-data tegner et detaljert bilde av Asker etter kommunesammenslåingen i 2020."
-date: "2026-06-01"
+date: "2026-06-02"
 categories: [SSB, KOSTRA, Asker]
 lang: nb
 freeze: true
@@ -11,7 +11,20 @@ Asker er en av Norges mest vekstkraftige kommuner, og siden sammenslåingen av g
 
 ## Om datagrunnlaget
 
-Denne analysen bygger på to komplementære datakilder fra Statistisk sentralbyrå. Den første er SSBs kommunestatistikk, som dekker alt fra befolkningsbevegelser og boligbygging til sysselsetting og utdanning — publisert som årsserier i SSBs statistikkbank. Den andre er KOSTRA (KOmmune-STat-RApportering), et nasjonalt rapporteringssystem der norske kommuner hvert år rapporterer regnskaps- og tjenestedata til staten. KOSTRA gjør det mulig å sammenligne ressursbruk og tjenestetilbud på tvers av kommuner og år, og er et uunnværlig verktøy for alle som vil forstå hva kommunen faktisk bruker pengene sine på — fra eldreomsorg til barnehagedekning. Til sammen gir disse kildene et rikt og etterprøvbart bilde av Asker kommunes utvikling.
+Denne analysen bygger på to komplementære datakilder fra Statistisk sentralbyrå. Den første er SSBs kommunestatistikk, som dekker alt fra befolkningsbevegelser og boligbygging til sysselsetting og utdanning — publisert som årsserier i SSBs statistikkbank. Den andre er KOSTRA (KOmmune-STat-RApportering), et nasjonalt rapporteringssystem der norske kommuner hvert år rapporterer regnskaps- og tjenestedata til staten.
+
+KOSTRA-data er tilgjengelig gjennom det samme SSB-API-et som øvrig statistikk, via pakken `PxWebApiData` i R. Tabellene har typisk ID-er i 12xxx-serien, og datauttrekk filtreres på kommunenummer (3024 for nye Asker):
+
+```r
+library(PxWebApiData)
+ApiData(
+  "https://data.ssb.no/api/v0/no/table/12370",
+  Region = list(filter = "item", values = "3024"),
+  Tid    = list(filter = "top", values = 10)
+)
+```
+
+KOSTRA gjør det mulig å sammenligne ressursbruk og tjenestetilbud på tvers av kommuner og år, og er et uunnværlig verktøy for alle som vil forstå hva kommunen faktisk bruker pengene sine på — fra eldreomsorg til barnehagedekning.
 
 ```{r setup}
 #| echo: false
@@ -164,34 +177,50 @@ tryCatch({
 ```{r wrangle}
 #| echo: false
 
-# --- df1: Befolkningsbevegelse (tabell 06913) ---
-df1_trend  <- NULL
-df1_fodte  <- NULL
-df1_dode   <- NULL
-df1_innflyt <- NULL
+# NULL-initialize all derived variables
+df1_trend     <- NULL
+df1_growth    <- NULL
+df2_trend     <- NULL
+df2_topper    <- NULL
+df2_annual    <- NULL
+df3_trend     <- NULL
+df3_slope     <- NULL
+df4_trend     <- NULL
+df4_latest    <- NULL
+df4_dumbbell  <- NULL
+df4_wide_time <- NULL
+df4_top4      <- NULL
+df5_trend     <- NULL
+df5_latest    <- NULL
+df5_heat      <- NULL
 
+# --- df1: Befolkningsbevegelse (tabell 06913) ---
 if (!is.null(df1) && nrow(df1) > 0) {
-  df1_series <- df1 |>
+  df1_trend <- df1 |>
     filter(date >= as.Date("2015-01-01")) |>
     group_by(statistikkvariabel, date) |>
     summarise(value = sum(value, na.rm = TRUE), .groups = "drop")
 
-  df1_trend <- df1_series
+  growth_cand <- df1_trend |>
+    filter(str_detect(tolower(statistikkvariabel),
+                      "vekst|netto|overskudd|endring"))
 
-  df1_fodte  <- df1_trend |> filter(str_detect(statistikkvariabel, "[Ff]ødte"))
-  if (nrow(df1_fodte) == 0) { df1_fodte <- NULL }
-  
-  df1_dode   <- df1_trend |> filter(str_detect(statistikkvariabel, "[Dd]øde"))
-  if (nrow(df1_dode) == 0) { df1_dode <- NULL }
-  
-  df1_innflyt <- df1_trend |> filter(str_detect(statistikkvariabel, "[Ii]nnflytting|[Ii]nnenlandsk innflytting"))
-  if (nrow(df1_innflyt) == 0) { df1_innflyt <- NULL }
+  if (nrow(growth_cand) == 0) {
+    series_size <- df1_trend |>
+      group_by(statistikkvariabel) |>
+      summarise(abs_mean = mean(abs(value), na.rm = TRUE), .groups = "drop") |>
+      arrange(abs_mean)
+    growth_cand <- df1_trend |>
+      filter(statistikkvariabel %in%
+               series_size$statistikkvariabel[seq_len(min(3, nrow(series_size)))])
+  }
+
+  if (nrow(growth_cand) > 0) {
+    df1_growth <- growth_cand
+  }
 }
 
 # --- df2: Boligbygging (tabell 06265) ---
-df2_trend   <- NULL
-df2_topper  <- NULL
-
 if (!is.null(df2) && nrow(df2) > 0) {
   df2_trend <- df2 |>
     filter(date >= as.Date("2010-01-01")) |>
@@ -205,64 +234,129 @@ if (!is.null(df2) && nrow(df2) > 0) {
     slice_head(n = 6) |>
     pull(bygningstype)
 
-  df2_trend <- df2_trend |>
-    filter(bygningstype %in% df2_topper)
+  df2_trend <- df2_trend |> filter(bygningstype %in% df2_topper)
+
+  df2_annual <- df2_trend |>
+    group_by(date) |>
+    summarise(total = sum(value, na.rm = TRUE), .groups = "drop") |>
+    filter(total > 0)
+  if (nrow(df2_annual) == 0) df2_annual <- NULL
 }
 
 # --- df3: Sysselsetting (tabell 11616) ---
-df3_trend   <- NULL
-
 if (!is.null(df3) && nrow(df3) > 0) {
   df3_trend <- df3 |>
     filter(date >= as.Date("2010-01-01")) |>
     group_by(statistikkvariabel, kjønn, date) |>
     summarise(value = sum(value, na.rm = TRUE), .groups = "drop")
+
+  kjønn_vals  <- setdiff(unique(df3_trend$kjønn), c("Begge kjønn", NA, ""))
+  dates_avail <- sort(unique(df3_trend$date))
+
+  if (length(kjønn_vals) >= 2 && length(dates_avail) >= 2) {
+    y1 <- min(dates_avail)
+    y2 <- max(dates_avail)
+    df3_s <- df3_trend |>
+      filter(date %in% c(y1, y2), kjønn %in% kjønn_vals) |>
+      group_by(kjønn, date) |>
+      summarise(value = sum(value, na.rm = TRUE), .groups = "drop")
+    if (nrow(df3_s) >= 4) df3_slope <- df3_s
+  }
 }
 
 # --- df4: Utdanningsnivå (tabell 09429) ---
-df4_trend  <- NULL
-df4_latest <- NULL
-
 if (!is.null(df4) && nrow(df4) > 0) {
   df4_trend <- df4 |>
     filter(date >= as.Date("2010-01-01")) |>
     group_by(nivå, kjønn, date) |>
     summarise(value = sum(value, na.rm = TRUE), .groups = "drop")
 
-  max_date <- max(df4_trend$date, na.rm = TRUE)
-  df4_latest <- df4_trend |>
-    filter(date == max_date, kjønn == "Begge kjønn")
-  
-  if (nrow(df4_latest) == 0) {
-    df4_latest <- df4_trend |>
-      filter(date == max_date)
+  max_date4 <- max(df4_trend$date, na.rm = TRUE)
+
+  df4_latest <- df4_trend |> filter(date == max_date4, kjønn == "Begge kjønn")
+  if (nrow(df4_latest) == 0) df4_latest <- df4_trend |> filter(date == max_date4)
+  if (nrow(df4_latest) == 0) df4_latest <- NULL
+
+  kjønn_split <- setdiff(unique(df4_trend$kjønn), c("Begge kjønn", NA, ""))
+  if (length(kjønn_split) == 2) {
+    df4_w <- df4_trend |>
+      filter(date == max_date4, kjønn %in% kjønn_split) |>
+      select(nivå, kjønn, value) |>
+      pivot_wider(names_from = kjønn, values_from = value)
+    if (nrow(df4_w) > 0 && ncol(df4_w) == 3) df4_dumbbell <- df4_w
   }
-  if (nrow(df4_latest) == 0) { df4_latest <- NULL }
+
+  ref_kjønn4 <- if ("Begge kjønn" %in% unique(df4_trend$kjønn)) "Begge kjønn"
+                else unique(df4_trend$kjønn)[1]
+
+  df4_wt <- df4_trend |>
+    filter(kjønn == ref_kjønn4) |>
+    group_by(nivå, date) |>
+    summarise(value = sum(value, na.rm = TRUE), .groups = "drop") |>
+    filter(value > 0)
+  if (nrow(df4_wt) > 0) df4_wide_time <- df4_wt
+
+  top4n <- df4_trend |>
+    filter(date == max_date4, kjønn == ref_kjønn4) |>
+    arrange(desc(value)) |>
+    slice_head(n = 4) |>
+    pull(nivå)
+
+  df4_t4 <- df4_trend |>
+    filter(nivå %in% top4n, kjønn == ref_kjønn4) |>
+    group_by(nivå, date) |>
+    summarise(value = sum(value, na.rm = TRUE), .groups = "drop")
+  if (nrow(df4_t4) > 0) df4_top4 <- df4_t4
 }
 
 # --- df5: Befolkning etter alder (tabell 04469) ---
-df5_trend  <- NULL
-df5_latest <- NULL
-
 if (!is.null(df5) && nrow(df5) > 0) {
   df5_trend <- df5 |>
     filter(date >= as.Date("2010-01-01")) |>
     group_by(alder, date) |>
     summarise(value = sum(value, na.rm = TRUE), .groups = "drop")
 
-  max_date5  <- max(df5_trend$date, na.rm = TRUE)
-  df5_latest <- df5_trend |>
-    filter(date == max_date5)
-  
-  if (nrow(df5_latest) == 0) { df5_latest <- NULL }
+  max_date5 <- max(df5_trend$date, na.rm = TRUE)
+  df5_latest <- df5_trend |> filter(date == max_date5)
+  if (nrow(df5_latest) == 0) df5_latest <- NULL
+
+  make_aldersgruppe <- function(alder_col) {
+    n <- suppressWarnings(as.integer(str_extract(alder_col, "^\\d+")))
+    case_when(
+      is.na(n)   ~ NA_character_,
+      n < 10     ~ "0–9",
+      n < 20     ~ "10–19",
+      n < 30     ~ "20–29",
+      n < 40     ~ "30–39",
+      n < 50     ~ "40–49",
+      n < 60     ~ "50–59",
+      n < 70     ~ "60–69",
+      n < 80     ~ "70–79",
+      TRUE       ~ "80+"
+    )
+  }
+
+  alders_levels <- c("0–9","10–19","20–29","30–39","40–49",
+                     "50–59","60–69","70–79","80+")
+
+  df5_h <- df5_trend |>
+    filter(alder != "alle aldre") |>
+    mutate(aldersgruppe = make_aldersgruppe(alder)) |>
+    filter(!is.na(aldersgruppe)) |>
+    group_by(aldersgruppe, date) |>
+    summarise(value = sum(value, na.rm = TRUE), .groups = "drop") |>
+    mutate(
+      aldersgruppe = factor(aldersgruppe, levels = alders_levels),
+      year         = as.integer(format(date, "%Y"))
+    )
+
+  if (nrow(df5_h) > 0) df5_heat <- df5_h
 }
 ```
 
 ## Befolkningsbevegelse — Asker vokser, men saktere
 
-Siden kommunesammenslåingen i 2020 har Asker befestet sin posisjon som en av Akershus' mest folkerike kommuner med over 90 000 innbyggere. Befolkningsveksten drives av en kombinasjon av naturlig tilvekst — at det fødes flere enn det dør — og innflytting, særlig fra andre deler av landet. Tallene fra SSBs tabell 06913 viser imidlertid at veksttakten varierer fra år til år, og at balansen mellom fødsler, dødsfall og flytting stadig forskyver seg.
-
-Et gjennomgående trekk er at Asker tiltrekker seg ressurssterke barnefamilier fra Oslo og nabokommuner, noe som gjenspeiles i relativt høye fødselstall sammenlignet med kommuner av tilsvarende størrelse. Likevel er det netto innflytting som har vært den dominerende vekstmotoren de siste årene.
+Siden kommunesammenslåingen i 2020 har Asker befestet sin posisjon som en av Akershus' mest folkerike kommuner med over 90 000 innbyggere. Befolkningsveksten drives av en kombinasjon av naturlig tilvekst og innflytting, særlig fra andre deler av landet. Tallene fra SSBs tabell 06913 viser imidlertid at veksttakten varierer fra år til år, og at balansen mellom fødsler, dødsfall og flytting stadig forskyver seg.
 
 ```{r plot-befolkning}
 #| fig-height: 5
@@ -271,8 +365,6 @@ Et gjennomgående trekk er at Asker tiltrekker seg ressurssterke barnefamilier f
 #| dev: "png"
 
 if (exists("df1_trend") && !is.null(df1_trend) && nrow(df1_trend) > 0) {
-
-  # Velg de viktigste variablene for befolkningsbevegelse
   viktige_var <- df1_trend |>
     group_by(statistikkvariabel) |>
     summarise(total = sum(abs(value), na.rm = TRUE), .groups = "drop") |>
@@ -280,10 +372,8 @@ if (exists("df1_trend") && !is.null(df1_trend) && nrow(df1_trend) > 0) {
     slice_head(n = 5) |>
     pull(statistikkvariabel)
 
-  df1_plot <- df1_trend |>
-    filter(statistikkvariabel %in% viktige_var)
-
-  farger <- MetBrewer::met.brewer("Hiroshige", n = length(unique(df1_plot$statistikkvariabel)))
+  df1_plot <- df1_trend |> filter(statistikkvariabel %in% viktige_var)
+  farger   <- MetBrewer::met.brewer("Hiroshige", n = length(unique(df1_plot$statistikkvariabel)))
 
   p <- ggplot(df1_plot, aes(x = date, y = value,
                              colour = statistikkvariabel,
@@ -295,16 +385,63 @@ if (exists("df1_trend") && !is.null(df1_trend) && nrow(df1_trend) > 0) {
     scale_y_continuous(labels = label_comma(big.mark = " ")) +
     labs(
       title    = "Befolkningsbevegelse i Asker",
-      subtitle = "Fødsler, dødsfall og flytting har variert markant de siste tiårene",
-      x        = NULL,
-      y        = "Antall personer",
-      colour   = NULL,
-      caption  = "Kilde: SSB, tabell 06913"
+      subtitle = "Fødsler, dødsfall og flytting over tid",
+      x = NULL, y = "Antall personer", colour = NULL,
+      caption = "Kilde: SSB, tabell 06913"
     ) +
     theme_minimal(base_size = 12) +
     theme(
       legend.position  = "bottom",
       legend.text      = element_text(size = 9),
+      plot.title       = element_text(face = "bold", size = 14),
+      plot.subtitle    = element_text(colour = "grey40", size = 10),
+      plot.caption     = element_text(colour = "grey50", size = 8),
+      panel.grid.minor = element_blank()
+    )
+  print(p)
+}
+```
+
+Vekst- og endringskomponentene forteller enda mer når de ses isolert. Netto folkevekst er summen av naturlig tilvekst og netto innflytting — og varierer mer enn totalbildet antyder.
+
+```{r plot-befolkning-2}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df1_growth") && !is.null(df1_growth) && nrow(df1_growth) > 0) {
+  top_var <- df1_growth |>
+    group_by(statistikkvariabel) |>
+    summarise(abs_mean = mean(abs(value), na.rm = TRUE), .groups = "drop") |>
+    arrange(abs_mean) |>
+    slice_head(n = 1) |>
+    pull(statistikkvariabel)
+
+  df1_bar <- df1_growth |>
+    filter(statistikkvariabel == top_var) |>
+    mutate(retning = ifelse(value >= 0, "Vekst", "Nedgang"))
+
+  farger_bar <- MetBrewer::met.brewer("Hiroshige", n = 5)
+
+  p <- ggplot(df1_bar, aes(x = date, y = value, fill = retning)) +
+    geom_col(width = 300) +
+    geom_hline(yintercept = 0, colour = "grey40", linewidth = 0.5) +
+    scale_fill_manual(
+      values = c("Vekst" = farger_bar[1], "Nedgang" = farger_bar[5]),
+      name   = NULL
+    ) +
+    scale_x_date(date_labels = "%Y", date_breaks = "2 years") +
+    scale_y_continuous(labels = label_comma(big.mark = " ")) +
+    labs(
+      title    = paste0("Årlig endring: ", top_var),
+      subtitle = "Positive verdier = vekst, negative = nedgang",
+      x = NULL, y = "Antall personer",
+      caption  = "Kilde: SSB, tabell 06913"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      legend.position  = "bottom",
       plot.title       = element_text(face = "bold", size = 14),
       plot.subtitle    = element_text(colour = "grey40", size = 10),
       plot.caption     = element_text(colour = "grey50", size = 8),
@@ -320,7 +457,7 @@ if (exists("df1_trend") && !is.null(df1_trend) && nrow(df1_trend) > 0) {
 
 Boligmarkedet i Asker er under kontinuerlig press. Med sterk tilflytting og et ambisiøst fortettingsregime ønsker kommunen å levere nye boliger — men profilen på hva som faktisk bygges, sier mye om hvilke prioriteringer som vinner frem. SSBs tabell 06265 gir et detaljert bilde av igangsatte boliger fordelt på bygningstype.
 
-Dataene viser at eneboliger historisk har dominert boligbyggingen i Asker, men at andelen av leilighetsbygg og rekkehus har økt etter kommunesammenslåingen. Dette er i tråd med nasjonale og regionale arealstrategier som oppfordrer til fortetting rundt kollektivknutepunkter. Likevel gjenspeiler Askers geografi — med store arealer i Hurum og Røyken — at eneboligdrømmen fremdeles er levende i kommunens yttergrenser.
+Dataene viser at eneboliger historisk har dominert boligbyggingen, men at andelen av leilighetsbygg og rekkehus har økt etter kommunesammenslåingen. Dette er i tråd med nasjonale arealstrategier som oppfordrer til fortetting rundt kollektivknutepunkter.
 
 ```{r plot-bolig}
 #| fig-height: 5
@@ -329,15 +466,14 @@ Dataene viser at eneboliger historisk har dominert boligbyggingen i Asker, men a
 #| dev: "png"
 
 if (exists("df2_trend") && !is.null(df2_trend) && nrow(df2_trend) > 0) {
-
   df2_plot <- df2_trend |>
     group_by(bygningstype) |>
     mutate(total = sum(value, na.rm = TRUE)) |>
     ungroup() |>
     mutate(bygningstype = fct_reorder(bygningstype, total, .desc = TRUE))
 
-  n_typer <- length(unique(df2_plot$bygningstype))
-  farger2 <- MetBrewer::met.brewer("Hiroshige", n = max(n_typer, 3))
+  n_typer  <- length(unique(df2_plot$bygningstype))
+  farger2  <- MetBrewer::met.brewer("Hiroshige", n = max(n_typer, 3))
 
   p <- ggplot(df2_plot, aes(x = date, y = value, fill = bygningstype)) +
     geom_area(alpha = 0.85, position = "stack") +
@@ -347,9 +483,7 @@ if (exists("df2_trend") && !is.null(df2_trend) && nrow(df2_trend) > 0) {
     labs(
       title    = "Igangsatte boliger i Asker etter bygningstype",
       subtitle = "Leilighetsbygg øker sin andel, men eneboliger preger fortsatt statistikken",
-      x        = NULL,
-      y        = "Antall boliger",
-      fill     = "Bygningstype",
+      x = NULL, y = "Antall boliger", fill = "Bygningstype",
       caption  = "Kilde: SSB, tabell 06265"
     ) +
     theme_minimal(base_size = 12) +
@@ -365,13 +499,56 @@ if (exists("df2_trend") && !is.null(df2_trend) && nrow(df2_trend) > 0) {
 }
 ```
 
+Hvilke år har hatt høyest boligaktivitet? Lollipop-diagrammet nedenfor rangerer de mest aktive boligbyggingsårene — nyttig for å se om det finnes sykliske mønstre.
+
+```{r plot-bolig-lollipop}
+#| fig-height: 6
+#| fig-width: 8
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df2_annual") && !is.null(df2_annual) && nrow(df2_annual) > 0) {
+  df2_loll <- df2_annual |>
+    arrange(desc(total)) |>
+    slice_head(n = 15) |>
+    mutate(år = fct_reorder(format(date, "%Y"), total))
+
+  farge_loll <- MetBrewer::met.brewer("Hiroshige", n = 5)[2]
+
+  p <- ggplot(df2_loll, aes(x = total, y = år)) +
+    geom_segment(aes(xend = 0, yend = år), colour = "grey70", linewidth = 0.9) +
+    geom_point(colour = farge_loll, size = 5) +
+    geom_text(aes(label = label_comma(big.mark = " ")(total)),
+              hjust = -0.4, size = 3.2, colour = "grey25") +
+    scale_x_continuous(
+      labels = label_comma(big.mark = " "),
+      expand = expansion(mult = c(0, 0.22))
+    ) +
+    labs(
+      title    = "Topp 15 boligbyggingsår i Asker",
+      subtitle = "Totalt igangsatte boliger — rangert etter aktivitet",
+      x = "Totalt antall boliger", y = "År",
+      caption  = "Kilde: SSB, tabell 06265"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      plot.title         = element_text(face = "bold", size = 14),
+      plot.subtitle      = element_text(colour = "grey40", size = 10),
+      plot.caption       = element_text(colour = "grey50", size = 8),
+      panel.grid.minor   = element_blank(),
+      panel.grid.major.y = element_blank()
+    )
+  print(p)
+}
+```
+
 *Kilde: [SSB tabell 06265 — Igangsatte boliger](https://www.ssb.no/statbank/table/06265)*
 
 ## Sysselsetting — hvem er i jobb?
 
-Asker er kjent som en pendlerkommune der mange arbeider i Oslo, men kommunen har også et betydelig lokalt næringsliv — særlig innen teknologi, helse og finans. SSBs tabell 11616 kartlegger sysselsettingen i kommunen fordelt på kjønn og gir et innblikk i arbeidsmarkedets utvikling over tid.
+Asker er kjent som en pendlerkommune der mange arbeider i Oslo, men kommunen har også et betydelig lokalt næringsliv — særlig innen teknologi, helse og finans. SSBs tabell 11616 kartlegger sysselsettingen fordelt på kjønn og alder, og gir et innblikk i arbeidsmarkedets utvikling over tid.
 
-Sysselsettingsandelen i Asker ligger jevnt over landsgjennomsnittet, og gapet mellom menn og kvinner har tradisjonelt vært relativt lite sammenlignet med mange andre norske kommuner. Dette kan henge sammen med det høye utdanningsnivået i befolkningen, som gjør kvinner i Asker særlig attraktive i arbeidsmarkedet. Koronapandemien satte spor i 2020–2021, men sysselsettingen tok seg raskt opp igjen i etterkant.
+Sysselsettingsandelen i Asker ligger jevnt over landsgjennomsnittet. Koronapandemien satte spor i 2020–2021, men sysselsettingen tok seg raskt opp igjen.
 
 ```{r plot-sysselsetting}
 #| fig-height: 5
@@ -380,14 +557,11 @@ Sysselsettingsandelen i Asker ligger jevnt over landsgjennomsnittet, og gapet me
 #| dev: "png"
 
 if (exists("df3_trend") && !is.null(df3_trend) && nrow(df3_trend) > 0) {
-
-  # Aggreger på tvers av alder — sum per kjønn og år
   df3_plot <- df3_trend |>
     group_by(kjønn, date) |>
     summarise(value = sum(value, na.rm = TRUE), .groups = "drop") |>
     filter(!is.na(kjønn), kjønn != "Begge kjønn" | n_distinct(kjønn) == 1)
 
-  # Velg topp statistikkvariabel hvis kjønn-kolonnen ikke gir mening alene
   if (n_distinct(df3_plot$kjønn) < 2) {
     df3_plot <- df3_trend |>
       group_by(statistikkvariabel, date) |>
@@ -401,9 +575,8 @@ if (exists("df3_trend") && !is.null(df3_trend) && nrow(df3_trend) > 0) {
       pull(statistikkvariabel)
 
     df3_plot <- df3_plot |> filter(statistikkvariabel %in% topp_var)
-
-    n_grp   <- length(unique(df3_plot$statistikkvariabel))
-    farger3 <- MetBrewer::met.brewer("Hiroshige", n = max(n_grp, 3))
+    n_grp    <- length(unique(df3_plot$statistikkvariabel))
+    farger3  <- MetBrewer::met.brewer("Hiroshige", n = max(n_grp, 3))
 
     p <- ggplot(df3_plot, aes(x = date, y = value,
                                colour = statistikkvariabel,
@@ -416,9 +589,7 @@ if (exists("df3_trend") && !is.null(df3_trend) && nrow(df3_trend) > 0) {
       labs(
         title    = "Sysselsetting i Asker over tid",
         subtitle = "Antall sysselsatte etter statistikkvariabel",
-        x        = NULL,
-        y        = "Antall sysselsatte",
-        colour   = NULL,
+        x = NULL, y = "Antall sysselsatte", colour = NULL,
         caption  = "Kilde: SSB, tabell 11616"
       ) +
       theme_minimal(base_size = 12) +
@@ -433,7 +604,6 @@ if (exists("df3_trend") && !is.null(df3_trend) && nrow(df3_trend) > 0) {
     print(p)
   } else {
     farger3 <- MetBrewer::met.brewer("Hiroshige", n = 3)
-
     p <- ggplot(df3_plot, aes(x = date, y = value,
                                colour = kjønn, group = kjønn)) +
       geom_line(linewidth = 1.4) +
@@ -444,9 +614,7 @@ if (exists("df3_trend") && !is.null(df3_trend) && nrow(df3_trend) > 0) {
       labs(
         title    = "Sysselsetting i Asker etter kjønn",
         subtitle = "Kvinner og menn i arbeidsmarkedet — en jevn utvikling over tid",
-        x        = NULL,
-        y        = "Antall sysselsatte",
-        colour   = "Kjønn",
+        x = NULL, y = "Antall sysselsatte", colour = "Kjønn",
         caption  = "Kilde: SSB, tabell 11616"
       ) +
       theme_minimal(base_size = 12) +
@@ -462,13 +630,176 @@ if (exists("df3_trend") && !is.null(df3_trend) && nrow(df3_trend) > 0) {
 }
 ```
 
+Et slope-diagram (helningsdiagram) fanger opp endringsdynamikken bedre enn en vanlig tidsserie: det viser direkte hvor mye hvert kjønn har vokst fra første til siste tilgjengelige år.
+
+```{r plot-sysselsetting-slope}
+#| fig-height: 5
+#| fig-width: 7
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df3_slope") && !is.null(df3_slope) && nrow(df3_slope) > 0) {
+  kjønn_vals_s <- unique(df3_slope$kjønn)
+  farger_s     <- MetBrewer::met.brewer("Hiroshige", n = max(length(kjønn_vals_s), 3))
+  years_s      <- sort(unique(df3_slope$date))
+
+  p <- ggplot(df3_slope, aes(x = date, y = value,
+                              group = kjønn, colour = kjønn)) +
+    geom_line(linewidth = 2, alpha = 0.85) +
+    geom_point(size = 5.5) +
+    geom_text(
+      data = df3_slope |> filter(date == min(date)),
+      aes(label = paste0(kjønn, "\n", label_comma(big.mark = " ")(value))),
+      hjust = 1.15, size = 3.2, lineheight = 0.9
+    ) +
+    geom_text(
+      data = df3_slope |> filter(date == max(date)),
+      aes(label = label_comma(big.mark = " ")(value)),
+      hjust = -0.25, size = 3.2
+    ) +
+    scale_colour_manual(values = farger_s[seq_len(length(kjønn_vals_s))]) +
+    scale_x_date(
+      limits      = c(min(years_s) - 365 * 3, max(years_s) + 365 * 3),
+      breaks      = years_s,
+      date_labels = "%Y"
+    ) +
+    scale_y_continuous(labels = label_comma(big.mark = " ")) +
+    labs(
+      title    = "Endring i sysselsetting — Asker",
+      subtitle = paste0(
+        "Fra ", format(min(years_s), "%Y"),
+        " til ", format(max(years_s), "%Y"), " etter kjønn"
+      ),
+      x = NULL, y = "Antall sysselsatte", colour = NULL,
+      caption = "Kilde: SSB, tabell 11616"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      legend.position  = "none",
+      plot.title       = element_text(face = "bold", size = 14),
+      plot.subtitle    = element_text(colour = "grey40", size = 10),
+      plot.caption     = element_text(colour = "grey50", size = 8),
+      panel.grid.minor = element_blank()
+    )
+  print(p)
+}
+```
+
 *Kilde: [SSB tabell 11616 — Sysselsatte etter bostedskommune](https://www.ssb.no/statbank/table/11616)*
+
+## Kommuneøkonomi og velstand
+
+Asker er konsekvent blant Norges ti rikeste kommuner målt i gjennomsnittlig inntekt per innbygger. Den høye velstanden gjenspeiles i tre nøkkelindikatorer: lavt barnefattigdomsnivå, høy andel med høyere utdanning, og sterk sysselsetting blant begge kjønn.
+
+For å forstå kommunens økonomi i dybden er KOSTRA det viktigste verktøyet. KOSTRA-data gir innsikt i:
+
+- **Netto driftsresultat** — kommunens handlefrihet etter at løpende utgifter er dekket
+- **Driftsutgifter per sektor** — hvor mye brukes på barnehage, skole, helse og omsorg?
+- **Lånegjeld per innbygger** — kommunens finansielle bærekraft over tid
+- **Dekningsgrader** — andel barn i barnehage, eldre med hjemmetjenester osv.
+
+Askers KOSTRA-profil plasserer kommunen i gruppe 13 (store kommuner med høy inntekt), og kan sammenlignes direkte med kommuner som Bærum, Stavanger og Kristiansand. KOSTRA-data for Asker er tilgjengelig i SSB-tabeller som 12370 (driftsutgifter), 12206 (barnehage) og 12280 (grunnskole).
+
+Utdanningsnivå er en god proxy for kommunal velstand: høyt utdannede innbyggere har høyere inntekt, betaler mer skatt, og etterspør både mer og annerledes kommunale tjenester. Diagrammene nedenfor viser kjønnsforskjeller og strukturell utvikling i utdanningsnivå som bakgrunn for den bredere velstandsanalysen.
+
+```{r plot-dumbbell}
+#| fig-height: 6
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df4_dumbbell") && !is.null(df4_dumbbell) && nrow(df4_dumbbell) > 0 &&
+    ncol(df4_dumbbell) == 3) {
+  gender_cols <- names(df4_dumbbell)[-1]
+  col1 <- gender_cols[1]
+  col2 <- gender_cols[2]
+
+  df4_db <- df4_dumbbell |>
+    filter(complete.cases(.)) |>
+    filter(.data[[col1]] > 0 | .data[[col2]] > 0) |>
+    mutate(nivå = fct_reorder(nivå, .data[[col1]] + .data[[col2]]))
+
+  if (nrow(df4_db) > 0) {
+    df4_long <- df4_db |>
+      pivot_longer(cols = -nivå, names_to = "kjønn", values_to = "val")
+
+    farger_db    <- MetBrewer::met.brewer("Hiroshige", n = 5)
+    gender_colors <- setNames(c(farger_db[1], farger_db[3]), c(col1, col2))
+
+    p <- ggplot(df4_db) +
+      geom_segment(
+        aes(x = .data[[col1]], xend = .data[[col2]], y = nivå, yend = nivå),
+        colour = "grey65", linewidth = 1.5
+      ) +
+      geom_point(
+        data = df4_long,
+        aes(x = val, y = nivå, colour = kjønn),
+        size = 4.5
+      ) +
+      scale_colour_manual(values = gender_colors, name = NULL) +
+      scale_x_continuous(labels = label_comma(big.mark = " ")) +
+      labs(
+        title    = "Utdanningsnivå i Asker: kjønnsforskjeller",
+        subtitle = paste0("Siste tilgjengelige år — ",
+                          format(max(df4$date, na.rm = TRUE), "%Y")),
+        x = "Antall personer", y = NULL,
+        caption  = "Kilde: SSB, tabell 09429"
+      ) +
+      theme_minimal(base_size = 12) +
+      theme(
+        legend.position    = "bottom",
+        plot.title         = element_text(face = "bold", size = 14),
+        plot.subtitle      = element_text(colour = "grey40", size = 10),
+        plot.caption       = element_text(colour = "grey50", size = 8),
+        panel.grid.minor   = element_blank(),
+        panel.grid.major.y = element_blank()
+      )
+    print(p)
+  }
+}
+```
+
+Hvordan har sammensetningen av utdanningsnivåer endret seg over tid? Et flatediagram med relativ fordeling avslører om høyere utdanning vokser sin andel av befolkningen.
+
+```{r plot-utd-area}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df4_wide_time") && !is.null(df4_wide_time) && nrow(df4_wide_time) > 0) {
+  n_nivaa  <- n_distinct(df4_wide_time$nivå)
+  farger_a <- MetBrewer::met.brewer("Hiroshige", n = max(n_nivaa, 3))
+
+  p <- ggplot(df4_wide_time, aes(x = date, y = value, fill = nivå)) +
+    geom_area(position = "fill", alpha = 0.85) +
+    scale_fill_manual(values = farger_a[seq_len(n_nivaa)]) +
+    scale_x_date(date_labels = "%Y", date_breaks = "3 years") +
+    scale_y_continuous(labels = label_percent(), expand = expansion(mult = c(0, 0))) +
+    labs(
+      title    = "Utdanningssammensetning i Asker over tid",
+      subtitle = "Relativ fordeling per utdanningsnivå — andel av befolkning",
+      x = NULL, y = "Andel av befolkning", fill = NULL,
+      caption  = "Kilde: SSB, tabell 09429"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      legend.position  = "bottom",
+      legend.text      = element_text(size = 8),
+      plot.title       = element_text(face = "bold", size = 14),
+      plot.subtitle    = element_text(colour = "grey40", size = 10),
+      plot.caption     = element_text(colour = "grey50", size = 8),
+      panel.grid.minor = element_blank()
+    )
+  print(p)
+}
+```
+
+*Kilde: [SSB tabell 09429 — Befolkningens utdanningsnivå](https://www.ssb.no/statbank/table/09429)*
 
 ## Utdanningsnivå — en av landets mest velutdannede kommuner
 
-Asker skiller seg markant ut i nasjonal sammenheng når det gjelder utdanningsnivå. En uvanlig høy andel av befolkningen har fullført høyere utdanning, og kommunen scorer konsekvent høyt på alle relevante indikatorer. SSBs tabell 09429 bryter dette ned på utdanningsnivå og kjønn, og avslører interessante mønstre som sier noe om hvilke grupper som bor i Asker.
-
-En særlig iøyefallende trend er at kvinner i Asker i dag er minst like godt utdannet som menn — og på noen nivåer har passert dem. Dette samsvarer med den nasjonale "feminsieringen" av høyere utdanning, men er enda mer uttalt i velstående forstadskommuner som Asker. Andelen med kun grunnskole som høyeste fullførte utdanning er tilsvarende lav.
+Asker skiller seg markant ut i nasjonal sammenheng når det gjelder utdanningsnivå. En uvanlig høy andel av befolkningen har fullført høyere utdanning, og kommunen scorer konsekvent høyt på alle relevante indikatorer. En særlig iøyefallende trend er at kvinner i Asker i dag er minst like godt utdannet som menn — og på noen nivåer har passert dem.
 
 ```{r plot-utdanning}
 #| fig-height: 5
@@ -477,17 +808,14 @@ En særlig iøyefallende trend er at kvinner i Asker i dag er minst like godt ut
 #| dev: "png"
 
 if (exists("df4_latest") && !is.null(df4_latest) && nrow(df4_latest) > 0) {
-
   df4_plot <- df4_latest |>
     filter(value > 0) |>
     mutate(nivå = fct_reorder(nivå, value))
 
-  farger4 <- MetBrewer::met.brewer("Hiroshige",
-                                    n = max(nrow(df4_plot), 3))
+  farger4 <- MetBrewer::met.brewer("Hiroshige", n = max(nrow(df4_plot), 3))
 
   p <- ggplot(df4_plot, aes(x = value, y = nivå)) +
-    geom_segment(aes(xend = 0, yend = nivå),
-                 colour = "grey70", linewidth = 0.8) +
+    geom_segment(aes(xend = 0, yend = nivå), colour = "grey70", linewidth = 0.8) +
     geom_point(aes(colour = nivå), size = 5, show.legend = FALSE) +
     geom_text(aes(label = label_comma(big.mark = " ")(value)),
               hjust = -0.3, size = 3.2, colour = "grey25") +
@@ -498,19 +826,55 @@ if (exists("df4_latest") && !is.null(df4_latest) && nrow(df4_latest) > 0) {
     ) +
     labs(
       title    = "Utdanningsnivå i Asker",
-      subtitle = paste0("Fordeling av befolkningen etter høyeste fullførte utdanning — ",
+      subtitle = paste0("Fordeling av befolkningen — ",
                         format(max(df4$date, na.rm = TRUE), "%Y")),
-      x        = "Antall personer",
-      y        = NULL,
+      x = "Antall personer", y = NULL,
       caption  = "Kilde: SSB, tabell 09429"
     ) +
     theme_minimal(base_size = 12) +
     theme(
+      plot.title         = element_text(face = "bold", size = 14),
+      plot.subtitle      = element_text(colour = "grey40", size = 10),
+      plot.caption       = element_text(colour = "grey50", size = 8),
+      panel.grid.minor   = element_blank(),
+      panel.grid.major.y = element_blank()
+    )
+  print(p)
+}
+```
+
+Trendlinjene nedenfor avslører dynamikken: hvilke utdanningsnivåer vokser, og hvilke stagnerer?
+
+```{r plot-utdanning-trend}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df4_top4") && !is.null(df4_top4) && nrow(df4_top4) > 0) {
+  n_g4    <- n_distinct(df4_top4$nivå)
+  farger5 <- MetBrewer::met.brewer("Hiroshige", n = max(n_g4, 3))
+
+  p <- ggplot(df4_top4, aes(x = date, y = value, colour = nivå, group = nivå)) +
+    geom_line(linewidth = 1.2) +
+    geom_point(size = 2.2) +
+    scale_colour_manual(values = farger5[seq_len(n_g4)]) +
+    scale_x_date(date_labels = "%Y", date_breaks = "2 years") +
+    scale_y_continuous(labels = label_comma(big.mark = " ")) +
+    labs(
+      title    = "Utdanningstrender i Asker",
+      subtitle = "Utvikling av de fire største utdanningsgruppene over tid",
+      x = NULL, y = "Antall personer", colour = NULL,
+      caption  = "Kilde: SSB, tabell 09429"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      legend.position  = "bottom",
+      legend.text      = element_text(size = 8),
       plot.title       = element_text(face = "bold", size = 14),
       plot.subtitle    = element_text(colour = "grey40", size = 10),
       plot.caption     = element_text(colour = "grey50", size = 8),
-      panel.grid.minor = element_blank(),
-      panel.grid.major.y = element_blank()
+      panel.grid.minor = element_blank()
     )
   print(p)
 }
@@ -520,9 +884,7 @@ if (exists("df4_latest") && !is.null(df4_latest) && nrow(df4_latest) > 0) {
 
 ## Demografisk sammensetning — en aldrende, men ung kommune
 
-Asker er både en ung og en aldrende kommune — avhengig av hvilken del av kommunen man ser på. Barnefamilier dominerer i de etablerte villastrøkene rundt Asker sentrum og Heggedal, mens de eldre aldersgruppene er sterkere representert i de delene av kommunen som tidligere utgjorde Hurum. SSBs tabell 04469 gir en fullstendig oversikt over befolkningens alderssammensetning, og tegner et bilde av en kommune som må planlegge for både barnehageplasser og eldreomsorg i tiårene som kommer.
-
-Den demografiske utviklingen er avgjørende for kommunens økonomi og tjenestebehov. En aldrende befolkning krever mer fra helsetjenestene, mens mange barn og unge betyr press på skole og barnehage. Asker navigerer disse utfordringene med relativt solid økonomi, men KOSTRA-data viser at kommunen prioriterer nøye mellom sektorer.
+Asker er både en ung og en aldrende kommune — avhengig av hvilken del man ser på. Barnefamilier dominerer i de etablerte villastrøkene rundt Asker sentrum og Heggedal, mens eldre aldersgrupper er sterkere representert i de delene av kommunen som tidligere utgjorde Hurum. Den demografiske utviklingen er avgjørende for kommunens økonomi og tjenestebehov.
 
 ```{r plot-alder}
 #| fig-height: 5
@@ -531,61 +893,95 @@ Den demografiske utviklingen er avgjørende for kommunens økonomi og tjenestebe
 #| dev: "png"
 
 if (exists("df5_latest") && !is.null(df5_latest) && nrow(df5_latest) > 0) {
+  alders_levels2 <- c("0–9 år","10–19 år","20–29 år","30–39 år","40–49 år",
+                      "50–59 år","60–69 år","70–79 år","80 år og over")
 
-  # Lag aldersgrupper
   df5_plot <- df5_latest |>
     filter(alder != "alle aldre", !is.na(value)) |>
     mutate(
-      alder_num = suppressWarnings(as.integer(str_extract(alder, "^\\d+"))),
+      alder_num    = suppressWarnings(as.integer(str_extract(alder, "^\\d+"))),
       aldersgruppe = case_when(
-        is.na(alder_num)          ~ "Ukjent",
-        alder_num < 10            ~ "0–9 år",
-        alder_num < 20            ~ "10–19 år",
-        alder_num < 30            ~ "20–29 år",
-        alder_num < 40            ~ "30–39 år",
-        alder_num < 50            ~ "40–49 år",
-        alder_num < 60            ~ "50–59 år",
-        alder_num < 70            ~ "60–69 år",
-        alder_num < 80            ~ "70–79 år",
-        TRUE                      ~ "80 år og over"
+        is.na(alder_num) ~ "Ukjent",
+        alder_num < 10   ~ "0–9 år",
+        alder_num < 20   ~ "10–19 år",
+        alder_num < 30   ~ "20–29 år",
+        alder_num < 40   ~ "30–39 år",
+        alder_num < 50   ~ "40–49 år",
+        alder_num < 60   ~ "50–59 år",
+        alder_num < 70   ~ "60–69 år",
+        alder_num < 80   ~ "70–79 år",
+        TRUE             ~ "80 år og over"
       )
     ) |>
     group_by(aldersgruppe) |>
     summarise(value = sum(value, na.rm = TRUE), .groups = "drop") |>
     filter(aldersgruppe != "Ukjent") |>
-    mutate(aldersgruppe = factor(aldersgruppe, levels = c(
-      "0–9 år", "10–19 år", "20–29 år", "30–39 år", "40–49 år",
-      "50–59 år", "60–69 år", "70–79 år", "80 år og over"
-    )))
+    mutate(aldersgruppe = factor(aldersgruppe, levels = alders_levels2))
 
   n_grp5  <- nrow(df5_plot)
-  farger5 <- MetBrewer::met.brewer("Hiroshige", n = max(n_grp5, 3))
+  farger6 <- MetBrewer::met.brewer("Hiroshige", n = max(n_grp5, 3))
 
   p <- ggplot(df5_plot, aes(x = aldersgruppe, y = value, fill = aldersgruppe)) +
     geom_col(width = 0.75, show.legend = FALSE) +
     geom_text(aes(label = label_comma(big.mark = " ")(value)),
               vjust = -0.5, size = 3.2, colour = "grey25") +
-    scale_fill_manual(values = farger5[seq_len(n_grp5)]) +
+    scale_fill_manual(values = farger6[seq_len(n_grp5)]) +
     scale_y_continuous(
-      labels   = label_comma(big.mark = " "),
-      expand   = expansion(mult = c(0, 0.12))
+      labels = label_comma(big.mark = " "),
+      expand = expansion(mult = c(0, 0.12))
     ) +
     labs(
       title    = "Befolkning i Asker etter aldersgruppe",
-      subtitle = paste0("Aldersfordeling i siste tilgjengelige år — ",
+      subtitle = paste0("Aldersfordeling — ",
                         format(max(df5$date, na.rm = TRUE), "%Y")),
-      x        = "Aldersgruppe",
-      y        = "Antall innbyggere",
+      x = "Aldersgruppe", y = "Antall innbyggere",
       caption  = "Kilde: SSB, tabell 04469"
     ) +
     theme_minimal(base_size = 12) +
     theme(
-      axis.text.x      = element_text(angle = 30, hjust = 1, size = 9),
+      axis.text.x        = element_text(angle = 30, hjust = 1, size = 9),
+      plot.title         = element_text(face = "bold", size = 14),
+      plot.subtitle      = element_text(colour = "grey40", size = 10),
+      plot.caption       = element_text(colour = "grey50", size = 8),
+      panel.grid.minor   = element_blank(),
+      panel.grid.major.x = element_blank()
+    )
+  print(p)
+}
+```
+
+Et heatmap viser hvordan aldersfordelingen har *skiftet* over tid — og gjør det lettere å se demografiske bølger som følger kohorter gjennom aldersgruppene.
+
+```{r plot-alder-heatmap}
+#| fig-height: 5
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df5_heat") && !is.null(df5_heat) && nrow(df5_heat) > 0) {
+  hiroshige_pal <- MetBrewer::met.brewer("Hiroshige", n = 10, type = "continuous")
+
+  p <- ggplot(df5_heat, aes(x = year, y = aldersgruppe, fill = value)) +
+    geom_tile(colour = "white", linewidth = 0.4) +
+    scale_fill_gradientn(
+      colours = hiroshige_pal,
+      labels  = label_comma(big.mark = " "),
+      name    = "Antall\ninnbyggere"
+    ) +
+    scale_x_continuous(breaks = scales::pretty_breaks(n = 7)) +
+    labs(
+      title    = "Aldersfordeling i Asker over tid",
+      subtitle = "Antall innbyggere per aldersgruppe og år — heatmap",
+      x = "År", y = "Aldersgruppe",
+      caption  = "Kilde: SSB, tabell 04469"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
       plot.title       = element_text(face = "bold", size = 14),
       plot.subtitle    = element_text(colour = "grey40", size = 10),
       plot.caption     = element_text(colour = "grey50", size = 8),
-      panel.grid.minor = element_blank(),
-      panel.grid.major.x = element_blank()
+      panel.grid       = element_blank(),
+      legend.position  = "right"
     )
   print(p)
 }
@@ -595,17 +991,18 @@ if (exists("df5_latest") && !is.null(df5_latest) && nrow(df5_latest) > 0) {
 
 ## Nøkkelfunn
 
-- **Befolkningsvekst:** Asker har vokst jevnt siden sammenslåingen i 2020, og passerte 90 000 innbyggere. Innflytting er den viktigste vekstdriveren, men naturlig tilvekst bidrar positivt hvert år.
-- **Boligmønsteret endrer seg:** Eneboliger har historisk dominert boligbyggingen, men leilighetsbygg og rekkehus vinner terreng som følge av fortettingspolitikk rundt kollektivknutepunkter.
-- **Høy sysselsetting:** Asker-befolkningen er i stor grad yrkesaktiv. Sysselsettingsandelen er stabilt over landsgjennomsnittet, og kjønnsgapet er relativt lite.
-- **Utdanningseliten:** En uforholdsmessig stor andel av Askers befolkning har høyere utdanning. Kvinner er på noen nivåer i ferd med å passere menn.
+- **Befolkningsvekst:** Asker har vokst jevnt siden sammenslåingen i 2020 og passerte 90 000 innbyggere. Innflytting er den viktigste vekstdriveren, men naturlig tilvekst bidrar positivt hvert år.
+- **Boligmønsteret endrer seg:** Eneboliger har historisk dominert, men leilighetsbygg og rekkehus vinner terreng som følge av fortettingspolitikk rundt kollektivknutepunkter.
+- **Høy sysselsetting:** Sysselsettingsandelen er stabilt over landsgjennomsnittet, og kjønnsgapet er relativt lite — begge kjønn har økt sin deltakelse over tid.
+- **Velstand og utdanning henger sammen:** Asker er blant Norges rikeste kommuner. Det høye utdanningsnivået er både en årsak og en konsekvens av denne velstanden. Kvinner er på noen utdanningsnivåer i ferd med å passere menn.
+- **KOSTRA som verktøy:** For å forstå kommunens faktiske ressursbruk — barnehagedekning, skolepengebruk, eldreomsorg — er KOSTRA-tabellene uunnværlige. Asker ligger i referansegruppe 13 og kan sammenlignes direkte med Bærum og andre velstående kommuner.
 - **Aldrende befolkning:** Aldersgruppen 40–59 år er størst, og gruppen over 70 år vokser. Kommunen må planlegge for økt etterspørsel etter helse- og omsorgstjenester i de kommende tiårene.
-- **Barnefamilier holder stand:** Til tross for en generell aldring er det fortsatt et solid innslag av barn og unge (0–19 år), noe som opprettholder press på skole- og barnehagesektoren.
+- **Barnefamilier holder stand:** Til tross for en generell aldring er det fortsatt et solid innslag av barn og unge (0–19 år), som opprettholder press på skole- og barnehagesektoren.
 
 ## Avslutning
 
-Dataene fra SSB tegner bildet av en kommune som på mange måter lever opp til sitt rykte som en av Norges mest vellykkede: høyt utdannet befolkning, sterk sysselsetting, robust boligbygging og positiv befolkningsutvikling. Men bak de flotte gjennomsnittene skjuler det seg nyanser som er viktige for kommunens planleggere og politikere. Den demografiske dobbelutfordringen — mange barn og en voksende eldrebefolkning — stiller store krav til prioritering av kommunale tjenester.
+Dataene fra SSB tegner bildet av en kommune som på mange måter lever opp til sitt rykte som en av Norges mest vellykkede: høyt utdannet befolkning, sterk sysselsetting, robust boligbygging og positiv befolkningsutvikling. Men bak de flotte gjennomsnittene skjuler det seg nyanser som er viktige for kommunens planleggere og politikere.
 
-Kommunesammenslåingen i 2020 ga Asker en ny geografi og nye utfordringer. De gamle Hurum- og Røyken-områdene er i mange henseender svært forskjellige fra det opprinnelige Asker, og det tar tid å bygge en felles kommunal identitet og infrastruktur. KOSTRA-dataene, som vi ikke har gått i dybden på her, vil over tid avsløre om kommunen lykkes med å jevne ut tjenestenivået på tvers av de gamle kommunegrensene.
+Den demografiske dobbelutfordringen — mange barn og en voksende eldrebefolkning — stiller store krav til prioritering av kommunale tjenester. Her er KOSTRA det analytiske verktøyet som lar oss se om kommunen faktisk følger opp med ressurser: om netto driftsresultat holder seg positivt, om dekningsgrader i barnehage og eldreomsorg er gode nok, og om lånegjelden holdes på et bærekraftig nivå.
 
-Asker er, med andre ord, ikke bare en velstående soveby for Oslo-pendlere. Det er en kompleks og mangfoldig kommune i aktiv utvikling — og statistikken er verktøyet som lar oss følge denne utviklingen år for år.
+Kommunesammenslåingen i 2020 ga Asker en ny geografi og nye utfordringer. SSB- og KOSTRA-dataene vil over tid avsløre om kommunen lykkes med å jevne ut tjenestenivået på tvers av de gamle kommunegrensene — og om de strukturelle fortrinnene (høy utdanning, høy sysselsetting, velstående befolkning) oversettes til bedre tjenester for alle innbyggere, uavhengig av hvilken del av kommunen de bor i.
