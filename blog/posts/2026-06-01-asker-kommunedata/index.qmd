@@ -13,13 +13,13 @@ Asker er en av Norges mest vekstkraftige kommuner, og siden sammenslåingen av g
 
 Denne analysen bygger på to komplementære datakilder fra Statistisk sentralbyrå. Den første er SSBs kommunestatistikk, som dekker alt fra befolkningsbevegelser og boligbygging til sysselsetting og utdanning — publisert som årsserier i SSBs statistikkbank. Den andre er KOSTRA (KOmmune-STat-RApportering), et nasjonalt rapporteringssystem der norske kommuner hvert år rapporterer regnskaps- og tjenestedata til staten.
 
-KOSTRA-data er tilgjengelig gjennom det samme SSB-API-et som øvrig statistikk, via pakken `PxWebApiData` i R. Tabellene har typisk ID-er i 12xxx-serien, og datauttrekk filtreres på kommunenummer (3024 for nye Asker):
+KOSTRA-data er tilgjengelig gjennom det samme SSB-API-et som øvrig statistikk, via pakken `PxWebApiData` i R. Tabellene har typisk ID-er i 12xxx-serien, og datauttrekk filtreres på kommunenummer (3203 for nye Asker):
 
 ```r
 library(PxWebApiData)
 ApiData(
   "https://data.ssb.no/api/v0/no/table/12370",
-  Region = list(filter = "item", values = "3024"),
+  Region = list(filter = "item", values = "3203"),
   Tid    = list(filter = "top", values = 10)
 )
 ```
@@ -46,7 +46,7 @@ df1 <- NULL
 tryCatch({
   raw <- ApiData(
     "https://data.ssb.no/api/v0/no/table/06913",
-    Region = list(filter = "item", values = "Asker"),
+    Region = list(filter = "item", values = "3203"),
     Tid = list(filter = "top", values = 40)
   )
   tmp          <- raw[[1]]
@@ -71,7 +71,7 @@ df2 <- NULL
 tryCatch({
   raw <- ApiData(
     "https://data.ssb.no/api/v0/no/table/06265",
-    Region = list(filter = "item", values = "Asker"),
+    Region = list(filter = "item", values = "3203"),
     BygnType = TRUE,
     Tid = list(filter = "top", values = 40)
   )
@@ -97,7 +97,7 @@ df3 <- NULL
 tryCatch({
   raw <- ApiData(
     "https://data.ssb.no/api/v0/no/table/11616",
-    Region = list(filter = "item", values = "Asker"),
+    Region = list(filter = "item", values = "3203"),
     Kjonn = TRUE,
     Alder = TRUE,
     Tid = list(filter = "top", values = 40)
@@ -124,7 +124,7 @@ df4 <- NULL
 tryCatch({
   raw <- ApiData(
     "https://data.ssb.no/api/v0/no/table/09429",
-    Region = list(filter = "item", values = "Asker"),
+    Region = list(filter = "item", values = "3203"),
     Nivaa = TRUE,
     Kjonn = TRUE,
     Tid = list(filter = "top", values = 40)
@@ -151,7 +151,7 @@ df5 <- NULL
 tryCatch({
   raw <- ApiData(
     "https://data.ssb.no/api/v0/no/table/04469",
-    Region = list(filter = "item", values = "Asker"),
+    Region = list(filter = "item", values = "3203"),
     Alder = TRUE,
     Tid = list(filter = "top", values = 40)
   )
@@ -715,7 +715,7 @@ if (exists("df4_dumbbell") && !is.null(df4_dumbbell) && nrow(df4_dumbbell) > 0 &
   col2 <- gender_cols[2]
 
   df4_db <- df4_dumbbell |>
-    filter(complete.cases(.)) |>
+    drop_na() |>
     filter(.data[[col1]] > 0 | .data[[col2]] > 0) |>
     mutate(nivå = fct_reorder(nivå, .data[[col1]] + .data[[col2]]))
 
