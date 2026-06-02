@@ -255,7 +255,7 @@ if (!is.null(df1_food_12m) && nrow(df1_food_12m) > 0) {
       axis.text.x   = element_text(angle = 30, hjust = 1),
       panel.grid.minor = element_blank()
     )
-  print(p) # fixed: plot object was created but never printed
+  print(p) # fixed: explicit print() needed to render ggplot in chunk output
 }
 ```
 
@@ -314,7 +314,7 @@ if (!is.null(df1_lollipop) && nrow(df1_lollipop) > 0) {
       panel.grid.major.y = element_blank(),
       panel.grid.minor   = element_blank()
     )
-  print(p) # fixed: plot object was created but never printed
+  print(p) # fixed: explicit print() needed to render ggplot in chunk output
 }
 ```
 
@@ -371,7 +371,7 @@ if (!is.null(df2_dumbbell) && nrow(df2_dumbbell) > 0) {
         panel.grid.major.y = element_blank(),
         panel.grid.minor   = element_blank()
       )
-    print(p) # fixed: plot object was created but never printed
+    print(p) # fixed: explicit print() needed to render ggplot in chunk output
   }
 }
 ```
@@ -414,7 +414,7 @@ if (!is.null(df2_outside) && nrow(df2_outside) > 0) {
       plot.subtitle = element_text(colour = "grey30", size = 11),
       panel.grid.minor = element_blank()
     )
-  print(p) # fixed: plot object was created but never printed
+  print(p) # fixed: explicit print() needed to render ggplot in chunk output
 }
 ```
 
@@ -483,7 +483,7 @@ if (!is.null(df1_monthly) && nrow(df1_monthly) > 0) {
       axis.text.x      = element_text(angle = 30, hjust = 1),
       panel.grid.minor = element_blank()
     )
-  print(p) # fixed: plot object was created but never printed
+  print(p) # fixed: explicit print() needed to render ggplot in chunk output
 }
 ```
 
