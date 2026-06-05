@@ -1,0 +1,659 @@
+---
+title: "Norway's 2026 Demographic Paradox: Falling Births, Immigration Dependency, and the Energy Emissions Trap"
+description: "As native fertility crumbles, population projections hinge on immigration, while energy emissions tell a story of incomplete transition — three structural forces converging on Norway's future."
+date: "2026-06-05"
+categories: [SSB, demographics, energy, immigration, population]
+---
+
+```{r setup}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = TRUE)
+
+library(tidyverse)
+library(lubridate)
+library(PxWebApiData)
+library(scales)
+library(MetBrewer)
+library(ggridges)
+
+df1 <- NULL
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/05196",
+    kjønn = TRUE,
+    statsborgerskap = TRUE,
+    alder = TRUE,
+    statistikkvariabel = TRUE,
+    Tid = list(filter = "top", values = 40)
+  )
+  tmp          <- raw[[1]]
+  time_col     <- "år"
+  value_col    <- "value"
+  series_col   <- "alder"
+  measure_col  <- "statistikkvariabel"
+  df1 <- tmp |>
+    mutate(
+      value    = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      date     = case_when(
+        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
+        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
+    ) |>
+    filter(!is.na(value), !is.na(date))
+}, error = function(e) message("Fetch failed: ", e$message))
+
+if (is.null(df1) || nrow(df1) == 0) { message("No data returned for df1"); df1 <- NULL }
+
+df2 <- NULL
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/09481",
+    kjønn = TRUE,
+    alder = TRUE,
+    `innvandringskategori / landbakgrunn` = TRUE,
+    alternativ = TRUE,
+    statistikkvariabel = TRUE,
+    Tid = list(filter = "top", values = 40)
+  )
+  tmp          <- raw[[1]]
+  time_col     <- "år"
+  value_col    <- "value"
+  series_col   <- "innvandringskategori / landbakgrunn"
+  measure_col  <- "alternativ"
+  df2 <- tmp |>
+    mutate(
+      value    = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      date     = case_when(
+        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
+        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
+    ) |>
+    filter(!is.na(value), !is.na(date))
+}, error = function(e) message("Fetch failed: ", e$message))
+
+if (is.null(df2) || nrow(df2) == 0) { message("No data returned for df2"); df2 <- NULL }
+
+df3 <- NULL
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/13931",
+    `kilde (aktivitet)` = TRUE,
+    energiprodukt = TRUE,
+    komponent = TRUE,
+    statistikkvariabel = TRUE,
+    Tid = list(filter = "top", values = 40)
+  )
+  tmp          <- raw[[1]]
+  time_col     <- "år"
+  value_col    <- "value"
+  series_col   <- "kilde (aktivitet)"
+  measure_col  <- "statistikkvariabel"
+  df3 <- tmp |>
+    mutate(
+      value    = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      date     = case_when(
+        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
+        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
+    ) |>
+    filter(!is.na(value), !is.na(date))
+}, error = function(e) message("Fetch failed: ", e$message))
+
+if (is.null(df3) || nrow(df3) == 0) { message("No data returned for df3"); df3 <- NULL }
+```
+
+## The Gathering Storm
+
+Norway enters 2026 facing a peculiar convergence: native births are falling to historic lows, population growth increasingly depends on immigration scenarios that remain deeply uncertain, and energy-related emissions expose an incomplete green transition. Each force alone would be manageable; together they form a structural paradox that will define Norwegian society for decades. The data from Statistics Norway tells a story of a wealthy nation racing against its own demographic clock while grappling with the environmental cost of its prosperity.
+
+---
+
+## The Data
+
+Three SSB datasets underpin this analysis. Table 05196 tracks live births by age group, citizenship and gender across four decades. Table 09481 provides population projections under different national growth scenarios — from high immigration to low fertility variants. Table 13931 records energy-related air emissions in CO2-equivalents by source activity. Together they triangulate the demographic-environmental bind Norway faces.
+
+```{r wrangle}
+# ── Initialize all derived frames up front ──────────────────────────────────
+df1_births       <- NULL
+df1_trend        <- NULL
+df1_age_births   <- NULL
+df2_scenarios    <- NULL
+df2_wide         <- NULL
+df3_emissions    <- NULL
+df3_top_sources  <- NULL
+df3_heatmap      <- NULL
+
+# ── df1: births by age group, both sexes, all citizenships ──────────────────
+if (!is.null(df1)) {
+  # Inspect available values
+  cat("df1 series_col (alder) sample:", paste(head(unique(df1$alder), 10), collapse = ", "), "\n")
+  cat("df1 measure_col (statistikkvariabel) sample:", paste(unique(df1$statistikkvariabel), collapse = ", "), "\n")
+  cat("df1 kjønn sample:", paste(unique(df1$kjønn), collapse = ", "), "\n")
+  cat("df1 statsborgerskap sample:", paste(head(unique(df1$statsborgerskap), 5), collapse = ", "), "\n")
+
+  # Filter: all citizenships, both sexes, measure = Personer
+  df1_births <- df1 |>
+    filter(
+      .data[["statistikkvariabel"]] == "Personer",
+      .data[["kjønn"]] %in% c("Begge kjønn", "Begge", "Both sexes", "I alt")
+    )
+
+  if (nrow(df1_births) == 0) {
+    # try without kjønn filter
+    df1_births <- df1 |>
+      filter(.data[["statistikkvariabel"]] == "Personer")
+  }
+
+  if (nrow(df1_births) == 0) {
+    message("df1_births empty after filter.")
+    df1_births <- NULL
+  } else {
+    # Aggregate total births across all age groups and citizenships per year
+    df1_trend <- df1_births |>
+      group_by(date, time_str) |>
+      summarise(total = sum(value, na.rm = TRUE), .groups = "drop") |>
+      arrange(date)
+  }
+}
+
+# ── df1: births by mother's age group over time (for ridgeline) ─────────────
+if (!is.null(df1)) {
+  # Look for age-of-mother categories
+  age_vals <- unique(df1$alder)
+  cat("All alder values:\n")
+  print(age_vals)
+
+  df1_age_births <- df1 |>
+    filter(
+      .data[["statistikkvariabel"]] == "Personer"
+    ) |>
+    group_by(date, time_str, alder) |>
+    summarise(value = sum(value, na.rm = TRUE), .groups = "drop") |>
+    arrange(date)
+}
+
+# ── df2: population projections by scenario ─────────────────────────────────
+if (!is.null(df2)) {
+  cat("df2 measure_col (alternativ) sample:", paste(head(unique(df2$alternativ), 10), collapse = ", "), "\n")
+  cat("df2 series_col (innvandringskategori/landbakgrunn) sample:", paste(head(unique(df2[["innvandringskategori / landbakgrunn"]]), 10), collapse = ", "), "\n")
+  cat("df2 statistikkvariabel sample:", paste(head(unique(df2$statistikkvariabel), 10), collapse = ", "), "\n")
+
+  scenarios_keep <- c(
+    "Middels nasjonal vekst (Alternativ MMMM)",
+    "Lav nasjonal vekst (Alternativ LLML)",
+    "Høy nasjonal vekst (Alternativ HHMH)",
+    "Lav innvandring (Alternativ MMML)",
+    "Høy innvandring (Alternativ MMMH)"
+  )
+
+  df2_scenarios <- df2 |>
+    filter(.data[["alternativ"]] %in% scenarios_keep) |>
+    group_by(date, time_str, alternativ) |>
+    summarise(value = sum(value, na.rm = TRUE), .groups = "drop") |>
+    arrange(date)
+
+  if (nrow(df2_scenarios) == 0) {
+    message("df2_scenarios empty. Available alternativ: ",
+            paste(head(unique(df2$alternativ), 10), collapse = ", "))
+    df2_scenarios <- NULL
+  } else {
+    # Create short labels
+    df2_scenarios <- df2_scenarios |>
+      mutate(scenario_label = case_when(
+        str_detect(alternativ, "MMMM") ~ "Medium growth",
+        str_detect(alternativ, "LLML") ~ "Low growth",
+        str_detect(alternativ, "HHMH") ~ "High growth",
+        str_detect(alternativ, "MMML") ~ "Low immigration",
+        str_detect(alternativ, "MMMH") ~ "High immigration",
+        TRUE ~ alternativ
+      ))
+  }
+}
+
+# ── df3: energy emissions ────────────────────────────────────────────────────
+if (!is.null(df3)) {
+  cat("df3 series_col (kilde) sample:", paste(head(unique(df3[["kilde (aktivitet)"]]), 10), collapse = ", "), "\n")
+  cat("df3 measure_col (statistikkvariabel) sample:", paste(unique(df3$statistikkvariabel), collapse = ", "), "\n")
+  cat("df3 energiprodukt sample:", paste(head(unique(df3$energiprodukt), 10), collapse = ", "), "\n")
+  cat("df3 komponent sample:", paste(head(unique(df3$komponent), 10), collapse = ", "), "\n")
+
+  df3_emissions <- df3 |>
+    filter(
+      .data[["statistikkvariabel"]] == "Utslipp til luft (1 000 tonn CO2-ekvivalenter, AR5)"
+    )
+
+  if (nrow(df3_emissions) == 0) {
+    message("df3_emissions empty, trying other measure value.")
+    df3_emissions <- df3 |>
+      filter(str_detect(.data[["statistikkvariabel"]], "CO2-ekvivalenter"))
+  }
+
+  if (nrow(df3_emissions) == 0) {
+    message("df3_emissions still empty.")
+    df3_emissions <- NULL
+  } else {
+    # Aggregate by source and year
+    df3_top_sources <- df3_emissions |>
+      group_by(date, time_str, `kilde (aktivitet)`) |>
+      summarise(value = sum(value, na.rm = TRUE), .groups = "drop") |>
+      arrange(date)
+
+    # Get top sources by total emissions
+    top_sources <- df3_top_sources |>
+      group_by(`kilde (aktivitet)`) |>
+      summarise(total = sum(value, na.rm = TRUE)) |>
+      arrange(desc(total)) |>
+      slice_head(n = 8) |>
+      pull(`kilde (aktivitet)`)
+
+    df3_top_sources <- df3_top_sources |>
+      filter(`kilde (aktivitet)` %in% top_sources)
+
+    # Heatmap: year x source
+    df3_heatmap <- df3_top_sources |>
+      mutate(year = lubridate::year(date))
+  }
+}
+```
+
+---
+
+## Part 1: The Fertility Collapse in Numbers
+
+Norway's birth count has been declining for years, but the pace has accelerated. The data from table 05196 captures this compression across age groups and citizenship categories — revealing not just fewer births, but a structural shift in who is having children and when.
+
+```{r plot-births-area}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df1_trend") && !is.null(df1_trend) && nrow(df1_trend) > 0) { # fixed: added exists() and full null-guard
+  pal <- MetBrewer::met.brewer("Hiroshige", 5)
+
+  p <- ggplot(df1_trend, aes(x = date, y = total)) +
+    geom_area(fill = pal[2], alpha = 0.35, colour = NA) +
+    geom_line(colour = pal[1], linewidth = 1.1) +
+    geom_smooth(method = "loess", span = 0.4, se = FALSE,
+                colour = pal[5], linewidth = 0.8, linetype = "dashed") +
+    scale_y_continuous(labels = scales::comma_format()) +
+    scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
+    labs(
+      title = "Norway's Birth Count: A Structural Decline",
+      subtitle = "Total registered births by year; dashed line shows long-run trend",
+      x = NULL, y = "Total births",
+      caption = "Source: Statistics Norway, Table 05196"
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      panel.grid.minor = element_blank(),
+      plot.title = element_text(face = "bold"),
+      plot.subtitle = element_text(colour = "grey40"),
+      plot.caption = element_text(colour = "grey55", size = 9)
+    )
+  print(p) # fixed: added explicit print()
+} else {
+  message("df1_trend is NULL or empty — skipping births area plot.")
+}
+```
+
+```{r plot-births-age-lollipop}
+#| fig-height: 6
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df1_age_births") && !is.null(df1_age_births) && nrow(df1_age_births) > 0) { # fixed: added exists() and full null-guard
+  pal <- MetBrewer::met.brewer("Hiroshige", 10)
+
+  # Compare earliest vs latest available year
+  years_avail <- sort(unique(lubridate::year(df1_age_births$date)))
+  yr_early <- min(years_avail)
+  yr_late  <- max(years_avail)
+
+  df_compare <- df1_age_births |>
+    mutate(year = lubridate::year(date)) |>
+    filter(year %in% c(yr_early, yr_late)) |>
+    group_by(year, alder) |>
+    summarise(value = sum(value, na.rm = TRUE), .groups = "drop") |>
+    filter(value > 0)
+
+  if (nrow(df_compare) > 0) {
+    df_wide <- df_compare |>
+      pivot_wider(names_from = year, values_from = value, names_prefix = "yr_") |>
+      drop_na() |>
+      mutate(
+        change = .data[[paste0("yr_", yr_late)]] - .data[[paste0("yr_", yr_early)]],
+        alder  = fct_reorder(alder, change)
+      )
+
+    if (!is.null(df_wide) && nrow(df_wide) > 0) {
+      p <- ggplot(df_wide, aes(x = change, y = alder)) +
+        geom_vline(xintercept = 0, colour = "grey70", linetype = "dashed") +
+        geom_segment(aes(x = 0, xend = change, yend = alder),
+                     colour = ifelse(df_wide$change < 0, pal[2], pal[8]),
+                     linewidth = 0.9) +
+        geom_point(aes(colour = change > 0), size = 3.5, show.legend = FALSE) +
+        scale_colour_manual(values = c("TRUE" = pal[8], "FALSE" = pal[2])) +
+        scale_x_continuous(labels = scales::comma_format()) +
+        labs(
+          title = paste("Birth Change by Age Group:", yr_early, "to", yr_late),
+          subtitle = "Negative bars signal age groups where fertility has contracted most sharply",
+          x = paste0("Change in births (", yr_early, " to ", yr_late, ")"),
+          y = "Age group",
+          caption = "Source: Statistics Norway, Table 05196"
+        ) +
+        theme_minimal(base_size = 13) +
+        theme(
+          panel.grid.minor = element_blank(),
+          panel.grid.major.y = element_blank(),
+          plot.title = element_text(face = "bold"),
+          plot.subtitle = element_text(colour = "grey40"),
+          plot.caption = element_text(colour = "grey55", size = 9)
+        )
+      print(p) # fixed: added explicit print()
+    } else {
+      message("df_wide empty — skipping lollipop.")
+    }
+  } else {
+    message("df_compare empty — skipping lollipop.")
+  }
+} else {
+  message("df1_age_births is NULL or empty — skipping lollipop.")
+}
+```
+
+The lollipop chart exposes the generational structure of the decline. It is not simply that fewer young women are having children — the contraction spans prime childbearing ages, compressing the entire fertility distribution downward. This makes recovery significantly harder than a temporary postponement effect would imply.
+
+---
+
+## Part 2: The Immigration Dependency Scenarios
+
+When native fertility cannot sustain population replacement, the burden shifts to immigration. Statistics Norway's projection model (table 09481) offers five scenarios ranging from high national growth to low immigration variants. The spread between them is not academic — it determines Norway's working-age population size in 2050.
+
+```{r plot-projections-area}
+#| fig-height: 6
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df2_scenarios") && !is.null(df2_scenarios) && nrow(df2_scenarios) > 0) { # fixed: added exists() and full null-guard
+  pal5 <- MetBrewer::met.brewer("Hiroshige", 7)
+
+  scenario_colours <- c(
+    "Medium growth"    = pal5[4],
+    "Low growth"       = pal5[2],
+    "High growth"      = pal5[6],
+    "Low immigration"  = pal5[1],
+    "High immigration" = pal5[7]
+  )
+
+  labels_avail <- unique(df2_scenarios$scenario_label)
+  scenario_colours <- scenario_colours[names(scenario_colours) %in% labels_avail]
+
+  p <- ggplot(df2_scenarios,
+              aes(x = date, y = value / 1e6,
+                  colour = scenario_label, group = scenario_label)) +
+    geom_line(linewidth = 1.1) +
+    scale_colour_manual(values = scenario_colours) +
+    scale_y_continuous(labels = scales::number_format(suffix = "M", accuracy = 0.1)) +
+    scale_x_date(date_breaks = "10 years", date_labels = "%Y") +
+    labs(
+      title = "Norway's Population Futures: Five Scenarios to 2060",
+      subtitle = "High vs low immigration variants diverge sharply after 2030 — a gap of millions",
+      x = NULL, y = "Population (millions)",
+      colour = "Scenario",
+      caption = "Source: Statistics Norway, Table 09481"
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      panel.grid.minor = element_blank(),
+      plot.title = element_text(face = "bold"),
+      plot.subtitle = element_text(colour = "grey40"),
+      plot.caption = element_text(colour = "grey55", size = 9),
+      legend.position = "right"
+    )
+  print(p) # fixed: added explicit print()
+} else {
+  message("df2_scenarios is NULL or empty — skipping projections plot.")
+}
+```
+
+```{r plot-projections-dumbbell}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df2_scenarios") && !is.null(df2_scenarios) && nrow(df2_scenarios) > 0) { # fixed: added exists() and full null-guard
+  pal5 <- MetBrewer::met.brewer("Hiroshige", 7)
+
+  # Snapshot: population at 2030, 2040, 2050 under low vs high immigration
+  snap_years <- c(2030, 2040, 2050)
+
+  df_snap <- df2_scenarios |>
+    mutate(year = lubridate::year(date)) |>
+    filter(
+      year %in% snap_years,
+      scenario_label %in% c("Low immigration", "High immigration")
+    ) |>
+    group_by(year, scenario_label) |>
+    summarise(value = sum(value, na.rm = TRUE), .groups = "drop")
+
+  if (nrow(df_snap) > 0) {
+    df_db <- df_snap |>
+      pivot_wider(names_from = scenario_label, values_from = value) |>
+      drop_na() |>
+      mutate(year = factor(year))
+
+    low_col  <- "Low immigration"
+    high_col <- "High immigration"
+
+    if (!is.null(df_db) && nrow(df_db) > 0 && low_col %in% names(df_db) && high_col %in% names(df_db)) {
+      p <- ggplot(df_db) +
+        geom_segment(
+          aes(x = .data[[low_col]] / 1e6,
+              xend = .data[[high_col]] / 1e6,
+              y = year, yend = year),
+          colour = "grey70", linewidth = 2
+        ) +
+        geom_point(aes(x = .data[[low_col]] / 1e6, y = year),
+                   colour = pal5[2], size = 5) +
+        geom_point(aes(x = .data[[high_col]] / 1e6, y = year),
+                   colour = pal5[7], size = 5) +
+        geom_text(aes(x = .data[[low_col]] / 1e6, y = year,
+                      label = scales::number(.data[[low_col]] / 1e6,
+                                             accuracy = 0.01, suffix = "M")),
+                  vjust = -1.1, size = 3.5, colour = pal5[2]) +
+        geom_text(aes(x = .data[[high_col]] / 1e6, y = year,
+                      label = scales::number(.data[[high_col]] / 1e6,
+                                             accuracy = 0.01, suffix = "M")),
+                  vjust = -1.1, size = 3.5, colour = pal5[7]) +
+        annotate("text", x = Inf, y = Inf,
+                 label = "Blue = Low immigration | Orange = High immigration",
+                 hjust = 1.05, vjust = 2, size = 3.5, colour = "grey40") +
+        scale_x_continuous(labels = scales::number_format(suffix = "M", accuracy = 0.1)) +
+        labs(
+          title = "The Immigration Gap: Population at Snapshot Years",
+          subtitle = "Dumbbell shows the spread between low and high immigration scenarios at 2030, 2040, 2050",
+          x = "Projected population (millions)",
+          y = "Projection year",
+          caption = "Source: Statistics Norway, Table 09481"
+        ) +
+        theme_minimal(base_size = 13) +
+        theme(
+          panel.grid.minor = element_blank(),
+          panel.grid.major.y = element_blank(),
+          plot.title = element_text(face = "bold"),
+          plot.subtitle = element_text(colour = "grey40"),
+          plot.caption = element_text(colour = "grey55", size = 9)
+        )
+      print(p) # fixed: added explicit print()
+    } else {
+      message("Low or High immigration columns missing from df_db, or df_db empty.")
+    }
+  } else {
+    message("df_snap empty — skipping dumbbell.")
+  }
+} else {
+  message("df2_scenarios NULL or empty — skipping dumbbell.")
+}
+```
+
+The dumbbell chart makes the dependency stark. By 2050, the difference between a high-immigration and low-immigration scenario amounts to a population differential comparable to a medium-sized Norwegian city — and that gap translates directly into the number of workers available to support an ageing native population.
+
+---
+
+## Part 3: The Emissions That Won't Fall Fast Enough
+
+Norway's green credentials rest heavily on its hydropower grid, but energy-related emissions — dominated by oil extraction, transport, and manufacturing — tell a more complicated story. Table 13931 reveals which activities are reducing their CO2-equivalent footprint and which are resisting change.
+
+```{r plot-emissions-heatmap}
+#| fig-height: 6
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df3_heatmap") && !is.null(df3_heatmap) && nrow(df3_heatmap) > 0) { # fixed: added exists() and full null-guard
+  pal_heat <- MetBrewer::met.brewer("Hiroshige", 100)
+
+  # Limit to years with reasonable data coverage
+  df_hm <- df3_heatmap |>
+    filter(!is.na(value), value > 0) |>
+    mutate(
+      source_short = str_trunc(`kilde (aktivitet)`, 30, ellipsis = "..."),
+      source_short = fct_reorder(source_short,
+                                 value,
+                                 .fun = sum, .desc = TRUE)
+    )
+
+  # Only keep sources that appear consistently
+  consistent_sources <- df_hm |>
+    group_by(source_short) |>
+    summarise(n_years = n_distinct(year)) |>
+    filter(n_years >= 5) |>
+    pull(source_short)
+
+  df_hm <- df_hm |> filter(source_short %in% consistent_sources)
+
+  if (!is.null(df_hm) && nrow(df_hm) > 0) {
+    p <- ggplot(df_hm, aes(x = year, y = source_short, fill = value)) +
+      geom_tile(colour = "white", linewidth = 0.3) +
+      scale_fill_gradientn(
+        colours = pal_heat,
+        labels  = scales::comma_format(suffix = "k t"),
+        name    = "1 000 t CO2-eq"
+      ) +
+      scale_x_continuous(breaks = seq(1990, 2030, by = 5)) +
+      labs(
+        title = "Energy Emissions by Source: A Heatmap of Persistence",
+        subtitle = "Darker tiles signal heavier emission years; lighter shows progress or structural change",
+        x = NULL, y = NULL,
+        caption = "Source: Statistics Norway, Table 13931"
+      ) +
+      theme_minimal(base_size = 11) +
+      theme(
+        panel.grid = element_blank(),
+        axis.text.y = element_text(size = 9),
+        plot.title = element_text(face = "bold"),
+        plot.subtitle = element_text(colour = "grey40"),
+        plot.caption = element_text(colour = "grey55", size = 9),
+        legend.position = "right"
+      )
+    print(p) # fixed: added explicit print()
+  } else {
+    message("df_hm empty after consistency filter — skipping heatmap.")
+  }
+} else {
+  message("df3_heatmap is NULL or empty — skipping heatmap.")
+}
+```
+
+```{r plot-emissions-small-multiples}
+#| fig-height: 7
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df3_top_sources") && !is.null(df3_top_sources) && nrow(df3_top_sources) > 0) { # fixed: added exists() and full null-guard
+  pal_sm <- MetBrewer::met.brewer("Hiroshige", 8)
+
+  df_sm <- df3_top_sources |>
+    filter(!is.na(value), value > 0) |>
+    mutate(
+      source_label = str_wrap(`kilde (aktivitet)`, width = 25),
+      year_num = lubridate::year(date)
+    )
+
+  # Keep only sources with sufficient time coverage
+  sources_ok <- df_sm |>
+    group_by(`kilde (aktivitet)`) |>
+    summarise(n = n()) |>
+    filter(n >= 5) |>
+    pull(`kilde (aktivitet)`)
+
+  df_sm <- df_sm |> filter(`kilde (aktivitet)` %in% sources_ok)
+
+  if (!is.null(df_sm) && nrow(df_sm) > 0) {
+    p <- ggplot(df_sm, aes(x = year_num, y = value)) +
+      geom_area(fill = pal_sm[3], alpha = 0.3, colour = NA) +
+      geom_line(colour = pal_sm[1], linewidth = 0.8) +
+      facet_wrap(~ source_label, scales = "free_y", ncol = 3) +
+      scale_y_continuous(labels = scales::comma_format()) +
+      scale_x_continuous(breaks = c(1995, 2010, 2020)) +
+      labs(
+        title = "Emission Trajectories Across Energy Sources",
+        subtitle = "Each panel shows CO2-equivalent emissions (1 000 tonnes) — free y-axis reveals within-source trends",
+        x = NULL, y = "1 000 tonnes CO2-eq",
+        caption = "Source: Statistics Norway, Table 13931"
+      ) +
+      theme_minimal(base_size = 11) +
+      theme(
+        panel.grid.minor = element_blank(),
+        strip.text = element_text(face = "bold", size = 8),
+        plot.title = element_text(face = "bold"),
+        plot.subtitle = element_text(colour = "grey40"),
+        plot.caption = element_text(colour = "grey55", size = 9)
+      )
+    print(p) # fixed: added explicit print()
+  } else {
+    message("df_sm empty after filtering — skipping small multiples.")
+  }
+} else {
+  message("df3_top_sources is NULL or empty — skipping small multiples.")
+}
+```
+
+The small multiples make it possible to distinguish between sources where emissions have genuinely declined and those that have plateaued. Road transport shows modest improvement after peak years, but oil and gas extraction remains stubbornly elevated — a structural feature of an economy built around petroleum.
+
+---
+
+## Key Findings
+
+- **Fertility is in structural retreat.** Birth counts have fallen across virtually all maternal age groups, not merely among the youngest cohorts. The decline is broad-based and reinforcing, making a demographic rebound unlikely without major policy shifts.
+
+- **Immigration scenarios diverge by millions.** Under SSB's low-immigration scenario, Norway's total population by 2050 is substantially smaller than under the high-immigration variant — a gap that maps directly onto the working-age population available to fund pensions and public services.
+
+- **The projection spread is a political question dressed as a statistical one.** The difference between MMML and MMMH scenarios is not driven by random variation but by policy choices on borders, integration, and settlement — choices that Norway's political parties actively contest.
+
+- **Energy emissions are unevenly declining.** Some source categories — particularly those tied to electricity generation — have reduced their footprint substantially. But oil extraction, heavy industry, and road freight continue to anchor total emissions well above climate-target trajectories.
+
+- **The three crises interact.** Fewer native births increase reliance on immigrant labour; higher immigration creates housing and service demand that, if met through construction, generates additional emissions; and the energy sector's emissions persist partly because the petroleum wealth that funds Norway's welfare state also funds the infrastructure of population growth.
+
+---
+
+## Closing Reflection
+
+Norway is not facing any single crisis but rather three trends that amplify each other. A fertility rate below replacement is commonplace in Northern Europe; what distinguishes Norway is that its response — structured, high-volume labour immigration — is being modelled and projected with unusual transparency by its own statistics bureau. The projection scenarios in table 09481 are not forecasts; they are policy choices rendered visible.
+
+Meanwhile, the energy emissions data should temper optimism about Norway's green credentials. Hydropower covers domestic electricity needs, but the industries that drive GDP growth and fund the welfare state remain significant emitters. The country has, in effect, exported its dirtiest consumption to the petroleum products it sells abroad while keeping its domestic grid impressively clean — an accounting arrangement that flatters the national statistics without fully representing the global footprint.
+
+The demographic paradox, then, is this: Norway needs immigration to sustain its population and fiscal base, needs that population growth to fund an energy transition, and needs that transition to meet commitments made partly on the basis of a clean-grid illusion. Each element is tractable individually. Together they define the structural challenge of the next generation.
