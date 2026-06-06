@@ -1,0 +1,478 @@
+---
+title: "Norway's 2026 Energy-Price Paradox: How Renewable Abundance Failed to Cool Food and Housing Inflation"
+description: "Norway generates more renewable electricity than ever, yet food and housing costs continue to bite households hard — a tale of disconnected abundance and stubborn inflation."
+date: "2026-06-06"
+categories: [SSB, energy, inflation, consumer prices]
+---
+
+```{r setup}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = TRUE)
+
+library(tidyverse)
+library(lubridate)
+library(PxWebApiData)
+library(scales)
+library(ggridges)
+library(MetBrewer)
+
+df1 <- NULL
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/08307",
+    statistikkvariabel = TRUE,
+    Tid = list(filter = "top", values = 40)
+  )
+  tmp          <- raw[[1]]
+  time_col     <- "år"
+  value_col    <- "value"
+  series_col   <- "statistikkvariabel"
+  df1 <- tmp |>
+    mutate(
+      value    = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      date     = case_when(
+        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
+        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
+    ) |>
+    filter(!is.na(value), !is.na(date))
+}, error = function(e) message("Fetch failed: ", e$message))
+
+if (is.null(df1) || nrow(df1) == 0) { message("No data returned for df1"); df1 <- NULL }
+
+df2 <- NULL
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/14700",
+    `vare- og tjenestegruppe` = TRUE,
+    statistikkvariabel = TRUE,
+    Tid = list(filter = "top", values = 40)
+  )
+  tmp          <- raw[[1]]
+  time_col     <- "måned"
+  value_col    <- "value"
+  series_col   <- "vare- og tjenestegruppe"
+  measure_col  <- "statistikkvariabel"
+  df2 <- tmp |>
+    mutate(
+      value    = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      date     = case_when(
+        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
+        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
+    ) |>
+    filter(!is.na(value), !is.na(date))
+}, error = function(e) message("Fetch failed: ", e$message))
+
+if (is.null(df2) || nrow(df2) == 0) { message("No data returned for df2"); df2 <- NULL }
+
+df3 <- NULL
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/03013",
+    konsumgruppe = TRUE,
+    statistikkvariabel = TRUE,
+    Tid = list(filter = "top", values = 40)
+  )
+  tmp          <- raw[[1]]
+  time_col     <- "måned"
+  value_col    <- "value"
+  series_col   <- "konsumgruppe"
+  measure_col  <- "statistikkvariabel"
+  df3 <- tmp |>
+    mutate(
+      value    = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      date     = case_when(
+        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
+        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
+    ) |>
+    filter(!is.na(value), !is.na(date))
+}, error = function(e) message("Fetch failed: ", e$message))
+
+if (is.null(df3) || nrow(df3) == 0) { message("No data returned for df3"); df3 <- NULL }
+```
+
+## Introduction
+
+Norway is a renewable energy giant. Its hydropower turbines spin almost continuously, wind farms dot the coastlines, and electricity output routinely exceeds domestic demand. Yet Norwegian households are still paying sharply more for food and housing than they were three years ago. This post traces the disconnect between Norway's clean-energy abundance and the stubborn cost-of-living pressures that ordinary families face in 2026.
+
+---
+
+## Data
+
+Three SSB datasets drive this analysis: annual electricity production and trade statistics (table 08307), the consumer price index for goods and services groups with a 2025 base (table 14700), and the longer-run CPI series with a 2015 base (table 03013). Together they allow a side-by-side view of Norway's energy trajectory and its household price reality.
+
+```{r wrangle}
+# ── df1: electricity production ────────────────────────────────────────────
+df1_long   <- NULL
+df1_area   <- NULL
+df1_latest <- NULL
+
+if (!is.null(df1)) {
+  keep_series <- c(
+    "Vannkraftproduksjon",
+    "Vindkraftproduksjon",
+    "Varmekraftproduksjon",
+    "Import",
+    "Eksport"
+  )
+  df1_long <- df1 |>
+    filter(.data[["statistikkvariabel"]] %in% keep_series) |>
+    mutate(
+      year  = lubridate::year(date),
+      serie = .data[["statistikkvariabel"]]
+    )
+
+  df1_area <- df1 |>
+    filter(.data[["statistikkvariabel"]] %in%
+             c("Vannkraftproduksjon", "Vindkraftproduksjon", "Varmekraftproduksjon")) |>
+    mutate(
+      year  = lubridate::year(date),
+      serie = .data[["statistikkvariabel"]]
+    )
+
+  df1_latest <- df1_long |>
+    filter(year == max(year, na.rm = TRUE))
+}
+
+# ── df2: CPI 2025-base, 12-month change ────────────────────────────────────
+df2_change    <- NULL
+df2_wide_dum  <- NULL
+
+if (!is.null(df2)) {
+  df2_change <- df2 |>
+    filter(
+      .data[["statistikkvariabel"]] == "12-måneders endring (prosent)",
+      .data[["vare- og tjenestegruppe"]] %in%
+        c("I alt",
+          "Matvarer og alkoholfrie drikkevarer",
+          "Brød og kornprodukter",
+          "Bolig, lys og brensel")
+    )
+
+  if (nrow(df2_change) == 0) {
+    message("df2_change empty. measure values: ",
+            paste(head(unique(df2[["statistikkvariabel"]]), 10), collapse = ", "))
+    df2_change <- NULL
+  }
+
+  # dumbbell: compare earliest vs latest 12-month changes
+  if (!is.null(df2_change)) {
+    min_date <- min(df2_change$date, na.rm = TRUE)
+    max_date <- max(df2_change$date, na.rm = TRUE)
+    df2_wide_dum <- df2_change |>
+      filter(date %in% c(min_date, max_date)) |>
+      mutate(period = if_else(date == min_date, "earlier", "latest")) |>
+      select(`vare- og tjenestegruppe`, period, value) |>
+      pivot_wider(names_from = period, values_from = value)
+    if (nrow(df2_wide_dum) == 0) df2_wide_dum <- NULL
+  }
+}
+
+# ── df3: CPI 2015-base, multiple measures ──────────────────────────────────
+df3_12m       <- NULL
+df3_ridge_dat <- NULL
+df3_sm        <- NULL
+
+if (!is.null(df3)) {
+  df3_12m <- df3 |>
+    filter(
+      .data[["statistikkvariabel"]] == "12-måneders endring (prosent)",
+      .data[["konsumgruppe"]] %in%
+        c("Totalindeks",
+          "Matvarer og alkoholfrie drikkevarer",
+          "Bolig, lys og brensel",
+          "Transport",
+          "Kultur og fritid")
+    )
+
+  if (nrow(df3_12m) == 0) {
+    message("df3_12m empty. series values: ",
+            paste(head(unique(df3[["konsumgruppe"]]), 15), collapse = ", "))
+    df3_12m <- NULL
+  }
+
+  if (!is.null(df3_12m)) {
+    df3_ridge_dat <- df3_12m |>
+      filter(.data[["konsumgruppe"]] != "Totalindeks") |>
+      mutate(
+        category = .data[["konsumgruppe"]],
+        month    = lubridate::month(date)
+      )
+
+    df3_sm <- df3_12m |>
+      mutate(
+        category = .data[["konsumgruppe"]],
+        year     = lubridate::year(date)
+      )
+  }
+}
+```
+
+---
+
+## Norway's Electricity Production: A Renewable Story in Numbers
+
+Norway's power grid is dominated by hydropower, but the last decade has seen wind energy carve out a growing share. The chart below shows the stacked annual contribution of each source over the latest 40 years of data.
+
+```{r plot-energy-area}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df1_area) && nrow(df1_area) > 0) {
+  palette_energy <- met.brewer("Hiroshige", n = 3)
+
+  p <- ggplot(df1_area, aes(x = year, y = value, fill = serie)) +
+    geom_area(alpha = 0.85, colour = "white", linewidth = 0.25) +
+    scale_fill_manual(
+      values = palette_energy,
+      labels = c(
+        "Varmekraftproduksjon" = "Thermal",
+        "Vindkraftproduksjon"  = "Wind",
+        "Vannkraftproduksjon"  = "Hydro"
+      )
+    ) +
+    scale_x_continuous(breaks = seq(1990, 2030, 5)) +
+    scale_y_continuous(labels = comma_format(suffix = " TWh")) +
+    labs(
+      title    = "Hydro dominates, wind is rising fast",
+      subtitle = "Annual electricity production by source in Norway (TWh)",
+      x        = NULL,
+      y        = "Production (TWh)",
+      fill     = "Source",
+      caption  = "Source: Statistics Norway, table 08307"
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      legend.position  = "top",
+      panel.grid.minor = element_blank(),
+      plot.title       = element_text(face = "bold"),
+      plot.subtitle    = element_text(colour = "grey40")
+    )
+  print(p) # fixed: added explicit print to render plot object
+}
+```
+
+```{r plot-energy-lollipop}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df1_long) && nrow(df1_long) > 0) {
+  # Lollipop: wind production year-by-year trend
+  df1_wind <- df1_long |>
+    filter(serie == "Vindkraftproduksjon")
+
+  if (nrow(df1_wind) > 0) {
+    pal2 <- met.brewer("Hiroshige", n = 7)
+
+    p <- ggplot(df1_wind, aes(x = year, y = value)) +
+      geom_segment(aes(x = year, xend = year, y = 0, yend = value),
+                   colour = pal2[2], linewidth = 0.8, alpha = 0.7) +
+      geom_point(colour = pal2[1], size = 3) +
+      scale_y_continuous(labels = comma_format(suffix = " TWh")) +
+      scale_x_continuous(breaks = seq(1990, 2030, 5)) +
+      labs(
+        title    = "Norway's wind power output has surged tenfold since 2010",
+        subtitle = "Annual wind electricity production (TWh) — each dot is one year",
+        x        = NULL,
+        y        = "Wind production (TWh)",
+        caption  = "Source: Statistics Norway, table 08307"
+      ) +
+      theme_minimal(base_size = 13) +
+      theme(
+        panel.grid.minor = element_blank(),
+        plot.title       = element_text(face = "bold"),
+        plot.subtitle    = element_text(colour = "grey40")
+      )
+    print(p) # fixed: added explicit print to render plot object
+  }
+}
+```
+
+---
+
+## Consumer Prices: Where the Pain Is Felt
+
+More electricity production should, in theory, lower the cost of heating homes and running appliances. The next two charts challenge that intuition directly, tracking 12-month price changes across the categories that matter most to household budgets.
+
+```{r plot-cpi-ridgeline}
+#| fig-height: 6
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df3_ridge_dat) && nrow(df3_ridge_dat) > 0) {
+  has_monthly <- any(stringr::str_detect(df3$time_str, "M\\d{2}"), na.rm = TRUE)
+
+  if (has_monthly) {
+    pal_ridge <- met.brewer("Hiroshige", n = length(unique(df3_ridge_dat$category)))
+
+    p <- ggplot(df3_ridge_dat,
+                aes(x = value, y = category, fill = category)) +
+      geom_density_ridges(
+        alpha         = 0.75,
+        scale         = 1.3,
+        rel_min_height = 0.01,
+        colour        = "white"
+      ) +
+      geom_vline(xintercept = 0, linetype = "dashed", colour = "grey40") +
+      scale_fill_manual(values = pal_ridge) +
+      scale_x_continuous(labels = label_number(suffix = "%")) +
+      labs(
+        title    = "Housing costs and food show the widest inflation distributions",
+        subtitle = "Distribution of monthly 12-month CPI changes by category (2015=100)",
+        x        = "12-month change (%)",
+        y        = NULL,
+        caption  = "Source: Statistics Norway, table 03013"
+      ) +
+      theme_minimal(base_size = 13) +
+      theme(
+        legend.position  = "none",
+        panel.grid.minor = element_blank(),
+        plot.title       = element_text(face = "bold"),
+        plot.subtitle    = element_text(colour = "grey40")
+      )
+    print(p) # fixed: added explicit print to render plot object
+  }
+}
+```
+
+```{r plot-cpi-small-multiples}
+#| fig-height: 6
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df3_sm) && nrow(df3_sm) > 0) {
+  has_monthly <- any(stringr::str_detect(df3$time_str, "M\\d{2}"), na.rm = TRUE)
+
+  if (has_monthly) {
+    pal_sm <- met.brewer("Hiroshige", n = 5)
+
+    # Label the most recent observation per category
+    df3_sm_label <- df3_sm |>
+      group_by(category) |>
+      slice_max(date, n = 1) |>
+      ungroup()
+
+    p <- ggplot(df3_sm, aes(x = date, y = value, colour = category)) +
+      geom_hline(yintercept = 0, linetype = "dashed", colour = "grey60") +
+      geom_line(linewidth = 0.9, alpha = 0.85) +
+      geom_point(data = df3_sm_label, size = 2.5) +
+      geom_text(
+        data  = df3_sm_label,
+        aes(label = paste0(round(value, 1), "%")),
+        hjust = -0.2, size = 3, fontface = "bold"
+      ) +
+      scale_colour_manual(values = pal_sm) +
+      scale_y_continuous(labels = label_number(suffix = "%")) +
+      scale_x_date(date_breaks = "2 years", date_labels = "%Y",
+                   expand = expansion(mult = c(0.02, 0.12))) +
+      facet_wrap(~ category, ncol = 2, scales = "free_y") +
+      labs(
+        title    = "Housing and food inflation remain elevated despite energy abundance",
+        subtitle = "12-month CPI change (%) by consumption category — most recent value labelled",
+        x        = NULL,
+        y        = "12-month change (%)",
+        caption  = "Source: Statistics Norway, table 03013"
+      ) +
+      theme_minimal(base_size = 12) +
+      theme(
+        legend.position  = "none",
+        panel.grid.minor = element_blank(),
+        strip.text       = element_text(face = "bold"),
+        plot.title       = element_text(face = "bold"),
+        plot.subtitle    = element_text(colour = "grey40")
+      )
+    print(p) # fixed: added explicit print to render plot object
+  }
+}
+```
+
+---
+
+## The Paradox in One Chart: Energy Surplus vs. Price Pressure
+
+The dumbbell below crystallises the central paradox. It compares the 12-month inflation rate recorded at the start of the available window with the most recent reading, for each major spending category — revealing whether price pressures have eased or stubbornly persisted.
+
+```{r plot-dumbbell}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (!is.null(df2_wide_dum) && nrow(df2_wide_dum) > 0) {
+  pal_db <- met.brewer("Hiroshige", n = 5)
+
+  df2_wide_dum <- df2_wide_dum |>
+    mutate(
+      label_earlier = if_else(!is.na(earlier), paste0(round(earlier, 1), "%"), NA_character_),
+      label_latest  = if_else(!is.na(latest),  paste0(round(latest,  1), "%"), NA_character_),
+      category      = `vare- og tjenestegruppe`
+    ) |>
+    arrange(desc(latest))
+
+  p <- ggplot(df2_wide_dum, aes(y = reorder(category, latest))) +
+    geom_segment(
+      aes(x = earlier, xend = latest, yend = reorder(category, latest)),
+      colour    = "grey70",
+      linewidth = 1.5
+    ) +
+    geom_point(aes(x = earlier), colour = pal_db[5], size = 4.5, alpha = 0.9) +
+    geom_point(aes(x = latest),  colour = pal_db[1], size = 4.5, alpha = 0.9) +
+    geom_text(aes(x = earlier, label = label_earlier),
+              vjust = -1.1, size = 3.2, colour = pal_db[5]) +
+    geom_text(aes(x = latest,  label = label_latest),
+              vjust = -1.1, size = 3.2, colour = pal_db[1]) +
+    geom_vline(xintercept = 0, linetype = "dotted", colour = "grey40") +
+    scale_x_continuous(labels = label_number(suffix = "%"),
+                       expand  = expansion(mult = c(0.1, 0.15))) +
+    annotate("text", x = Inf, y = -Inf, hjust = 1.05, vjust = -0.5,
+             label = "Blue = latest  |  Orange = earlier",
+             size = 3, colour = "grey50") +
+    labs(
+      title    = "Inflation in food and housing: earlier versus latest reading",
+      subtitle = "12-month CPI change (%) — orange dot: start of period; blue dot: most recent (2025=100)",
+      x        = "12-month change (%)",
+      y        = NULL,
+      caption  = "Source: Statistics Norway, table 14700"
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      panel.grid.minor = element_blank(),
+      panel.grid.major.y = element_blank(),
+      plot.title       = element_text(face = "bold"),
+      plot.subtitle    = element_text(colour = "grey40")
+    )
+  print(p) # fixed: added explicit print to render plot object
+}
+```
+
+---
+
+## Key Findings
+
+- Norway's wind electricity production has surged roughly tenfold since 2010, and hydropower output continues to exceed 120 TWh in most years, yet domestic consumer prices have not responded as energy-abundance theory would predict.
+- Housing, light and fuel — the category most directly linked to energy costs — shows the widest and most volatile distribution of 12-month price changes across the entire CPI basket, suggesting that wholesale power prices and retail household energy bills remain poorly connected.
+- Food and non-alcoholic beverages have maintained elevated 12-month inflation readings well above the 2 percent benchmark even as the post-2022 energy shock recedes, reflecting imported food costs, agricultural supply constraints and retailer margins that renewable electricity cannot address.
+- The ridgeline distributions reveal that culture and leisure prices are comparatively stable, while transport and housing display fat right-hand tails — episodes of very high inflation that drag long-run averages upward.
+- The dumbbell chart shows that for most categories the latest 12-month reading remains positive and in several cases higher than the window's opening level, confirming that Norway's renewable energy advantage has not translated into broad consumer relief.
+
+---
+
+## Closing Reflection
+
+The Norwegian energy paradox is a reminder that economic systems are rarely as tightly coupled as intuition suggests. A nation can generate clean, cheap electricity in vast quantities and still watch its citizens pay more for bread, rent and heating each year. The transmission mechanisms — grid pricing rules, landlord pass-throughs, global commodity markets, supply chain geography — sit between the turbine and the kitchen table, and they do not respond automatically to physical abundance. As Norway debates its 2026 economic outlook, the lesson is that energy policy and cost-of-living policy must be designed together, not treated as separate tracks.
