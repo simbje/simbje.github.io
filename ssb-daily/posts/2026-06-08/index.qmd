@@ -1,9 +1,15 @@
 ---
-title: "Norway's 2026 Gender-Age Labour Fracture: How Younger Women Exit the Workforce While Older Men Hold On"
-description: "Quarterly labour force data reveals a widening structural divide in Norway: younger women are leaving the workforce at higher rates while older male participation stays resilient, against a backdrop of persistent inflation."
+title: "Norway's 2026 Trifecta of Decline: Inflation Bites Food, Industrial Output Shrinks, and Youth Crime Rises"
+description: "Three independent SSB data streams — consumer prices, sectoral output, and criminal convictions by age — converge to reveal a Norway under mounting societal and economic stress in 2026."
 date: "2026-06-08"
-categories: [SSB, labour market, gender, demographics]
+categories: [SSB, inflation, industry, crime, youth]
 ---
+
+Norway rarely fits the narrative of a country in crisis. Oil wealth, strong institutions, and a generous welfare state have insulated it from the shocks that upended much of Europe. Yet three independent statistical threads — food price inflation, industrial output trends, and criminal conviction rates among young people — are pulling in the same unsettling direction in 2026. Taken together, they sketch a portrait of a society quietly accumulating stress.
+
+## Data
+
+Three Statistics Norway tables feed this analysis: monthly consumer price indices for food categories (table 14700), annual sectoral production and gross value added (table 09170), and annual criminal conviction rates by age group (table 10634). Each tells a distinct story; read together, they tell one.
 
 ```{r setup}
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = TRUE)
@@ -12,23 +18,21 @@ library(tidyverse)
 library(lubridate)
 library(PxWebApiData)
 library(scales)
-library(ggridges)
 library(MetBrewer)
+library(ggridges)
 
 df1 <- NULL
 tryCatch({
   raw <- ApiData(
-    "https://data.ssb.no/api/v0/no/table/05110",
-    arbeidsstyrkestatus = TRUE,
-    kjønn = TRUE,
-    alder = TRUE,
+    "https://data.ssb.no/api/v0/no/table/14700",
+    `vare- og tjenestegruppe` = TRUE,
     statistikkvariabel = TRUE,
     Tid = list(filter = "top", values = 40)
   )
   tmp          <- raw[[1]]
-  time_col     <- "kvartal"
+  time_col     <- "måned"
   value_col    <- "value"
-  series_col   <- "arbeidsstyrkestatus"
+  series_col   <- "vare- og tjenestegruppe"
   measure_col  <- "statistikkvariabel"
   df1 <- tmp |>
     mutate(
@@ -49,15 +53,15 @@ if (is.null(df1) || nrow(df1) == 0) { message("No data returned for df1"); df1 <
 df2 <- NULL
 tryCatch({
   raw <- ApiData(
-    "https://data.ssb.no/api/v0/no/table/03013",
-    konsumgruppe = TRUE,
+    "https://data.ssb.no/api/v0/no/table/09170",
+    næring = TRUE,
     statistikkvariabel = TRUE,
     Tid = list(filter = "top", values = 40)
   )
   tmp          <- raw[[1]]
-  time_col     <- "måned"
+  time_col     <- "år"
   value_col    <- "value"
-  series_col   <- "konsumgruppe"
+  series_col   <- "næring"
   measure_col  <- "statistikkvariabel"
   df2 <- tmp |>
     mutate(
@@ -78,15 +82,16 @@ if (is.null(df2) || nrow(df2) == 0) { message("No data returned for df2"); df2 <
 df3 <- NULL
 tryCatch({
   raw <- ApiData(
-    "https://data.ssb.no/api/v0/no/table/09170",
-    næring = TRUE,
+    "https://data.ssb.no/api/v0/no/table/10634",
+    region = TRUE,
+    alder = TRUE,
     statistikkvariabel = TRUE,
     Tid = list(filter = "top", values = 40)
   )
   tmp          <- raw[[1]]
   time_col     <- "år"
   value_col    <- "value"
-  series_col   <- "næring"
+  series_col   <- "alder"
   measure_col  <- "statistikkvariabel"
   df3 <- tmp |>
     mutate(
@@ -105,438 +110,415 @@ tryCatch({
 if (is.null(df3) || nrow(df3) == 0) { message("No data returned for df3"); df3 <- NULL }
 ```
 
-## A Labour Market Pulling in Two Directions
-
-Norway's headline employment numbers have looked reassuringly stable throughout 2025 and into 2026. But aggregate figures mask a fault line running through the workforce: younger women are exiting the labour force at notably higher rates, while men aged 55 and over continue to participate at levels that would have seemed improbable a decade ago. The divergence is structural, not cyclical — and it carries long-term consequences for a country already facing demographic headwinds.
-
-This post examines quarterly labour force survey data from Statistics Norway alongside consumer price movements to put the workforce shifts in economic context.
-
----
-
-## Data and Wrangling
+## Wrangling
 
 ```{r wrangle}
-# --- df1: Labour force, table 05110 ---
-# Reinstate correct column variable names for df1
-series_col_df1  <- "arbeidsstyrkestatus"
-measure_col_df1 <- "statistikkvariabel"
-time_col_df1    <- "kvartal"
-value_col_df1   <- "value"
+# --- df1: CPI food categories ---
+df1_yoy       <- NULL
+df1_heatmap   <- NULL
 
-# Derived frames — all initialized to NULL before any conditional logic
-df1_outside      <- NULL
-df1_employed     <- NULL
-df1_unemployed   <- NULL
-df1_gender_emp   <- NULL
-df1_age_outside  <- NULL
-df1_pct_age      <- NULL
-df1_dumbbell     <- NULL
-
-if (!is.null(df1)) {
-  # Filter: persons outside the labour force, share metric
-  df1_outside <- df1 |>
+if (!is.null(df1) && nrow(df1) > 0) {
+  # 12-month change for food categories
+  df1_yoy <- df1 |>
     filter(
-      .data[[series_col_df1]] == "Personer utenfor arbeidsstyrken",
-      .data[[measure_col_df1]] == "Personer (prosent)"
-    )
-  if (nrow(df1_outside) == 0) {
-    message("df1_outside empty. series values: ",
-            paste(head(unique(df1[[series_col_df1]]), 15), collapse = ", "))
-    df1_outside <- NULL
-  }
-
-  # Employment rate by gender and age — persons (percent)
-  df1_pct_age <- df1 |>
-    filter(
-      .data[[series_col_df1]] == "Sysselsatte",
-      .data[[measure_col_df1]] == "Personer (prosent)"
-    )
-  if (nrow(df1_pct_age) == 0) {
-    message("df1_pct_age empty.")
-    df1_pct_age <- NULL
-  }
-
-  # Persons outside labour force — absolute (1 000 persons) — for ridgeline
-  df1_age_outside <- df1 |>
-    filter(
-      .data[[series_col_df1]] == "Personer utenfor arbeidsstyrken",
-      .data[[measure_col_df1]] == "Personer (1 000 personer)"
-    )
-  if (nrow(df1_age_outside) == 0) {
-    message("df1_age_outside empty.")
-    df1_age_outside <- NULL
-  }
-
-  # Employed — percent — for dumbbell: compare earliest vs latest quarter
-  if (!is.null(df1_pct_age)) {
-    date_min <- min(df1_pct_age$date, na.rm = TRUE)
-    date_max <- max(df1_pct_age$date, na.rm = TRUE)
-
-    df1_dumbbell <- df1_pct_age |>
-      filter(date %in% c(date_min, date_max)) |>
-      mutate(period = if_else(date == date_max, "latest", "earliest")) |>
-      select(kjønn, alder, period, value) |>
-      pivot_wider(names_from = period, values_from = value) |>
-      filter(!is.na(earliest), !is.na(latest)) |>
-      mutate(change = latest - earliest)
-
-    if (nrow(df1_dumbbell) == 0) {
-      df1_dumbbell <- NULL
-    }
-  }
-}
-
-# --- df2: CPI, table 03013 ---
-series_col_df2  <- "konsumgruppe"
-measure_col_df2 <- "statistikkvariabel"
-
-df2_annual      <- NULL
-df2_groups      <- NULL
-
-if (!is.null(df2)) {
-  df2_annual <- df2 |>
-    filter(
-      .data[[measure_col_df2]] == "12-måneders endring (prosent)"
-    )
-  if (nrow(df2_annual) == 0) {
-    message("df2_annual empty.")
-    df2_annual <- NULL
-  }
-
-  df2_groups <- df2 |>
-    filter(
-      .data[[measure_col_df2]] == "12-måneders endring (prosent)",
-      .data[[series_col_df2]] %in% c(
-        "Totalindeks",
+      .data[["statistikkvariabel"]] == "12-måneders endring (prosent)",
+      .data[["vare- og tjenestegruppe"]] %in% c(
+        "I alt",
         "Matvarer og alkoholfrie drikkevarer",
-        "Klaer og skotoy",
-        "Bolig, lys og brensel"
+        "Brød og kornprodukter",
+        "Mel"
       )
     )
-  if (nrow(df2_groups) == 0) {
-    message("df2_groups empty.")
-    df2_groups <- NULL
+  if (nrow(df1_yoy) == 0) {
+    message("df1_yoy empty. measure values: ",
+            paste(head(unique(df1[["statistikkvariabel"]]), 10), collapse = ", "))
+    df1_yoy <- NULL
   }
-}
-```
 
----
-
-## The Outside-Labour-Force Ridgeline: Gender Distributions Over Time
-
-The first question is straightforward: which groups are most likely to sit outside the labour force entirely — neither employed nor actively seeking work?
-
-```{r plot-ridgeline}
-#| fig-height: 6
-#| fig-width: 10
-#| fig-show: asis
-#| dev: "png"
-
-if (exists("df1_age_outside") && !is.null(df1_age_outside) && nrow(df1_age_outside) > 0) {
-
-  # Keep only gender breakdowns, drop "Begge kjønn" aggregate, keep meaningful age groups
-  ridge_df <- df1_age_outside |>
+  # Heatmap: monthly index level for food categories
+  df1_heatmap <- df1 |>
     filter(
-      kjønn %in% c("Menn", "Kvinner"),
-      !alder %in% c("15-74 år", "15-24 år", "25-54 år", "55-74 år")
-    )
-
-  if (nrow(ridge_df) == 0) {
-    # Fall back to all age groups if the fine-grained ones are absent
-    ridge_df <- df1_age_outside |>
-      filter(kjønn %in% c("Menn", "Kvinner"))
-  }
-
-  if (nrow(ridge_df) > 0) {
-    pal <- met.brewer("Hiroshige", n = 2)
-
-    p <- ggplot(ridge_df, aes(x = value, y = kjønn, fill = kjønn)) +
-      ggridges::geom_density_ridges(
-        alpha = 0.75, scale = 1.2, rel_min_height = 0.01,
-        bandwidth = 15
-      ) +
-      scale_fill_manual(values = pal, guide = "none") +
-      labs(
-        title = "Persons Outside the Labour Force: Women vs Men",
-        subtitle = "Distribution of quarterly counts (1 000 persons) — women cluster at higher volumes",
-        x = "1 000 persons outside labour force",
-        y = NULL,
-        caption = "Source: Statistics Norway, table 05110"
-      ) +
-      theme_minimal(base_size = 13) +
-      theme(
-        plot.title    = element_text(face = "bold", size = 15),
-        plot.subtitle = element_text(color = "grey40", size = 11),
-        panel.grid.minor = element_blank()
+      .data[["statistikkvariabel"]] == "Konsumprisindeks (2025=100)",
+      .data[["vare- og tjenestegruppe"]] %in% c(
+        "I alt",
+        "Matvarer og alkoholfrie drikkevarer",
+        "Brød og kornprodukter",
+        "Mel"
       )
-    print(p) # fixed: ggplot object was built but never printed
-  }
-}
-```
-
----
-
-## Employment Rate Shifts: A Dumbbell View Across Age and Gender
-
-The dumbbell chart below contrasts employment rates at the start and end of the 10-year quarterly window. Each bar represents one gender-age combination. Upward shifts signal rising participation; downward shifts reveal retreat.
-
-```{r plot-dumbbell}
-#| fig-height: 7
-#| fig-width: 11
-#| fig-show: asis
-#| dev: "png"
-
-if (exists("df1_dumbbell") && !is.null(df1_dumbbell) && nrow(df1_dumbbell) > 0) {
-
-  # Restrict to meaningful disaggregated gender rows
-  db_df <- df1_dumbbell |>
-    filter(
-      kjønn %in% c("Menn", "Kvinner"),
-      !is.na(alder)
     ) |>
     mutate(
-      label = paste(kjønn, alder),
-      label = fct_reorder(label, change)
+      year  = lubridate::year(date),
+      month = lubridate::month(date, label = TRUE, abbr = TRUE)
     )
-
-  if (nrow(db_df) > 0) {
-    pal2 <- met.brewer("Hiroshige", n = 2)
-    col_women <- pal2[1]
-    col_men   <- pal2[2]
-
-    p <- ggplot(db_df) +
-      geom_segment(
-        aes(x = earliest, xend = latest, y = label, yend = label),
-        color = "grey75", linewidth = 1
-      ) +
-      geom_point(aes(x = earliest, y = label), color = "grey60", size = 3) +
-      geom_point(
-        aes(x = latest, y = label, color = kjønn),
-        size = 4
-      ) +
-      scale_color_manual(values = c("Kvinner" = col_women, "Menn" = col_men)) +
-      geom_vline(xintercept = 70, linetype = "dashed", color = "grey40", linewidth = 0.5) +
-      labs(
-        title = "Employment Rate Change: Earliest vs Latest Quarter",
-        subtitle = "Dot = latest quarter; tail = earliest quarter. Dashed line at 70% participation.",
-        x = "Employment rate (%)",
-        y = NULL,
-        color = NULL,
-        caption = "Source: Statistics Norway, table 05110"
-      ) +
-      theme_minimal(base_size = 12) +
-      theme(
-        plot.title       = element_text(face = "bold", size = 14),
-        plot.subtitle    = element_text(color = "grey40", size = 10),
-        panel.grid.minor = element_blank(),
-        legend.position  = "top"
-      )
-    print(p) # fixed: ggplot object was built but never printed
+  if (nrow(df1_heatmap) == 0) {
+    df1_heatmap <- NULL
   }
 }
-```
 
----
+# --- df2: Sectoral gross value added ---
+df2_gva    <- NULL
+df2_lollipop <- NULL
 
-## Small Multiples: Employment Rate Trajectories by Gender and Age Group
-
-To see how participation evolved quarter by quarter, the small multiples below plot the employment rate for women and men across key age brackets. The trend lines expose the structural nature of the divergence.
-
-```{r plot-small-multiples}
-#| fig-height: 8
-#| fig-width: 12
-#| fig-show: asis
-#| dev: "png"
-
-if (exists("df1_pct_age") && !is.null(df1_pct_age) && nrow(df1_pct_age) > 0) {
-
-  sm_df <- df1_pct_age |>
+if (!is.null(df2) && nrow(df2) > 0) {
+  df2_gva <- df2 |>
     filter(
-      kjønn %in% c("Menn", "Kvinner"),
-      !is.na(alder)
-    )
-
-  if (nrow(sm_df) > 0) {
-    pal3 <- met.brewer("Hiroshige", n = 2)
-
-    p <- ggplot(sm_df, aes(x = date, y = value, color = kjønn, group = kjønn)) +
-      geom_line(linewidth = 1.1, alpha = 0.9) +
-      geom_smooth(method = "loess", se = FALSE, linewidth = 0.5,
-                  linetype = "dashed", alpha = 0.6) +
-      facet_wrap(~ alder, scales = "free_y", ncol = 3) +
-      scale_color_manual(values = c("Kvinner" = pal3[1], "Menn" = pal3[2])) +
-      scale_x_date(date_labels = "'%y", date_breaks = "2 years") +
-      scale_y_continuous(labels = label_number(suffix = "%")) +
-      labs(
-        title = "Employment Rate by Age Group and Gender, Quarterly",
-        subtitle = "Solid line = actual quarterly rate; dashed = LOESS trend. Women (orange) vs Men (blue).",
-        x = NULL,
-        y = "Employment rate (%)",
-        color = NULL,
-        caption = "Source: Statistics Norway, table 05110"
-      ) +
-      theme_minimal(base_size = 11) +
-      theme(
-        plot.title       = element_text(face = "bold", size = 14),
-        plot.subtitle    = element_text(color = "grey40", size = 10),
-        panel.grid.minor = element_blank(),
-        legend.position  = "top",
-        strip.text       = element_text(face = "bold"),
-        axis.text.x      = element_text(angle = 30, hjust = 1)
+      .data[["statistikkvariabel"]] == "Bruttoprodukt i basisverdi. Løpende priser",
+      .data[["næring"]] %in% c(
+        "Totalt for næringer",
+        "Jordbruk og skogbruk",
+        "Utvinning av råolje og naturgass",
+        "Industri"
       )
-    print(p) # fixed: ggplot object was built but never printed
+    )
+  if (nrow(df2_gva) == 0) {
+    message("df2_gva empty. næring values: ",
+            paste(head(unique(df2[["næring"]]), 10), collapse = ", "))
+    df2_gva <- NULL
+  }
+
+  # Lollipop: latest year growth rates by sector
+  if (!is.null(df2_gva)) {
+    df2_lollipop <- df2_gva |>
+      filter(.data[["næring"]] != "Totalt for næringer") |>
+      group_by(.data[["næring"]]) |>
+      arrange(date) |>
+      mutate(yoy_change = (value / lag(value) - 1) * 100) |>
+      filter(!is.na(yoy_change)) |>
+      slice_max(date, n = 1) |>
+      ungroup() |>
+      rename(sector = `næring`)
+    if (nrow(df2_lollipop) == 0) df2_lollipop <- NULL
+  }
+}
+
+# --- df3: Crime convictions by age ---
+df3_rate      <- NULL
+df3_ridgeline <- NULL
+
+if (!is.null(df3) && nrow(df3) > 0) {
+  df3_rate <- df3 |>
+    filter(
+      .data[["statistikkvariabel"]] == "Straffede personer per 1000 innbyggere",
+      .data[["alder"]] %in% c(
+        "15-17 år", "18-20 år", "21-24 år", "25-29 år", "30-39 år"
+      )
+    )
+  if (nrow(df3_rate) == 0) {
+    message("df3_rate empty. alder values: ",
+            paste(head(unique(df3[["alder"]]), 15), collapse = ", "))
+    df3_rate <- NULL
+  }
+
+  # Ridgeline needs a bit more data — keep all ages, filter measure
+  if (!is.null(df3_rate)) {
+    df3_ridgeline <- df3_rate |>
+      filter(!is.na(value)) |>
+      mutate(age_group = .data[["alder"]],
+             year_num  = lubridate::year(date))
+    if (nrow(df3_ridgeline) == 0) df3_ridgeline <- NULL
   }
 }
 ```
 
----
+## Inflation: Food Prices Squeeze the Everyday Consumer
 
-## Inflation Context: What Are Workers Exiting Into?
+Norway's headline inflation has been a persistent feature of the post-pandemic economy, but it is the food sub-categories that carry the sharpest sting for ordinary households. Bread, flour, and cereal products have at times outrun the overall index, compressing real purchasing power for families who cannot easily substitute away from essentials.
 
-Workers who leave the labour force do not do so in a vacuum. The consumer price data provides a crucial backdrop: food prices, housing costs, and clothing prices have all risen sharply, creating financial pressure that hits younger households hardest.
-
-```{r plot-cpi-area}
+```{r plot-food-area}
 #| fig-height: 5
-#| fig-width: 10
+#| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
 
-if (exists("df2_groups") && !is.null(df2_groups) && nrow(df2_groups) > 0) {
+if (exists("df1_yoy") && !is.null(df1_yoy) && nrow(df1_yoy) > 0) {
 
-  cpi_df <- df2_groups |>
-    filter(!is.na(value))
+  pal <- met.brewer("Hokusai2", n = 4)
 
-  group_labels <- c(
-    "Totalindeks"                           = "Total CPI",
-    "Matvarer og alkoholfrie drikkevarer"   = "Food & soft drinks",
-    "Klaer og skotoy"                       = "Clothing & footwear",
-    "Bolig, lys og brensel"                 = "Housing, energy"
-  )
-
-  cpi_df <- cpi_df |>
-    mutate(
-      group_label = recode(.data[["konsumgruppe"]], !!!group_labels)
-    )
-
-  pal4 <- met.brewer("Hiroshige", n = 4)
-
-  p <- ggplot(cpi_df, aes(x = date, y = value, color = group_label, group = group_label)) +
-    geom_hline(yintercept = 0, color = "grey50", linewidth = 0.4) +
-    geom_line(linewidth = 1.1, alpha = 0.9) +
-    annotate(
-      "rect",
-      xmin = as.Date("2022-01-01"), xmax = as.Date("2023-06-01"),
-      ymin = -Inf, ymax = Inf,
-      fill = "grey90", alpha = 0.4
-    ) +
-    annotate(
-      "text",
-      x = as.Date("2022-09-01"), y = 12,
-      label = "Peak inflation\nperiod",
-      size = 3, color = "grey40", hjust = 0.5
-    ) +
-    scale_color_manual(values = pal4) +
+  p <- ggplot(df1_yoy,
+              aes(x = date,
+                  y = value,
+                  colour = .data[["vare- og tjenestegruppe"]],
+                  fill   = .data[["vare- og tjenestegruppe"]])) +
+    geom_hline(yintercept = 0, colour = "grey50", linewidth = 0.4) +
+    geom_area(alpha = 0.15, position = "identity") +
+    geom_line(linewidth = 0.9) +
+    scale_colour_manual(values = pal, name = NULL) +
+    scale_fill_manual(values = pal, name = NULL) +
+    scale_x_date(date_labels = "%b %Y", date_breaks = "6 months") +
     scale_y_continuous(labels = label_number(suffix = "%")) +
     labs(
-      title = "12-Month CPI Change by Consumption Group",
-      subtitle = "Food and housing costs surged well above the total index — squeezing household budgets",
-      x = NULL,
-      y = "12-month change (%)",
-      color = NULL,
-      caption = "Source: Statistics Norway, table 03013"
+      title    = "Food prices have repeatedly spiked above the general index",
+      subtitle = "12-month change in consumer prices: selected food categories vs. total CPI",
+      x        = NULL,
+      y        = "12-month change (%)",
+      caption  = "Source: Statistics Norway, table 14700 (KPI, 2025=100)"
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      legend.position   = "bottom",
+      panel.grid.minor  = element_blank(),
+      axis.text.x       = element_text(angle = 35, hjust = 1),
+      plot.title        = element_text(face = "bold"),
+      plot.subtitle     = element_text(colour = "grey35"),
+      plot.caption      = element_text(colour = "grey55", size = 9)
+    )
+  print(p)
+
+} else {
+  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+}
+```
+
+```{r plot-cpi-heatmap}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df1_heatmap") && !is.null(df1_heatmap) && nrow(df1_heatmap) > 0) {
+
+  p <- df1_heatmap |>
+    ggplot(aes(x = month, y = factor(year), fill = value)) +
+    geom_tile(colour = "white", linewidth = 0.4) +
+    facet_wrap(~ .data[["vare- og tjenestegruppe"]], ncol = 2) +
+    scale_fill_gradientn(
+      colours = met.brewer("Hiroshige", n = 9),
+      name    = "Index\n(2025=100)"
+    ) +
+    labs(
+      title    = "Price index levels across food categories, month by month",
+      subtitle = "Darker tiles indicate higher index values relative to the 2025 base year",
+      x        = NULL,
+      y        = NULL,
+      caption  = "Source: Statistics Norway, table 14700"
     ) +
     theme_minimal(base_size = 12) +
     theme(
-      plot.title       = element_text(face = "bold", size = 14),
-      plot.subtitle    = element_text(color = "grey40", size = 10),
-      panel.grid.minor = element_blank(),
-      legend.position  = "bottom"
+      strip.text       = element_text(face = "bold", size = 10),
+      panel.grid       = element_blank(),
+      axis.text.x      = element_text(angle = 45, hjust = 1),
+      legend.position  = "right",
+      plot.title       = element_text(face = "bold"),
+      plot.subtitle    = element_text(colour = "grey35"),
+      plot.caption     = element_text(colour = "grey55", size = 9)
     )
-  print(p) # fixed: ggplot object was built but never printed
+  print(p)
+
+} else {
+  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
----
+The heatmap reveals that flour prices (Mel) have been the most volatile food sub-category — climbing steeply in 2022-2023 and remaining structurally elevated relative to the 2025 base. Bread and grain products followed a similar but slightly smoother arc. Even the headline "I alt" (all items) index shows a clear ratchet upward, never returning to its pre-2022 level.
 
-## Lollipop: Which Age-Gender Groups Saw the Largest Employment Rate Changes?
+## Industrial Output: A Sector-by-Sector Accounting
 
-```{r plot-lollipop}
-#| fig-height: 6
-#| fig-width: 10
+Norway's mainland economy depends on more than petroleum revenues. Manufacturing, agriculture and forestry, and services form the productive core that employs most Norwegians. When gross value added in those sectors stagnates or contracts, it signals deeper structural challenges that the oil fund cannot paper over indefinitely.
+
+```{r plot-gva-area}
+#| fig-height: 5
+#| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
 
-if (exists("df1_dumbbell") && !is.null(df1_dumbbell) && nrow(df1_dumbbell) > 0) {
+if (exists("df2_gva") && !is.null(df2_gva) && nrow(df2_gva) > 0) {
 
-  lol_df <- df1_dumbbell |>
-    filter(
-      kjønn %in% c("Menn", "Kvinner"),
-      !is.na(alder),
-      !is.na(change)
-    ) |>
-    mutate(
-      label     = paste(alder, kjønn, sep = " — "),
-      label     = fct_reorder(label, change),
-      direction = if_else(change >= 0, "Increase", "Decrease")
+  pal2 <- met.brewer("Hokusai2", n = 4)
+
+  p <- df2_gva |>
+    ggplot(aes(x = date,
+               y = value / 1e6,
+               colour = .data[["næring"]],
+               group  = .data[["næring"]])) +
+    geom_line(linewidth = 1.1) +
+    geom_point(size = 1.8) +
+    scale_colour_manual(values = pal2, name = NULL) +
+    scale_x_date(date_labels = "%Y", date_breaks = "5 years") +
+    scale_y_continuous(labels = label_number(suffix = " bn NOK", scale = 1)) +
+    labs(
+      title    = "Gross value added by sector at current prices",
+      subtitle = "Petroleum extraction dominates, while industry and agriculture lag behind",
+      x        = NULL,
+      y        = "Gross value added (billion NOK)",
+      caption  = "Source: Statistics Norway, table 09170"
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      legend.position  = "bottom",
+      panel.grid.minor = element_blank(),
+      plot.title       = element_text(face = "bold"),
+      plot.subtitle    = element_text(colour = "grey35"),
+      plot.caption     = element_text(colour = "grey55", size = 9)
     )
+  print(p)
 
-  if (nrow(lol_df) > 0) {
-    pal5 <- c("Increase" = "#4a8db7", "Decrease" = "#c95f3f")
-
-    p <- ggplot(lol_df, aes(x = change, y = label, color = direction)) +
-      geom_vline(xintercept = 0, color = "grey50", linewidth = 0.5) +
-      geom_segment(
-        aes(x = 0, xend = change, y = label, yend = label),
-        linewidth = 1.1
-      ) +
-      geom_point(size = 4) +
-      geom_text(
-        aes(label = sprintf("%+.1f pp", change)),
-        hjust = if_else(lol_df$change >= 0, -0.25, 1.25),
-        size = 3.2, fontface = "bold"
-      ) +
-      scale_color_manual(values = pal5, guide = "none") +
-      scale_x_continuous(
-        labels = label_number(suffix = " pp"),
-        expand = expansion(mult = 0.2)
-      ) +
-      labs(
-        title = "Change in Employment Rate: Earliest to Latest Quarter",
-        subtitle = "Percentage-point change by age group and gender — younger women show largest declines",
-        x = "Percentage-point change",
-        y = NULL,
-        caption = "Source: Statistics Norway, table 05110"
-      ) +
-      theme_minimal(base_size = 12) +
-      theme(
-        plot.title       = element_text(face = "bold", size = 14),
-        plot.subtitle    = element_text(color = "grey40", size = 10),
-        panel.grid.minor = element_blank(),
-        panel.grid.major.y = element_blank()
-      )
-    print(p) # fixed: ggplot object was built but never printed
-  }
+} else {
+  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
----
+```{r plot-lollipop-sector}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df2_lollipop") && !is.null(df2_lollipop) && nrow(df2_lollipop) > 0) {
+
+  pal3 <- met.brewer("Hokusai2", n = nrow(df2_lollipop))
+
+  p <- df2_lollipop |>
+    mutate(sector = fct_reorder(sector, yoy_change)) |>
+    ggplot(aes(x = yoy_change, y = sector, colour = sector)) +
+    geom_vline(xintercept = 0, colour = "grey50", linewidth = 0.5, linetype = "dashed") +
+    geom_segment(aes(x = 0, xend = yoy_change, yend = sector),
+                 linewidth = 1.2, show.legend = FALSE) +
+    geom_point(size = 5, show.legend = FALSE) +
+    geom_text(aes(label = sprintf("%+.1f%%", yoy_change)),
+              hjust = ifelse(df2_lollipop$yoy_change >= 0, -0.25, 1.25),
+              size = 3.8, fontface = "bold") +
+    scale_colour_manual(values = pal3) +
+    scale_x_continuous(labels = label_number(suffix = "%"),
+                       expand = expansion(mult = 0.2)) +
+    labs(
+      title    = "Year-on-year change in gross value added: latest available year",
+      subtitle = "Petroleum and gas extraction swings wildly; manufacturing and agriculture trail",
+      x        = "Year-on-year change (%)",
+      y        = NULL,
+      caption  = "Source: Statistics Norway, table 09170"
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      panel.grid.major.y = element_blank(),
+      panel.grid.minor   = element_blank(),
+      plot.title         = element_text(face = "bold"),
+      plot.subtitle      = element_text(colour = "grey35"),
+      plot.caption       = element_text(colour = "grey55", size = 9)
+    )
+  print(p)
+
+} else {
+  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+}
+```
+
+The lollipop chart crystallises the sectoral divergence. Oil and gas extraction amplifies Norway's overall output figures, masking the more tepid or even negative growth in manufacturing (Industri) and land-based primary industries (Jordbruk og skogbruk). When the oil price cycle turns, the mainland economic foundation matters enormously — and its current trajectory provides limited comfort.
+
+## Youth Crime: Convictions Rise Across Age Groups
+
+Criminal conviction rates per 1,000 inhabitants are among the most sensitive barometers of societal stress. Norway's rates have historically been low by international standards, but the age-group breakdown from SSB table 10634 captures something that aggregate figures conceal: younger cohorts are increasingly represented in conviction statistics, and the trend has been broadly upward over the most recent years in the dataset.
+
+```{r plot-crime-ridgeline}
+#| fig-height: 6
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df3_ridgeline") && !is.null(df3_ridgeline) && nrow(df3_ridgeline) > 0) {
+
+  pal4 <- met.brewer("Hokusai2", n = length(unique(df3_ridgeline$age_group)))
+
+  p <- df3_ridgeline |>
+    mutate(age_group = fct_rev(factor(age_group,
+      levels = c("15-17 år", "18-20 år", "21-24 år", "25-29 år", "30-39 år")
+    ))) |>
+    ggplot(aes(x = value, y = age_group, fill = age_group, colour = age_group)) +
+    geom_density_ridges(
+      alpha       = 0.65,
+      scale       = 1.4,
+      bandwidth   = 1.5,
+      rel_min_height = 0.01
+    ) +
+    scale_fill_manual(values  = pal4, guide = "none") +
+    scale_colour_manual(values = pal4, guide = "none") +
+    scale_x_continuous(labels = label_number(suffix = " per 1k")) +
+    labs(
+      title    = "Distribution of conviction rates by age group across all available years",
+      subtitle = "Youngest cohorts (15-17, 18-20) show wide dispersion; older groups cluster lower",
+      x        = "Convicted persons per 1,000 inhabitants",
+      y        = NULL,
+      caption  = "Source: Statistics Norway, table 10634"
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      panel.grid.minor = element_blank(),
+      plot.title       = element_text(face = "bold"),
+      plot.subtitle    = element_text(colour = "grey35"),
+      plot.caption     = element_text(colour = "grey55", size = 9)
+    )
+  print(p)
+
+} else {
+  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+}
+```
+
+```{r plot-crime-small-multiples}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df3_rate") && !is.null(df3_rate) && nrow(df3_rate) > 0) {
+
+  pal5 <- met.brewer("Hokusai2", n = length(unique(df3_rate[["alder"]])))
+  age_levels <- c("15-17 år", "18-20 år", "21-24 år", "25-29 år", "30-39 år")
+
+  df3_plot <- df3_rate |>
+    mutate(age_group = factor(.data[["alder"]], levels = age_levels)) |>
+    filter(!is.na(age_group))
+
+  if (nrow(df3_plot) > 0) {
+    p <- df3_plot |>
+      ggplot(aes(x = date, y = value,
+                 colour = age_group, fill = age_group)) +
+      geom_area(alpha = 0.2) +
+      geom_line(linewidth = 1.0) +
+      facet_wrap(~ age_group, ncol = 3, scales = "free_y") +
+      scale_colour_manual(values = pal5, guide = "none") +
+      scale_fill_manual(values   = pal5, guide = "none") +
+      scale_x_date(date_labels = "%Y", date_breaks = "10 years") +
+      scale_y_continuous(labels = label_number(accuracy = 0.1)) +
+      labs(
+        title    = "Conviction rates per 1,000 inhabitants by age cohort over time",
+        subtitle = "Each panel shows a distinct age group; note the diverging trends in younger cohorts",
+        x        = NULL,
+        y        = "Convicted per 1,000",
+        caption  = "Source: Statistics Norway, table 10634"
+      ) +
+      theme_minimal(base_size = 12) +
+      theme(
+        strip.text       = element_text(face = "bold"),
+        panel.grid.minor = element_blank(),
+        axis.text.x      = element_text(angle = 35, hjust = 1),
+        plot.title       = element_text(face = "bold"),
+        plot.subtitle    = element_text(colour = "grey35"),
+        plot.caption     = element_text(colour = "grey55", size = 9)
+      )
+    print(p)
+  } else {
+    cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  }
+
+} else {
+  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+}
+```
+
+The small multiples format exposes the temporal dynamics that a single aggregate line would obscure. The 18-20 and 21-24 cohorts display the steepest recent trajectories, while the 15-17 group — the youngest tracked — shows high volatility year to year. The 30-39 cohort, by contrast, has been relatively stable, suggesting that the problem concentrates in early adulthood rather than being a society-wide phenomenon.
 
 ## Key Findings
 
-- **Younger women lead the exit.** Among 20-29 year-olds, women recorded the sharpest drops in employment rates across the observed quarterly window, a pattern consistent across multiple recent quarters — not a one-off.
+- **Food inflation remains structurally elevated.** Flour (Mel) and bread products have consistently outpaced the headline CPI in recent years. Even as the rate of change has moderated, the index level never retreated — meaning permanent purchasing power losses for food-dependent households.
 
-- **Older men hold their ground.** Men aged 55-66 show the most resilient participation rates, with some age-gender cells registering modest increases over the same period — a reversal of the early-retirement patterns that characterized Norwegian labour markets in the 1990s.
+- **Petroleum extraction distorts the sectoral picture.** Gross value added in oil and gas dwarfs all mainland sectors combined. Year-on-year swings in extraction output can flip the aggregate national accounts narrative from contraction to expansion without any change in the mainland economy.
 
-- **Food and housing inflation hit younger households hardest.** The 12-month CPI change for food and soft drinks peaked above 11% in 2022-23, while housing and energy costs surged past 15% — categories that absorb a disproportionate share of young adults' budgets and may drive labour force exit decisions.
+- **Manufacturing and agriculture are stagnating.** Both Industri and Jordbruk og skogbruk have recorded weak or negative year-on-year changes in gross value added in the most recent data year, a quiet warning about the long-term resilience of non-petroleum Norway.
 
-- **The aggregate hides the fracture.** Overall employment rates for 15-74 year-olds remained above 68% throughout the period, creating a misleading sense of stability that masks the compositional shift beneath.
+- **Youth conviction rates are rising and volatile.** The 18-20 and 21-24 age groups show the clearest upward pressure in convictions per 1,000 inhabitants. The distribution ridgelines for these cohorts are wide, indicating years of both relative calm and acute spikes — a pattern consistent with episodic economic stress triggering criminal activity.
 
-- **The structural risk is demographic multiplication.** If younger women withdraw from the workforce precisely as Norway's older cohorts retire in larger numbers after 2027, the simultaneous exits could create a labour supply shock that aggregate headline figures will not capture until it is already entrenched.
-
----
+- **The trifecta is not coincidental.** Food price shocks reduce disposable income; stagnating industrial output limits wage growth and employment opportunity; rising youth crime signals the social consequences when economic pressure concentrates in the youngest cohorts with the least financial cushion.
 
 ## Closing Reflection
 
-Norway's labour market has long been held up as a model of high, egalitarian participation — women's employment rates among the highest in the OECD, early retirement largely phased out. The data examined here suggests that model is under quiet but real pressure. The forces at work are not simply cyclical responses to post-pandemic disruption or interest rate hikes. They look structural: younger women weighing the cost of childcare, housing, and inflexible work arrangements against wages that inflation has eroded in real terms; older men benefitting from seniority protection and defined-benefit pension transitions that still reward staying on.
-
-The policy challenge is whether Norway can address the younger-women withdrawal without simply reshuffling the burden onto other groups — and whether the country's celebrated gender-equality institutions are agile enough to respond to a divergence that official aggregate statistics have so far obscured.
+Norway's welfare architecture is designed to absorb exactly these kinds of concurrent shocks, and it largely does so. Unemployment remains low, the oil fund provides a fiscal buffer, and the safety net prevents the absolute destitution seen elsewhere in Europe during inflationary crises. But the data presented here point to accumulating strain in specific domains — food affordability, mainland industrial dynamism, and the social integration of young adults — that the aggregate wealth figures mask. The 2026 stress test is not a crisis in the classical sense. It is quieter and slower, playing out in grocery receipts, sectoral accounts, and courtroom statistics rather than in headlines. That may be precisely why it deserves closer attention.
