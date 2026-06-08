@@ -119,6 +119,6 @@
 
 ## 2026-06-08
 
-**Data unavailable:** SSB tables 08484, 06265, 14700 returned no data or API error
+**Data unavailable:** SSB tables 13839, 06083, 13793 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
 
