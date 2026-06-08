@@ -96,9 +96,15 @@ error_patterns_note <- local({
          paste(recent, collapse = "\n\n"))
 })
 
-unavailable_tables_note <- local({
+# ── Blacklist: tables that recently returned no data (set by fix_post.R) ────────
+# When a post's plots come back empty, fix_post.R scraps the post and logs the
+# offending SSB table IDs to error_patterns.md as "Data unavailable" entries.
+# We both (a) strip those IDs from the seed list the discovery agent starts from
+# and (b) tell the agent never to pick them — so the model stops downloading
+# data from dead tables. Entries older than 30 days expire (tables may recover).
+blacklisted_table_ids <- local({
   path <- file.path("ssb-daily", "error_patterns.md")
-  if (!file.exists(path) || file.size(path) == 0L) return("")
+  if (!file.exists(path) || file.size(path) == 0L) return(character(0))
   content  <- paste(readLines(path, warn = FALSE), collapse = "\n")
   sections <- strsplit(content, "\n(?=## )", perl = TRUE)[[1]]
   cutoff   <- format(Sys.Date() - 30L, "%Y-%m-%d")
@@ -107,19 +113,21 @@ unavailable_tables_note <- local({
     grepl("## (\\d{4}-\\d{2}-\\d{2})", s, perl = TRUE) &&
     regmatches(s, regexpr("## (\\d{4}-\\d{2}-\\d{2})", s, perl = TRUE)) >= paste0("## ", cutoff)
   }, sections)
-  if (length(recent) == 0L) return("")
+  if (length(recent) == 0L) return(character(0))
   # Pull IDs only from the "SSB tables X, Y ..." line so the date-header year
   # (e.g. 2026) is never mistaken for a table ID.
   table_lines <- regmatches(recent, regexpr("SSB tables[^\n]*", recent, perl = TRUE))
   ids <- regmatches(table_lines, gregexpr("\\b\\d{4,6}\\b", table_lines))
-  flat_ids <- unique(unlist(ids))
-  if (length(flat_ids) == 0L) return("")
-  paste0("Avoid these SSB table IDs (recently returned no data or API error): ",
-         paste(flat_ids, collapse = ", "))
+  unique(unlist(ids))
 })
 
+unavailable_tables_note <- if (length(blacklisted_table_ids) > 0L) {
+  paste0("NEVER use these SSB table IDs — they recently returned no data or an API error: ",
+         paste(blacklisted_table_ids, collapse = ", "))
+} else ""
+
 # ── SSB seed table list ────────────────────────────────────────────────────────
-SSB_SEED_TABLES <- paste(c(
+SSB_SEED_TABLES_VEC <- c(
   "14700 - Consumer Price Index (new series 2026)",
   "03013 - Consumer Price Index by consumption group, monthly",
   "09170 - GDP and related measures, quarterly",
@@ -152,7 +160,19 @@ SSB_SEED_TABLES <- paste(c(
   "08800 - Overnight stays by nationality and accommodation type",
   "08484 - Offences reported to police by type",
   "08807 - External trade in goods"
-), collapse = "\n")
+)
+
+# Physically remove blacklisted tables so they never reach the discovery agent.
+if (length(blacklisted_table_ids) > 0L) {
+  drop_re <- paste0("^(", paste(blacklisted_table_ids, collapse = "|"), ") ")
+  kept    <- SSB_SEED_TABLES_VEC[!grepl(drop_re, SSB_SEED_TABLES_VEC)]
+  dropped <- length(SSB_SEED_TABLES_VEC) - length(kept)
+  if (dropped > 0L)
+    message("Dropped ", dropped, " blacklisted table(s) from seed list: ",
+            paste(blacklisted_table_ids, collapse = ", "))
+  SSB_SEED_TABLES_VEC <- kept
+}
+SSB_SEED_TABLES <- paste(SSB_SEED_TABLES_VEC, collapse = "\n")
 
 # ── Agent tool definitions ─────────────────────────────────────────────────────
 AGENT_TOOLS <- list(
