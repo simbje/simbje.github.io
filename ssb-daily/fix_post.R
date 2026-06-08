@@ -69,15 +69,16 @@ plot_chunk_labels <- function(qmd_path) {
 }
 
 # ── Extract SSB table IDs referenced in the QMD ──────────────────────────────
-# Returns unique table IDs found in ApiData("NNNNN", ...) calls.
+# Handles both forms the posts use:
+#   ApiData("https://data.ssb.no/api/v0/no/table/05196", ...)   (URL — the common one)
+#   ApiData("05196", ...) / ApiData(05196, ...)                 (bare ID)
 extract_ssb_table_ids <- function(qmd_path) {
   if (!file.exists(qmd_path)) return(character(0))
-  lines <- readLines(qmd_path, warn = FALSE)
-  m     <- regmatches(lines, gregexpr('ApiData\\s*\\(\\s*["\']?(\\d{4,6})', lines, perl = TRUE))
-  raw   <- unlist(m)
-  if (length(raw) == 0L) return(character(0))
-  ids   <- sub('.*ApiData\\s*\\(\\s*["\']?(\\d{4,6}).*', "\\1", raw, perl = TRUE)
-  unique(ids[nchar(ids) >= 4L])
+  txt <- paste(readLines(qmd_path, warn = FALSE), collapse = "\n")
+  url_ids  <- unlist(regmatches(txt, gregexpr("table/(\\d{4,6})", txt, perl = TRUE)))
+  bare_ids <- unlist(regmatches(txt, gregexpr('ApiData\\s*\\(\\s*["\']?(\\d{4,6})', txt, perl = TRUE)))
+  ids <- gsub("\\D", "", c(url_ids, bare_ids))            # keep digits only
+  unique(ids[nchar(ids) >= 4L & nchar(ids) <= 6L])
 }
 
 # ── Detect plot-* chunks in the QMD that produced no figure ──────────────────
