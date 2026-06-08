@@ -101,6 +101,37 @@ detect_empty_figures <- function(qmd_path, figure_dir) {
   setdiff(plot_labels, png_labels)
 }
 
+# ── Log SSB table IDs that returned no data (blacklist source) ───────────────
+# generate_post.R reads these "Data unavailable" entries and (a) strips the IDs
+# from its seed list and (b) tells the discovery agent never to pick them again.
+log_unavailable <- function(slug, table_ids, patterns_file, max_patterns) {
+  table_str <- if (length(table_ids) > 0L) paste(table_ids, collapse = ", ") else "unknown"
+  new_entry <- paste0(
+    "## ", slug, "\n\n",
+    "**Data unavailable:** SSB tables ", table_str,
+      " returned no data or API error\n",
+    "**Fixes applied:** none (post scrapped — data-level issue, not a code bug)\n"
+  )
+  existing <- if (file.exists(patterns_file) && file.size(patterns_file) > 0L)
+    paste(readLines(patterns_file, warn = FALSE), collapse = "\n") else ""
+  sections <- if (nzchar(existing))
+    strsplit(existing, "\n(?=## )", perl = TRUE)[[1]] else character(0)
+  sections <- tail(sections, max_patterns - 1L)
+  writeLines(paste(c(sections, new_entry), collapse = "\n\n"), patterns_file)
+}
+
+# ── Drop a scrapped post's row from the topic index ──────────────────────────
+# The post is being unpublished, so it should not linger in the "recent posts"
+# list the discovery agent uses to avoid repetition.
+remove_topic_index_row <- function(slug) {
+  idx <- file.path("ssb-daily", "posts", "_topic_index.csv")
+  if (!file.exists(idx)) return(invisible())
+  df <- tryCatch(read.csv(idx, stringsAsFactors = FALSE), error = function(e) NULL)
+  if (is.null(df) || !"date" %in% names(df)) return(invisible())
+  keep <- df[df$date != slug, , drop = FALSE]
+  if (nrow(keep) < nrow(df)) write.csv(keep, idx, row.names = FALSE)
+}
+
 tryCatch({
 
   if (!file.exists(POST_FILE))  bail("No post for today — nothing to check.")
@@ -123,26 +154,59 @@ tryCatch({
   has_code_error <- length(error_snippets) > 0L
 
   # Data-unavailability vs code bug:
-  #  - A genuine code bug surfaces as a ::: cell-output-error block (error=TRUE).
-  #  - An empty SSB fetch/filter does NOT error: the data simply fails the
-  #    nrow()>0 plot guards, so EVERY plot chunk silently produces no figure.
-  # So: no real error + ALL plots empty  ⇒  the dataset itself was unavailable.
-  # There is no code Claude can fix here — log the table IDs so the discovery
-  # agent stops picking them. A PARTIAL miss (some plots rendered) means data
-  # exists, so the missing ones are real code bugs → fall through to Claude.
+  #  - A genuine code bug surfaces as a ::: cell-output-error block (error=TRUE)
+  #    and is fixable → hand it to Claude.
+  #  - An empty SSB fetch/filter does NOT error: the plot template's else-branch
+  #    emits the note "...returned no data for this series" (via cat, so it lands
+  #    in the rendered markdown even though message=FALSE). That note — or, for
+  #    older posts without it, every plot chunk coming back empty — means the
+  #    DATA was unavailable. Such a post is not worth publishing: scrap it and
+  #    blacklist its tables so the model stops downloading from them.
+  note_present    <- any(grepl("returned no data for this series", lines, fixed = TRUE))
   all_plots_empty <- length(all_plots) > 0L &&
     length(empty_figures) == length(all_plots)
-  is_data_issue   <- !has_code_error && all_plots_empty
+  scrap_post      <- !has_code_error && (note_present || all_plots_empty)
 
-  if (length(error_snippets) == 0L && length(empty_figures) == 0L) {
+  if (!scrap_post && length(error_snippets) == 0L && length(empty_figures) == 0L) {
     bail("No errors or missing figures found — post looks clean.")
   }
 
   message("  Found ", length(error_snippets), " error block(s), ",
-          length(empty_figures), "/", max(length(all_plots), 0L), " plot(s) missing.",
-          if (is_data_issue) " Classified as data-unavailability." else "")
+          length(empty_figures), "/", max(length(all_plots), 0L), " plot(s) missing",
+          if (note_present) ", no-data note present" else "", ".")
 
-  # ── Build error_text for Claude ───────────────────────────────────────────
+  # ── Scrap path: data unavailable → unpublish the post + blacklist tables ──
+  if (scrap_post) {
+    table_str <- if (length(ssb_table_ids) > 0L)
+      paste(ssb_table_ids, collapse = ", ") else "unknown"
+    why <- if (note_present) "emitted the no-data note" else "produced no figures at all"
+    message("  Data unavailable (", why, ") — scrapping post. SSB tables: ", table_str)
+
+    # 1. Blacklist the tables so the discovery agent stops downloading them.
+    log_unavailable(POST_SLUG, ssb_table_ids, PATTERNS_FILE, MAX_PATTERNS)
+    message("  Blacklisted tables logged to ", PATTERNS_FILE)
+
+    # 2. Forget the scrapped angle so it isn't counted as a published post.
+    remove_topic_index_row(POST_SLUG)
+
+    # 3. Delete source, freeze cache and any already-rendered output so the
+    #    half-empty article never reaches the published site.
+    unlink(POST_DIR, recursive = TRUE)
+    unlink(file.path("_freeze", "ssb-daily", "posts", POST_SLUG), recursive = TRUE)
+    unlink(file.path("_site",   "ssb-daily", "posts", POST_SLUG), recursive = TRUE)
+    message("  Removed sources + rendered output for ", POST_SLUG)
+
+    # 4. Re-render so the listing, RSS feed and category pages drop the post.
+    rr <- tryCatch(
+      system2("quarto", "render", stdout = TRUE, stderr = TRUE),
+      error = function(e) paste("re-render failed:", conditionMessage(e))
+    )
+    message(paste(utils::tail(rr, 5L), collapse = "\n"))
+
+    bail("Post scrapped (data unavailable) and tables blacklisted.")
+  }
+
+  # ── Build error_text for Claude (code-bug path only) ──────────────────────
   parts <- character(0)
   if (length(error_snippets) > 0L) {
     parts <- c(parts, paste0(
@@ -161,36 +225,6 @@ tryCatch({
 
   # ── Read raw QMD ──────────────────────────────────────────────────────────
   qmd_content <- paste(readLines(POST_FILE, warn = FALSE), collapse = "\n")
-
-  # ── Data-unavailability path: log table IDs and skip Claude fix ───────────
-  if (is_data_issue) {
-    table_str <- if (length(ssb_table_ids) > 0L)
-      paste(ssb_table_ids, collapse = ", ")
-    else "unknown"
-    message("  Data issue — SSB tables: ", table_str)
-
-    new_entry <- paste0(
-      "## ", POST_SLUG, "\n\n",
-      "**Data unavailable:** SSB tables ", table_str,
-        " returned no data or API error\n",
-      "**Fixes applied:** none (data-level issue, not a code bug)\n"
-    )
-
-    existing_content <- if (file.exists(PATTERNS_FILE) && file.size(PATTERNS_FILE) > 0L)
-      paste(readLines(PATTERNS_FILE, warn = FALSE), collapse = "\n")
-    else ""
-
-    sections <- if (nzchar(existing_content))
-      strsplit(existing_content, "\n(?=## )", perl = TRUE)[[1]]
-    else character(0)
-    sections <- tail(sections, MAX_PATTERNS - 1L)
-
-    updated <- paste(c(sections, new_entry), collapse = "\n\n")
-    writeLines(updated, PATTERNS_FILE)
-    message("  Data-unavailability logged to ", PATTERNS_FILE)
-
-    bail("Data-unavailability logged — no code fix possible.")
-  }
 
   if (nchar(ANTHROPIC_API_KEY) == 0L)
     bail("ANTHROPIC_API_KEY not set — cannot fix errors automatically.")

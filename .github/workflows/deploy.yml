@@ -113,7 +113,9 @@ jobs:
             git checkout --theirs -- ssb-daily/ _freeze/ 2>/dev/null || true
             git add ssb-daily/ _freeze/
           fi
-          git add ssb-daily/posts/ _freeze/
+          # Stage posts (incl. scrapped-post deletions + topic index) AND the
+          # blacklist log so fix_post.R's table-avoidance persists across runs.
+          git add -A ssb-daily/posts/ ssb-daily/error_patterns.md _freeze/
           # Safety net: never commit unresolved conflict markers
           if git grep --cached -nE '^(<<<<<<<|>>>>>>>)' ; then
             echo "::error::conflict markers found in staged files — aborting to avoid a broken commit"
