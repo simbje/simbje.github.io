@@ -96,6 +96,28 @@ error_patterns_note <- local({
          paste(recent, collapse = "\n\n"))
 })
 
+unavailable_tables_note <- local({
+  path <- file.path("ssb-daily", "error_patterns.md")
+  if (!file.exists(path) || file.size(path) == 0L) return("")
+  content  <- paste(readLines(path, warn = FALSE), collapse = "\n")
+  sections <- strsplit(content, "\n(?=## )", perl = TRUE)[[1]]
+  cutoff   <- format(Sys.Date() - 30L, "%Y-%m-%d")
+  recent   <- Filter(function(s) {
+    grepl("Data unavailable", s, fixed = TRUE) &&
+    grepl("## (\\d{4}-\\d{2}-\\d{2})", s, perl = TRUE) &&
+    regmatches(s, regexpr("## (\\d{4}-\\d{2}-\\d{2})", s, perl = TRUE)) >= paste0("## ", cutoff)
+  }, sections)
+  if (length(recent) == 0L) return("")
+  # Pull IDs only from the "SSB tables X, Y ..." line so the date-header year
+  # (e.g. 2026) is never mistaken for a table ID.
+  table_lines <- regmatches(recent, regexpr("SSB tables[^\n]*", recent, perl = TRUE))
+  ids <- regmatches(table_lines, gregexpr("\\b\\d{4,6}\\b", table_lines))
+  flat_ids <- unique(unlist(ids))
+  if (length(flat_ids) == 0L) return("")
+  paste0("Avoid these SSB table IDs (recently returned no data or API error): ",
+         paste(flat_ids, collapse = ", "))
+})
+
 # ── SSB seed table list ────────────────────────────────────────────────────────
 SSB_SEED_TABLES <- paste(c(
   "14700 - Consumer Price Index (new series 2026)",
@@ -339,6 +361,7 @@ run_discovery_agent <- function() {
     "Today: ", format(TODAY, "%A, %d %B %Y"), "\n\n",
     "Seed tables:\n", SSB_SEED_TABLES, "\n\n",
     recent_topics_note, "\n\n",
+    if (nzchar(unavailable_tables_note)) paste0(unavailable_tables_note, "\n\n") else "",
     "Discover and verify 1-3 interesting datasets, then call finalize_topic()."
   )
 
@@ -613,7 +636,10 @@ Only do seasonal charts if has_monthly is TRUE.
 
 ## Plotting rules (CRITICAL)
 - ALWAYS: p <- ggplot(...) + ...; print(p)
-- ALWAYS: guard with if (!is.null(df)) { ... }
+- ALWAYS guard the FULL plot body: if (exists("df") && !is.null(df) && nrow(df) > 0) { ...; print(p) }
+- ALWAYS add an else branch emitting a clean editorial note (NOT an R error / NOT a message)
+  so an unavailable series never leaves a silent blank gap. Use EXACTLY:
+    else { cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n") }
 - NEVER rely on implicit printing
 - Every plot chunk must have:
 ```{r plot-name}
@@ -670,7 +696,8 @@ USER_PROMPT <- paste0(
   "  - ALL data fetch chunks from the spec, copied VERBATIM — do NOT rewrite or add grepl\n",
   "Do NOT use separate chunks for setup, libraries, or fetches — combine into one.\n\n",
   "CHUNK 2+ — Wrangle chunk(s): data transformation after fetching.\n\n",
-  "CHUNK N+ — Plot chunks (3-5 total): guard with if (!is.null(df)) { ... }; always print().\n",
+  "CHUNK N+ — Plot chunks (3-5 total): guard with if (exists(\"df\") && !is.null(df) && nrow(df) > 0) { ...; print(p) }\n",
+  "           ALWAYS add an else { cat(\"\\n*Figure omitted — Statistics Norway returned no data for this series.*\\n\\n\") }\n",
   "           Use series_col / measure_col variables for filtering — see spec for exact values."
 )
 

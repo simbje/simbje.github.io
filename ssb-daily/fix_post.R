@@ -55,6 +55,31 @@ detect_error_blocks <- function(lines) {
   snippets
 }
 
+# ── List all plot-* chunk labels declared in the QMD ─────────────────────────
+# Posts keep message=FALSE so the published reports stay clean — that means an
+# empty SSB fetch leaves NO visible trace in the rendered markdown. We therefore
+# classify data-unavailability structurally: every declared plot chunk produced
+# no figure AND nothing actually errored.
+plot_chunk_labels <- function(qmd_path) {
+  if (!file.exists(qmd_path)) return(character(0))
+  qmd <- readLines(qmd_path, warn = FALSE)
+  fence_idx <- grep("^```\\{r\\s+([^,}\\s]+)", qmd, perl = TRUE)
+  labels <- sub("^```\\{r\\s+([^,}\\s]+).*$", "\\1", qmd[fence_idx], perl = TRUE)
+  labels[grepl("^plot[-_]", labels)]
+}
+
+# ── Extract SSB table IDs referenced in the QMD ──────────────────────────────
+# Returns unique table IDs found in ApiData("NNNNN", ...) calls.
+extract_ssb_table_ids <- function(qmd_path) {
+  if (!file.exists(qmd_path)) return(character(0))
+  lines <- readLines(qmd_path, warn = FALSE)
+  m     <- regmatches(lines, gregexpr('ApiData\\s*\\(\\s*["\']?(\\d{4,6})', lines, perl = TRUE))
+  raw   <- unlist(m)
+  if (length(raw) == 0L) return(character(0))
+  ids   <- sub('.*ApiData\\s*\\(\\s*["\']?(\\d{4,6}).*', "\\1", raw, perl = TRUE)
+  unique(ids[nchar(ids) >= 4L])
+}
+
 # ── Detect plot-* chunks in the QMD that produced no figure ──────────────────
 # Returns a character vector of chunk labels with no corresponding PNG.
 detect_empty_figures <- function(qmd_path, figure_dir) {
@@ -92,13 +117,30 @@ tryCatch({
   # ── Detect errors ─────────────────────────────────────────────────────────
   error_snippets <- detect_error_blocks(lines)
   empty_figures  <- detect_empty_figures(POST_FILE, FIGURE_DIR)
+  all_plots      <- plot_chunk_labels(POST_FILE)
+  ssb_table_ids  <- extract_ssb_table_ids(POST_FILE)
+
+  has_code_error <- length(error_snippets) > 0L
+
+  # Data-unavailability vs code bug:
+  #  - A genuine code bug surfaces as a ::: cell-output-error block (error=TRUE).
+  #  - An empty SSB fetch/filter does NOT error: the data simply fails the
+  #    nrow()>0 plot guards, so EVERY plot chunk silently produces no figure.
+  # So: no real error + ALL plots empty  ⇒  the dataset itself was unavailable.
+  # There is no code Claude can fix here — log the table IDs so the discovery
+  # agent stops picking them. A PARTIAL miss (some plots rendered) means data
+  # exists, so the missing ones are real code bugs → fall through to Claude.
+  all_plots_empty <- length(all_plots) > 0L &&
+    length(empty_figures) == length(all_plots)
+  is_data_issue   <- !has_code_error && all_plots_empty
 
   if (length(error_snippets) == 0L && length(empty_figures) == 0L) {
     bail("No errors or missing figures found — post looks clean.")
   }
 
   message("  Found ", length(error_snippets), " error block(s), ",
-          length(empty_figures), " missing figure(s).")
+          length(empty_figures), "/", max(length(all_plots), 0L), " plot(s) missing.",
+          if (is_data_issue) " Classified as data-unavailability." else "")
 
   # ── Build error_text for Claude ───────────────────────────────────────────
   parts <- character(0)
@@ -119,6 +161,36 @@ tryCatch({
 
   # ── Read raw QMD ──────────────────────────────────────────────────────────
   qmd_content <- paste(readLines(POST_FILE, warn = FALSE), collapse = "\n")
+
+  # ── Data-unavailability path: log table IDs and skip Claude fix ───────────
+  if (is_data_issue) {
+    table_str <- if (length(ssb_table_ids) > 0L)
+      paste(ssb_table_ids, collapse = ", ")
+    else "unknown"
+    message("  Data issue — SSB tables: ", table_str)
+
+    new_entry <- paste0(
+      "## ", POST_SLUG, "\n\n",
+      "**Data unavailable:** SSB tables ", table_str,
+        " returned no data or API error\n",
+      "**Fixes applied:** none (data-level issue, not a code bug)\n"
+    )
+
+    existing_content <- if (file.exists(PATTERNS_FILE) && file.size(PATTERNS_FILE) > 0L)
+      paste(readLines(PATTERNS_FILE, warn = FALSE), collapse = "\n")
+    else ""
+
+    sections <- if (nzchar(existing_content))
+      strsplit(existing_content, "\n(?=## )", perl = TRUE)[[1]]
+    else character(0)
+    sections <- tail(sections, MAX_PATTERNS - 1L)
+
+    updated <- paste(c(sections, new_entry), collapse = "\n\n")
+    writeLines(updated, PATTERNS_FILE)
+    message("  Data-unavailability logged to ", PATTERNS_FILE)
+
+    bail("Data-unavailability logged — no code fix possible.")
+  }
 
   if (nchar(ANTHROPIC_API_KEY) == 0L)
     bail("ANTHROPIC_API_KEY not set — cannot fix errors automatically.")
