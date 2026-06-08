@@ -1,0 +1,56 @@
+name: 🔎 SSB Table Discovery (bi-weekly)
+
+# Grows the pool of SSB tables the daily post generator can draw from.
+# Runs on the 1st and 15th of each month (~every two weeks). Only real
+# catalogue IDs are added, so nothing it commits can ever 404.
+on:
+  schedule:
+    - cron: '0 5 1,15 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: "ssb-discover"
+  cancel-in-progress: false
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 🔧 Set up R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.4.0'
+          use-public-rspm: true
+
+      - name: 📦 Install R packages
+        run: |
+          Rscript -e "
+            pkgs <- c('httr2', 'jsonlite')
+            missing <- pkgs[!pkgs %in% installed.packages()[,'Package']]
+            if (length(missing) > 0) install.packages(missing,
+              repos = 'https://packagemanager.posit.co/cran/__linux__/noble/latest', quiet = TRUE)
+          "
+
+      - name: 🔎 Discover new SSB tables
+        run: Rscript ssb-daily/discover_tables.R
+
+      - name: 💾 Commit updated table pool
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add ssb-daily/table_pool.csv
+          if git diff --staged --quiet; then
+            echo "No new tables — pool unchanged."
+          else
+            git commit -m "🔎 SSB table discovery — $(date +%Y-%m-%d) [skip ci]"
+            git pull --rebase origin main
+            git push
+          fi

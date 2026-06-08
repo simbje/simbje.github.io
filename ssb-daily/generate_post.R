@@ -162,17 +162,45 @@ SSB_SEED_TABLES_VEC <- c(
   "08807 - External trade in goods"
 )
 
-# Physically remove blacklisted tables so they never reach the discovery agent.
+# ── Merge in the auto-discovered table pool (grown every ~2 weeks) ──────────────
+# discover_tables.R appends real SSB catalogue tables to table_pool.csv. We blend
+# them with the hand-curated seed so the discovery agent's options keep growing.
+pool_tables_vec <- local({
+  path <- file.path("ssb-daily", "table_pool.csv")
+  if (!file.exists(path)) return(character(0))
+  pool <- tryCatch(read.csv(path, stringsAsFactors = FALSE, colClasses = "character"),
+                   error = function(e) NULL)
+  if (is.null(pool) || nrow(pool) == 0L || !all(c("id", "label") %in% names(pool)))
+    return(character(0))
+  paste0(pool$id, " - ", pool$label)
+})
+
+# Combine seed + pool, drop duplicate IDs (seed wins), then drop blacklisted IDs.
+all_tables_vec <- c(SSB_SEED_TABLES_VEC, pool_tables_vec)
+all_tables_vec <- all_tables_vec[!duplicated(sub(" .*", "", all_tables_vec))]
+
 if (length(blacklisted_table_ids) > 0L) {
   drop_re <- paste0("^(", paste(blacklisted_table_ids, collapse = "|"), ") ")
-  kept    <- SSB_SEED_TABLES_VEC[!grepl(drop_re, SSB_SEED_TABLES_VEC)]
-  dropped <- length(SSB_SEED_TABLES_VEC) - length(kept)
-  if (dropped > 0L)
-    message("Dropped ", dropped, " blacklisted table(s) from seed list: ",
+  before  <- length(all_tables_vec)
+  all_tables_vec <- all_tables_vec[!grepl(drop_re, all_tables_vec)]
+  if (before - length(all_tables_vec) > 0L)
+    message("Dropped ", before - length(all_tables_vec), " blacklisted table(s): ",
             paste(blacklisted_table_ids, collapse = ", "))
-  SSB_SEED_TABLES_VEC <- kept
 }
-SSB_SEED_TABLES <- paste(SSB_SEED_TABLES_VEC, collapse = "\n")
+
+# Keep the prompt a sensible size: always include the seed, then randomly sample
+# from the pool for daily variety (so a growing pool doesn't bloat the prompt).
+TABLE_CAP <- 60L
+if (length(all_tables_vec) > TABLE_CAP) {
+  is_seed   <- sub(" .*", "", all_tables_vec) %in% sub(" .*", "", SSB_SEED_TABLES_VEC)
+  seed_keep <- all_tables_vec[is_seed]
+  pool_keep <- all_tables_vec[!is_seed]
+  n_extra   <- max(0L, TABLE_CAP - length(seed_keep))
+  all_tables_vec <- c(seed_keep, sample(pool_keep, min(length(pool_keep), n_extra)))
+}
+message("Table pool: ", length(all_tables_vec), " tables offered to discovery agent (",
+        length(pool_tables_vec), " from auto-discovery).")
+SSB_SEED_TABLES <- paste(all_tables_vec, collapse = "\n")
 
 # ── Agent tool definitions ─────────────────────────────────────────────────────
 AGENT_TOOLS <- list(
