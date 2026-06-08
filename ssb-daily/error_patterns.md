@@ -1,15 +1,8 @@
-## 2026-04-08
-
-**Error:** `Error: ! object 'df_clean' not found`
-**Fixes applied:** (backfilled from freeze cache — not auto-fixed)
-
-
-
-
 ## 2026-04-09
 
 **Error:** `Error in `palette()`: ! Insufficient values in manual scale. 10 needed but only 8 provided.`
 **Fixes applied:** (backfilled from freeze cache — not auto-fixed)
+
 
 
 
@@ -22,10 +15,12 @@
 
 
 
+
 ## 2026-04-14
 
 **Error:** `Error in `filter()`: ! object 'y1975' not found`
 **Fixes applied:** (backfilled from freeze cache — not auto-fixed)
+
 
 
 
@@ -38,10 +33,12 @@
 
 
 
+
 ## 2026-04-17
 
 **Error:** `Error in `palette()`: ! Insufficient values in manual scale. 3 needed but only 2 provided.`
 **Fixes applied:** (backfilled from freeze cache — not auto-fixed)
+
 
 
 
@@ -54,10 +51,12 @@
 
 
 
+
 ## 2026-04-21
 
 **Error:** `Error in `filter()`: ! Column `type justering` not found in `.data`.`
 **Fixes applied:** (backfilled from freeze cache — not auto-fixed)
+
 
 
 
@@ -70,10 +69,12 @@
 
 
 
+
 ## 2026-04-28
 
 **Error:** `Error in `mutate()`: ! factor level [2] is duplicated`
 **Fixes applied:** (backfilled from freeze cache — not auto-fixed)
+
 
 
 
@@ -86,10 +87,12 @@
 
 
 
+
 ## 2026-05-07
 
 **Error:** `Error: ! object 'df1_top' not found`
 **Fixes applied:** (backfilled from freeze cache — not auto-fixed)
+
 
 
 
@@ -100,14 +103,22 @@
 
 
 
+
 ## 2026-06-02
 
 **Error:** `Missing figure: plot-vacancies-small-multiples`
 **Fixes applied:** Added explicit print(p) statements to all five plot chunks to ensure ggplot objects are rendered; all plot chunks now have unconditional print() after the ggplot() assignment.
 
 
+
 ## 2026-06-08
 
 **Data unavailable:** SSB tables unknown returned no data or API error
+**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
+## 2026-06-08
+
+**Data unavailable:** SSB tables 08484, 06265, 14700 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
 
