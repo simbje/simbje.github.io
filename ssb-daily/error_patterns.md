@@ -1,27 +1,9 @@
-## 2026-04-10
-
-**Error:** `Error in `scale_fill_gradientn()`: ! `breaks` and `labels` have different lengths.`
-**Fixes applied:** (backfilled from freeze cache — not auto-fixed)
-
-
-
-
-
-
-## 2026-04-14
-
-**Error:** `Error in `filter()`: ! object 'y1975' not found`
-**Fixes applied:** (backfilled from freeze cache — not auto-fixed)
-
-
-
-
-
-
 ## 2026-04-16
 
 **Error:** `Error in `mutate()`: ! there is no package called 'zoo'`
 **Fixes applied:** (backfilled from freeze cache — not auto-fixed)
+
+
 
 
 
@@ -38,10 +20,14 @@
 
 
 
+
+
 ## 2026-04-19
 
 **Error:** `Error in `mutate()`: ! object 'Children (0-15)' not found`
 **Fixes applied:** (backfilled from freeze cache — not auto-fixed)
+
+
 
 
 
@@ -58,10 +44,14 @@
 
 
 
+
+
 ## 2026-04-25
 
 **Error:** `Error in `scale_y_continuous()`: ! Discrete value supplied to a continuous scale.`
 **Fixes applied:** (backfilled from freeze cache — not auto-fixed)
+
+
 
 
 
@@ -78,10 +68,14 @@
 
 
 
+
+
 ## 2026-05-03
 
 **Error:** `Error in `mutate()`: ! there is no package called 'zoo'`
 **Fixes applied:** (backfilled from freeze cache — not auto-fixed)
+
+
 
 
 
@@ -97,10 +91,14 @@
 
 
 
+
+
 ## 2026-05-08
 
 **Error:** `Missing figure: plot-vacancy-area`
 **Fixes applied:** Added explicit print() calls to all three missing plot chunks (plot-vacancy-area, plot-dumbbell, plot-labourforce-ridgeline) to ensure ggplot objects render as figures
+
+
 
 
 
@@ -114,10 +112,14 @@
 
 
 
+
+
 ## 2026-06-08
 
 **Data unavailable:** SSB tables unknown returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
 
 
 
@@ -127,8 +129,23 @@
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
 
 
+
+
 ## 2026-06-09
 
 **Data unavailable:** SSB tables 14365, 08669, 13835 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
+
+## 2026-06-09
+
+**Data unavailable:** SSB tables 09190, 08307, 05110 returned no data or API error
+**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
+## 2026-06-09
+
+**Error:** `Error in `filter()`:`
+**Fixes applied:** Initialize df1_by_ctry before conditional block to prevent 'object not found' error; remove duplicate factor levels in df2_recent_plot; add explicit print() statements to ensure plot output
 

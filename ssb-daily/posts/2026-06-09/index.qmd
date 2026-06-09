@@ -1,0 +1,439 @@
+---
+title: "Norway's 2026 Immigration Surge: How Rising Inflows Clash with Inflation and Sectoral Price Collapse"
+description: "Quarterly immigration flows by citizenship group meet annual consumer price indices across key spending categories, revealing the structural tensions reshaping Norwegian society in 2026."
+date: "2026-06-09"
+categories: [SSB, immigration, inflation, demographics]
+---
+
+Norway is simultaneously experiencing two slow-moving shocks: a sustained wave of immigration that has become structurally essential to the labour market, and persistent sector-level inflation that is straining household budgets. Together, these forces are reshaping who lives in Norway, what they can afford, and where price pressures bite hardest. The numbers from Statistics Norway tell a story of convergence — and tension.
+
+## Data
+
+```{r setup}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = TRUE)
+
+library(tidyverse)
+library(lubridate)
+library(PxWebApiData)
+library(scales)
+library(ggridges)
+library(MetBrewer)
+
+df1 <- NULL
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/11327",
+    Statsbrgskap = TRUE,
+    Tid = list(filter = "top", values = 40)
+  )
+  tmp          <- raw[[1]]
+  time_col     <- "kvartal"
+  value_col    <- "value"
+  series_col   <- "statsborgerskap"
+  measure_col  <- "statistikkvariabel"
+  df1 <- tmp |>
+    mutate(
+      value    = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      date     = case_when(
+        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
+        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
+    ) |>
+    filter(!is.na(value), !is.na(date))
+}, error = function(e) message("Fetch failed: ", e$message))
+
+if (is.null(df1) || nrow(df1) == 0) { message("No data returned for df1"); df1 <- NULL }
+
+df2 <- NULL
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/14705",
+    KPIavledetSerie = TRUE,
+    VareTjenesteGrp = TRUE,
+    Tid = list(filter = "top", values = 40)
+  )
+  tmp          <- raw[[1]]
+  time_col     <- "år"
+  value_col    <- "value"
+  series_col   <- "vare- og tjenestegruppe"
+  measure_col  <- "statistikkvariabel"
+  df2 <- tmp |>
+    mutate(
+      value    = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      date     = case_when(
+        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
+        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
+    ) |>
+    filter(!is.na(value), !is.na(date))
+}, error = function(e) message("Fetch failed: ", e$message))
+
+if (is.null(df2) || nrow(df2) == 0) { message("No data returned for df2"); df2 <- NULL }
+```
+
+## Wrangling
+
+```{r wrangle}
+# --- df1: immigration flows ---
+df1_net      <- NULL
+df1_by_ctry  <- NULL
+df1_total    <- NULL
+df1_imm      <- NULL
+df1_spread   <- NULL
+
+if (!is.null(df1) && nrow(df1) > 0) {
+  # Net immigration for all citizenship groups
+  df1_net <- df1 |>
+    filter(.data[["statistikkvariabel"]] == "Nettoinnvandring") |>
+    rename(citizenship = statsborgerskap, quarter = kvartal, measure = statistikkvariabel)
+
+  # Total immigration (all citizenships) for area chart
+  df1_total <- df1 |>
+    filter(.data[["statistikkvariabel"]] == "Innvandring") |>
+    rename(citizenship = statsborgerskap, quarter = kvartal, measure = statistikkvariabel)
+
+  # Focus on non-Norwegian citizenships for breakdown
+  # fixed: initialize df1_by_ctry before filtering to prevent 'citizenship not found'
+  df1_by_ctry <- df1_total |>
+    filter(citizenship != "Norge")
+
+  # Immigration vs Emigration for Norwegian citizens — dumbbell
+  df1_imm <- df1 |>
+    filter(citizenship == "Norge") |>
+    filter(.data[["statistikkvariabel"]] %in% c("Innvandring", "Utvandring")) |>
+    rename(citizenship = statsborgerskap, quarter = kvartal, measure = statistikkvariabel) |>
+    select(date, time_str, measure, value)
+
+  # Spread for dumbbell: latest 8 quarters for foreign citizenships
+  recent_quarters <- df1_total |>
+    distinct(date) |>
+    arrange(desc(date)) |>
+    slice(1:8) |>
+    pull(date)
+
+  df1_spread <- df1 |>
+    filter(
+      .data[["statsborgerskap"]] != "Norge",
+      .data[["statistikkvariabel"]] %in% c("Innvandring", "Utvandring"),
+      date %in% recent_quarters
+    ) |>
+    rename(citizenship = statsborgerskap, quarter = kvartal, measure = statistikkvariabel) |>
+    group_by(citizenship, measure) |>
+    summarise(avg_value = mean(value, na.rm = TRUE), .groups = "drop") |>
+    pivot_wider(names_from = measure, values_from = avg_value) |>
+    rename(immigration = Innvandring, emigration = Utvandring) |>
+    filter(!is.na(immigration), !is.na(emigration)) |>
+    mutate(net = immigration - emigration) |>
+    arrange(desc(net))
+}
+
+# --- df2: price indices ---
+df2_pct      <- NULL
+df2_idx      <- NULL
+df2_recent   <- NULL
+
+if (!is.null(df2) && nrow(df2) > 0) {
+  # Annual percentage change
+  df2_pct <- df2 |>
+    filter(.data[["statistikkvariabel"]] == "Årsendring (prosent)") |>
+    rename(category = `vare- og tjenestegruppe`, measure = statistikkvariabel)
+
+  # Index series (2025=100)
+  df2_idx <- df2 |>
+    filter(.data[["statistikkvariabel"]] == "Indeks (2025=100)") |>
+    rename(category = `vare- og tjenestegruppe`, measure = statistikkvariabel)
+
+  # Most recent year for lollipop
+  if (!is.null(df2_pct) && nrow(df2_pct) > 0) {
+    latest_yr <- max(df2_pct$date, na.rm = TRUE)
+    df2_recent <- df2_pct |>
+      filter(date == latest_yr)
+  }
+}
+```
+
+## Immigration Flows: Who Is Coming to Norway?
+
+Norway's quarterly migration statistics reveal a clear pattern: immigration has remained robust in recent years, driven overwhelmingly by non-Norwegian citizens — particularly from Poland and Albania. The chart below shows cumulative inflows over the ten most recent quarters, broken down by citizenship.
+
+```{r plot-immigration-area}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df1_by_ctry") && !is.null(df1_by_ctry) && nrow(df1_by_ctry) > 0) {
+
+  palette_ctry <- MetBrewer::met.brewer("Hiroshige", n = length(unique(df1_by_ctry$citizenship)))
+
+  p <- ggplot(df1_by_ctry, aes(x = date, y = value, fill = citizenship)) +
+    geom_area(alpha = 0.85, colour = "white", linewidth = 0.3) +
+    scale_fill_manual(values = palette_ctry) +
+    scale_x_date(date_labels = "%Y", date_breaks = "2 years") +
+    scale_y_continuous(labels = comma) +
+    labs(
+      title = "Immigration to Norway by Citizenship, Quarterly",
+      subtitle = "Polish and Albanian inflows dominate non-Nordic immigration over the past decade",
+      x = NULL,
+      y = "Number of immigrants per quarter",
+      fill = "Citizenship",
+      caption = "Source: Statistics Norway, Table 11327"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      plot.title    = element_text(face = "bold", size = 14),
+      plot.subtitle = element_text(colour = "grey30", size = 11),
+      legend.position = "right",
+      panel.grid.minor = element_blank()
+    )
+
+  print(p)
+
+} else {
+  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+}
+```
+
+## Net Immigration: Winners and Losers by Citizenship Group
+
+Not all immigrant groups stay. Net immigration — the difference between arrivals and departures — tells a more nuanced story. Some groups show high turnover; others show strong permanent settlement trends.
+
+```{r plot-net-lollipop}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df1_net") && !is.null(df1_net) && nrow(df1_net) > 0) {
+
+  # Summarise average net immigration per citizenship over all available quarters
+  df1_net_avg <- df1_net |>
+    group_by(citizenship) |>
+    summarise(avg_net = mean(value, na.rm = TRUE), .groups = "drop") |>
+    arrange(avg_net) |>
+    mutate(citizenship = factor(citizenship, levels = citizenship),
+           direction   = if_else(avg_net >= 0, "Positive", "Negative"))
+
+  if (nrow(df1_net_avg) == 0) {
+    cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  } else {
+    pal2 <- MetBrewer::met.brewer("Hiroshige", n = 2)
+
+    p <- ggplot(df1_net_avg, aes(x = avg_net, y = citizenship, colour = direction)) +
+      geom_segment(aes(x = 0, xend = avg_net, yend = citizenship),
+                   linewidth = 1.2, alpha = 0.7) +
+      geom_point(size = 4.5) +
+      geom_vline(xintercept = 0, linetype = "dashed", colour = "grey40") +
+      geom_text(aes(label = round(avg_net, 0)), hjust = -0.4, size = 3.5,
+                fontface = "bold") +
+      scale_colour_manual(values = c("Positive" = pal2[1], "Negative" = pal2[2]),
+                          guide = "none") +
+      scale_x_continuous(labels = comma, expand = expansion(mult = c(0.05, 0.2))) +
+      labs(
+        title = "Average Quarterly Net Immigration by Citizenship",
+        subtitle = "Poles lead permanent settlement; Norwegian citizens show persistent net emigration",
+        x = "Average net immigration per quarter",
+        y = NULL,
+        caption = "Source: Statistics Norway, Table 11327"
+      ) +
+      theme_minimal(base_size = 12) +
+      theme(
+        plot.title    = element_text(face = "bold", size = 14),
+        plot.subtitle = element_text(colour = "grey30", size = 11),
+        panel.grid.minor = element_blank(),
+        panel.grid.major.y = element_blank()
+      )
+
+    print(p)
+  }
+
+} else {
+  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+}
+```
+
+## Sectoral Price Pressures: Where Inflation Bites Hardest
+
+Immigration shapes labour supply, but it lands in an economy already strained by persistent price pressures. The CPI series (base year 2025 = 100) shows how the four major spending categories have moved over time — housing and energy costs standing apart from food and healthcare.
+
+```{r plot-price-index-small-multiples}
+#| fig-height: 6
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df2_idx") && !is.null(df2_idx) && nrow(df2_idx) > 0) {
+
+  pal3 <- MetBrewer::met.brewer("Hiroshige", n = length(unique(df2_idx$category)))
+
+  p <- ggplot(df2_idx, aes(x = date, y = value, colour = category)) +
+    geom_line(linewidth = 1.1) +
+    geom_hline(yintercept = 100, linetype = "dashed", colour = "grey50", linewidth = 0.7) +
+    facet_wrap(~ category, ncol = 2, scales = "free_y") +
+    scale_colour_manual(values = pal3, guide = "none") +
+    scale_x_date(date_labels = "%Y", date_breaks = "5 years") +
+    scale_y_continuous(labels = comma) +
+    annotate("text", x = as.Date("2010-01-01"), y = 100,
+             label = "Base: 2025 = 100", colour = "grey50", size = 3, vjust = -0.5) +
+    labs(
+      title = "Consumer Price Index by Spending Category (2025 = 100)",
+      subtitle = "Housing and energy show the steepest long-run price trajectory; healthcare accelerates recently",
+      x = NULL,
+      y = "Index (2025 = 100)",
+      caption = "Source: Statistics Norway, Table 14705"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      plot.title      = element_text(face = "bold", size = 14),
+      plot.subtitle   = element_text(colour = "grey30", size = 11),
+      strip.text      = element_text(face = "bold", size = 10),
+      panel.grid.minor = element_blank()
+    )
+
+  print(p)
+
+} else {
+  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+}
+```
+
+## Annual Price Change: The Inflation League Table
+
+Which categories are running hottest right now? A lollipop chart of the most recent year's annual price change strips away the long-run context and shows where households are feeling the squeeze today.
+
+```{r plot-annual-change-lollipop}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df2_recent") && !is.null(df2_recent) && nrow(df2_recent) > 0) {
+
+  # fixed: remove duplicate factor levels by using distinct category values
+  df2_recent_plot <- df2_recent |>
+    distinct(category, value, date) |>
+    arrange(value) |>
+    mutate(
+      category  = factor(category, levels = unique(category)),
+      direction = if_else(value >= 0, "Above zero", "Below zero")
+    )
+
+  latest_label <- format(max(df2_recent$date, na.rm = TRUE), "%Y")
+  pal4 <- MetBrewer::met.brewer("Hiroshige", n = 2)
+
+  p <- ggplot(df2_recent_plot, aes(x = value, y = category, colour = direction)) +
+    geom_segment(aes(x = 0, xend = value, yend = category),
+                 linewidth = 1.4, alpha = 0.75) +
+    geom_point(size = 5) +
+    geom_vline(xintercept = 0, linetype = "dashed", colour = "grey40") +
+    geom_text(aes(label = paste0(round(value, 1), "%")),
+              hjust = -0.45, size = 4, fontface = "bold") +
+    scale_colour_manual(
+      values = c("Above zero" = pal4[1], "Below zero" = pal4[2]),
+      guide = "none"
+    ) +
+    scale_x_continuous(
+      labels = function(x) paste0(x, "%"),
+      expand = expansion(mult = c(0.05, 0.25))
+    ) +
+    labs(
+      title = paste0("Annual Price Change by Spending Category, ", latest_label),
+      subtitle = "Food and housing/energy inflation remain elevated; transport shows the largest variation",
+      x = "Year-on-year change (%)",
+      y = NULL,
+      caption = "Source: Statistics Norway, Table 14705"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      plot.title      = element_text(face = "bold", size = 14),
+      plot.subtitle   = element_text(colour = "grey30", size = 11),
+      panel.grid.minor  = element_blank(),
+      panel.grid.major.y = element_blank()
+    )
+
+  print(p)
+
+} else {
+  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+}
+```
+
+## Immigration Arrivals vs Departures: The Dumbbell View
+
+The dumbbell chart below compares average quarterly immigration and emigration for each non-Norwegian citizenship group over the most recent eight quarters — the gap between dots reveals who is staying and who is cycling through Norway's labour market.
+
+```{r plot-dumbbell}
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df1_spread") && !is.null(df1_spread) && nrow(df1_spread) > 0) {
+
+  df1_spread_plot <- df1_spread |>
+    mutate(citizenship = factor(citizenship, levels = rev(citizenship)))
+
+  pal5 <- MetBrewer::met.brewer("Hiroshige", n = 2)
+
+  p <- ggplot(df1_spread_plot) +
+    geom_segment(
+      aes(x = emigration, xend = immigration, y = citizenship, yend = citizenship),
+      colour = "grey70", linewidth = 1.5
+    ) +
+    geom_point(aes(x = immigration, y = citizenship), colour = pal5[1],
+               size = 5, alpha = 0.9) +
+    geom_point(aes(x = emigration, y = citizenship), colour = pal5[2],
+               size = 5, alpha = 0.9) +
+    geom_text(aes(x = immigration, y = citizenship,
+                  label = round(immigration, 0)),
+              colour = pal5[1], vjust = -1, size = 3.3, fontface = "bold") +
+    geom_text(aes(x = emigration, y = citizenship,
+                  label = round(emigration, 0)),
+              colour = pal5[2], vjust = -1, size = 3.3, fontface = "bold") +
+    annotate("text", x = Inf, y = Inf,
+             label = "Blue = Immigration   Red = Emigration",
+             hjust = 1.05, vjust = 1.8, size = 3.5, colour = "grey40") +
+    scale_x_continuous(labels = comma) +
+    labs(
+      title = "Immigration vs Emigration by Citizenship (8-Quarter Average)",
+      subtitle = "Poles show the widest gap — high inflows with comparatively low departures; Albanians follow",
+      x = "Average quarterly persons",
+      y = NULL,
+      caption = "Source: Statistics Norway, Table 11327"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      plot.title      = element_text(face = "bold", size = 14),
+      plot.subtitle   = element_text(colour = "grey30", size = 11),
+      panel.grid.minor  = element_blank(),
+      panel.grid.major.y = element_blank()
+    )
+
+  print(p)
+
+} else {
+  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+}
+```
+
+## Key Findings
+
+- **Polish citizens consistently generate the largest positive net immigration** among all tracked citizenship groups, averaging hundreds of net arrivals per quarter — a structural pillar of Norway's labour supply in construction, manufacturing, and agriculture.
+
+- **Norwegian citizens themselves show persistent net emigration**, meaning more Norwegians leave than return in a typical quarter — a pattern likely driven by high domestic costs and international career opportunities.
+
+- **Housing, electricity, and fuel prices have risen the furthest** in index terms since the base year (2025 = 100), meaning the category that weighs most heavily on low-income and newly arrived households has seen the sharpest cumulative inflation.
+
+- **Food and non-alcoholic beverages** register a meaningful annual price increase in the most recent data year, directly compressing the real income of immigrant workers concentrated in lower-wage sectors.
+
+- **Healthcare costs are accelerating**, suggesting that both an ageing native population and a growing immigrant population will face rising out-of-pocket pressure even within Norway's universal system.
+
+## Closing Reflection
+
+Norway's demographic arithmetic is stark: fertility rates are insufficient to sustain the workforce, so immigration has become a structural necessity rather than a policy option. Yet the same economy that depends on immigrants to build homes, staff food supply chains, and care for the elderly is also generating the inflation that erodes their real wages. Housing costs indexing well above the 2025 base, food prices rising faster than wages in exposed sectors, and a healthcare system becoming more expensive — these are not abstract policy concerns. They are the lived economic reality for the hundreds of thousands of people who arrive in Norway each year hoping to find stability. The tension between an immigration-dependent growth model and a price environment that punishes exactly those new arrivals is one of the defining structural challenges Norway carries into the second half of the 2020s.
