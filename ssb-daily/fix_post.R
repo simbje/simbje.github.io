@@ -191,20 +191,15 @@ tryCatch({
     remove_topic_index_row(POST_SLUG)
 
     # 3. Delete source, freeze cache and any already-rendered output so the
-    #    half-empty article never reaches the published site.
+    #    half-empty article never reaches the published site. The workflow then
+    #    regenerates a fresh article with a different dataset and does the final
+    #    full render (which rebuilds the listing / RSS feed / category pages).
     unlink(POST_DIR, recursive = TRUE)
     unlink(file.path("_freeze", "ssb-daily", "posts", POST_SLUG), recursive = TRUE)
     unlink(file.path("_site",   "ssb-daily", "posts", POST_SLUG), recursive = TRUE)
     message("  Removed sources + rendered output for ", POST_SLUG)
 
-    # 4. Re-render so the listing, RSS feed and category pages drop the post.
-    rr <- tryCatch(
-      system2("quarto", "render", stdout = TRUE, stderr = TRUE),
-      error = function(e) paste("re-render failed:", conditionMessage(e))
-    )
-    message(paste(utils::tail(rr, 5L), collapse = "\n"))
-
-    bail("Post scrapped (data unavailable) and tables blacklisted.")
+    bail("Post scrapped (data unavailable) and tables blacklisted; workflow will retry.")
   }
 
   # ── Build error_text for Claude (code-bug path only) ──────────────────────

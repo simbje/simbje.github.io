@@ -78,28 +78,50 @@ jobs:
             }
           "
 
-      - name: 🤖 Generate daily SSB post via Claude API
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: |
-          if [ "${{ github.event.inputs.force_regenerate }}" = "true" ]; then
-            TODAY=$(date +%Y-%m-%d)
-            rm -rf "ssb-daily/posts/$TODAY"
-          fi
-          Rscript ssb-daily/generate_post.R
-
       - name: 🔧 Set up Quarto
         uses: quarto-dev/quarto-actions/setup@v2
         with:
           version: '1.5.0'
 
-      - name: 🏗️ Render Quarto site
-        run: quarto render
-
-      - name: Fix post errors
+      - name: 🤖 Generate + render + fix (retry until an article survives)
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: Rscript ssb-daily/fix_post.R
+        run: |
+          set -u
+          TODAY=$(date +%Y-%m-%d)
+          if [ "${{ github.event.inputs.force_regenerate }}" = "true" ]; then
+            rm -rf "ssb-daily/posts/$TODAY"
+          fi
+          MAX_ATTEMPTS=5
+          for i in $(seq 1 $MAX_ATTEMPTS); do
+            echo "::group::SSB post attempt $i of $MAX_ATTEMPTS"
+            # Generate only if there is no post yet — fix_post.R deletes the post
+            # dir on a no-data scrap, which is what triggers a fresh attempt.
+            if [ ! -d "ssb-daily/posts/$TODAY" ]; then
+              Rscript ssb-daily/generate_post.R || true
+            fi
+            if [ ! -d "ssb-daily/posts/$TODAY" ]; then
+              echo "::warning::No post generated on attempt $i — retrying."
+              echo "::endgroup::"
+              continue
+            fi
+            quarto render "ssb-daily/posts/$TODAY/index.qmd" || true
+            # fix_post.R fixes code bugs, OR scraps the post + blacklists its
+            # tables (logging to error_patterns.md) when SSB returned no data.
+            Rscript ssb-daily/fix_post.R || true
+            echo "::endgroup::"
+            if [ -d "ssb-daily/posts/$TODAY" ]; then
+              echo "✅ Article present after attempt $i."
+              break
+            fi
+            echo "::warning::Attempt $i had no usable data — finding a new dataset/article."
+          done
+          if [ ! -d "ssb-daily/posts/$TODAY" ]; then
+            echo "::error::All $MAX_ATTEMPTS attempts failed to produce an article today."
+          fi
+
+      - name: 🏗️ Render full site
+        run: quarto render
 
       - name: 💾 Commit post + freeze cache
         run: |
