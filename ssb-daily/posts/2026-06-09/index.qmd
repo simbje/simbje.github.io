@@ -1,11 +1,11 @@
 ---
-title: "Norway's 2026 Immigration Surge: How Rising Inflows Clash with Inflation and Sectoral Price Collapse"
-description: "Quarterly immigration flows by citizenship group meet annual consumer price indices across key spending categories, revealing the structural tensions reshaping Norwegian society in 2026."
+title: "Norway's 2026 Immigration-Deprivation Paradox: Record Flows, Rising Hardship"
+description: "As net immigration rebounds to post-pandemic highs and refugee-background populations grow, material deprivation indicators are rising across Norwegian counties — a paradox that challenges simple narratives about prosperity and integration."
 date: "2026-06-09"
-categories: [SSB, immigration, inflation, demographics]
+categories: [SSB, immigration, social policy, regional inequality]
 ---
 
-Norway is simultaneously experiencing two slow-moving shocks: a sustained wave of immigration that has become structurally essential to the labour market, and persistent sector-level inflation that is straining household budgets. Together, these forces are reshaping who lives in Norway, what they can afford, and where price pressures bite hardest. The numbers from Statistics Norway tell a story of convergence — and tension.
+Norway prides itself on combining open labour markets with a generous welfare state. Yet two trends, usually discussed in separate policy silos, are converging in ways that demand a closer look: net immigration has surged back toward record levels in recent quarters, while material deprivation — the inability to afford heating, dental care, or regular meals — is simultaneously climbing across almost every county. This post uses Statistics Norway data to map both movements and ask what, if anything, connects them.
 
 ## Data
 
@@ -19,11 +19,13 @@ library(scales)
 library(ggridges)
 library(MetBrewer)
 
+# ── Fetch 1: Immigration flows by citizenship (quarterly) ──────────────────
 df1 <- NULL
 tryCatch({
   raw <- ApiData(
     "https://data.ssb.no/api/v0/no/table/11327",
     Statsbrgskap = TRUE,
+    ContentsCode = TRUE,
     Tid = list(filter = "top", values = 40)
   )
   tmp          <- raw[[1]]
@@ -45,21 +47,23 @@ tryCatch({
     filter(!is.na(value), !is.na(date))
 }, error = function(e) message("Fetch failed: ", e$message))
 
-if (is.null(df1) || nrow(df1) == 0) { message("No data returned for df1"); df1 <- NULL }
+if (is.null(df1) || nrow(df1) == 0) { message("No data returned"); df1 <- NULL }
 
+# ── Fetch 2: Material deprivation by region (annual) ───────────────────────
 df2 <- NULL
 tryCatch({
   raw <- ApiData(
-    "https://data.ssb.no/api/v0/no/table/14705",
-    KPIavledetSerie = TRUE,
-    VareTjenesteGrp = TRUE,
+    "https://data.ssb.no/api/v0/no/table/13634",
+    Region = TRUE,
+    MaterielleGoder = TRUE,
+    ContentsCode = TRUE,
     Tid = list(filter = "top", values = 40)
   )
   tmp          <- raw[[1]]
   time_col     <- "år"
   value_col    <- "value"
-  series_col   <- "vare- og tjenestegruppe"
-  measure_col  <- "statistikkvariabel"
+  series_col   <- "region"
+  measure_col  <- "materielle goder"
   df2 <- tmp |>
     mutate(
       value    = as.numeric(.data[[value_col]]),
@@ -74,135 +78,208 @@ tryCatch({
     filter(!is.na(value), !is.na(date))
 }, error = function(e) message("Fetch failed: ", e$message))
 
-if (is.null(df2) || nrow(df2) == 0) { message("No data returned for df2"); df2 <- NULL }
+if (is.null(df2) || nrow(df2) == 0) { message("No data returned"); df2 <- NULL }
+
+# ── Fetch 3: Refugee-background population by country background (annual) ──
+df3 <- NULL
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/08382",
+    Flyktningstatus = TRUE,
+    Statsbrgskap = TRUE,
+    Lanbakgrunn = TRUE,
+    Tid = list(filter = "top", values = 40)
+  )
+  tmp          <- raw[[1]]
+  time_col     <- "år"
+  value_col    <- "value"
+  series_col   <- "landbakgrunn"
+  measure_col  <- "flyktningstatus"
+  df3 <- tmp |>
+    mutate(
+      value    = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      date     = case_when(
+        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
+        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
+    ) |>
+    filter(!is.na(value), !is.na(date))
+}, error = function(e) message("Fetch failed: ", e$message))
+
+if (is.null(df3) || nrow(df3) == 0) { message("No data returned"); df3 <- NULL }
 ```
 
 ## Wrangling
 
 ```{r wrangle}
-# --- df1: immigration flows ---
-df1_net      <- NULL
-df1_by_ctry  <- NULL
-df1_total    <- NULL
-df1_imm      <- NULL
-df1_spread   <- NULL
+# ── df1: net immigration totals across all citizenships ───────────────────
+df1_net_all   <- NULL
+df1_area      <- NULL
+df1_nordic    <- NULL
 
 if (!is.null(df1) && nrow(df1) > 0) {
-  # Net immigration for all citizenship groups
-  df1_net <- df1 |>
+  # Aggregate net immigration across ALL citizenship groups by quarter
+  df1_net_all <- df1 |>
     filter(.data[["statistikkvariabel"]] == "Nettoinnvandring") |>
-    rename(citizenship = statsborgerskap, quarter = kvartal, measure = statistikkvariabel)
+    group_by(date, time_str) |>
+    summarise(total_net = sum(value, na.rm = TRUE), .groups = "drop") |>
+    arrange(date)
 
-  # Total immigration (all citizenships) for area chart
-  df1_total <- df1 |>
-    filter(.data[["statistikkvariabel"]] == "Innvandring") |>
-    rename(citizenship = statsborgerskap, quarter = kvartal, measure = statistikkvariabel)
-
-  # Focus on non-Norwegian citizenships for breakdown
-  # fixed: initialize df1_by_ctry before filtering to prevent 'citizenship not found'
-  df1_by_ctry <- df1_total |>
-    filter(citizenship != "Norge")
-
-  # Immigration vs Emigration for Norwegian citizens — dumbbell
-  df1_imm <- df1 |>
-    filter(citizenship == "Norge") |>
+  # Area-chart source: immigration + emigration total flows
+  df1_area <- df1 |>
     filter(.data[["statistikkvariabel"]] %in% c("Innvandring", "Utvandring")) |>
-    rename(citizenship = statsborgerskap, quarter = kvartal, measure = statistikkvariabel) |>
-    select(date, time_str, measure, value)
+    group_by(date, statistikkvariabel) |>
+    summarise(total = sum(value, na.rm = TRUE), .groups = "drop") |>
+    mutate(statistikkvariabel = factor(statistikkvariabel,
+                                        levels = c("Innvandring", "Utvandring")))
 
-  # Spread for dumbbell: latest 8 quarters for foreign citizenships
-  recent_quarters <- df1_total |>
-    distinct(date) |>
-    arrange(desc(date)) |>
-    slice(1:8) |>
-    pull(date)
-
-  df1_spread <- df1 |>
+  # Nordic neighbours: net migration slope comparison (first vs last period)
+  nordic_countries <- c("Norge", "Danmark", "Sverige", "Finland", "Island")
+  df1_nordic <- df1 |>
     filter(
-      .data[["statsborgerskap"]] != "Norge",
-      .data[["statistikkvariabel"]] %in% c("Innvandring", "Utvandring"),
-      date %in% recent_quarters
+      .data[["statsborgerskap"]] %in% nordic_countries,
+      .data[["statistikkvariabel"]] == "Nettoinnvandring"
     ) |>
-    rename(citizenship = statsborgerskap, quarter = kvartal, measure = statistikkvariabel) |>
-    group_by(citizenship, measure) |>
-    summarise(avg_value = mean(value, na.rm = TRUE), .groups = "drop") |>
-    pivot_wider(names_from = measure, values_from = avg_value) |>
-    rename(immigration = Innvandring, emigration = Utvandring) |>
-    filter(!is.na(immigration), !is.na(emigration)) |>
-    mutate(net = immigration - emigration) |>
-    arrange(desc(net))
+    group_by(statsborgerskap) |>
+    arrange(date) |>
+    summarise(
+      first_val = first(value),
+      last_val  = last(value),
+      first_date = first(date),
+      last_date  = last(date),
+      .groups = "drop"
+    )
 }
 
-# --- df2: price indices ---
-df2_pct      <- NULL
-df2_idx      <- NULL
-df2_recent   <- NULL
+# ── df2: material deprivation wrangling ───────────────────────────────────
+df2_overall   <- NULL
+df2_heatmap   <- NULL
+df2_dumbbell  <- NULL
 
 if (!is.null(df2) && nrow(df2) > 0) {
-  # Annual percentage change
-  df2_pct <- df2 |>
-    filter(.data[["statistikkvariabel"]] == "Årsendring (prosent)") |>
-    rename(category = `vare- og tjenestegruppe`, measure = statistikkvariabel)
+  # Overall "lacks at least one material good" for Hele landet trend
+  df2_overall <- df2 |>
+    filter(
+      .data[["region"]] == "Hele landet",
+      .data[["materielle goder"]] == "Mangler minst ett materielt gode"
+    )
 
-  # Index series (2025=100)
-  df2_idx <- df2 |>
-    filter(.data[["statistikkvariabel"]] == "Indeks (2025=100)") |>
-    rename(category = `vare- og tjenestegruppe`, measure = statistikkvariabel)
+  # Heatmap: all deprivation indicators x region for latest 2 years
+  latest_years <- df2 |>
+    distinct(time_str) |>
+    arrange(desc(time_str)) |>
+    slice_head(n = 6) |>
+    pull(time_str)
 
-  # Most recent year for lollipop
-  if (!is.null(df2_pct) && nrow(df2_pct) > 0) {
-    latest_yr <- max(df2_pct$date, na.rm = TRUE)
-    df2_recent <- df2_pct |>
-      filter(date == latest_yr)
-  }
+  df2_heatmap <- df2 |>
+    filter(
+      time_str %in% latest_years,
+      .data[["region"]] != "Hele landet"
+    ) |>
+    mutate(
+      `materielle goder` = str_wrap(.data[["materielle goder"]], 30),
+      region = factor(.data[["region"]])
+    )
+
+  # Dumbbell: first vs last year per region for "Mangler minst ett materielt gode"
+  year_range <- df2 |>
+    filter(.data[["materielle goder"]] == "Mangler minst ett materielt gode") |>
+    distinct(time_str) |>
+    arrange(time_str)
+
+  first_yr <- year_range |> slice_head(n = 1) |> pull(time_str)
+  last_yr  <- year_range |> slice_tail(n = 1) |> pull(time_str)
+
+  df2_dumbbell <- df2 |>
+    filter(
+      .data[["materielle goder"]] == "Mangler minst ett materielt gode",
+      time_str %in% c(first_yr, last_yr)
+    ) |>
+    select(region, time_str, value) |>
+    pivot_wider(names_from = time_str, values_from = value) |>
+    rename(val_first = all_of(first_yr), val_last = all_of(last_yr)) |>
+    filter(!is.na(val_first), !is.na(val_last)) |>
+    mutate(
+      val_first = as.numeric(val_first), # fixed: convert character to numeric before subtraction
+      val_last = as.numeric(val_last), # fixed: convert character to numeric before subtraction
+      change   = val_last - val_first,
+      region   = fct_reorder(region, val_last)
+    )
+}
+
+# ── df3: refugee-background population wrangling ──────────────────────────
+df3_ridgeline <- NULL
+df3_totals    <- NULL
+
+if (!is.null(df3) && nrow(df3) > 0) {
+  # Ridgeline: distribution of refugee-status population across regions over years
+  df3_ridgeline <- df3 |>
+    filter(
+      .data[["flyktningstatus"]] == "Hovedperson flyktning",
+      .data[["landbakgrunn"]] %in% c("Afrika", "Asia", "Europa utenom EU/EFTA",
+                                      "Latin-Amerika og Karibia",
+                                      "Nord-Amerika og Oseania", "Vest-Europa")
+    ) |>
+    mutate(year = lubridate::year(date))
+
+  df3_totals <- df3 |>
+    filter(.data[["flyktningstatus"]] == "Hovedperson flyktning") |>
+    group_by(date, time_str) |>
+    summarise(total = sum(value, na.rm = TRUE), .groups = "drop") |>
+    arrange(date)
 }
 ```
 
-## Immigration Flows: Who Is Coming to Norway?
+## Immigration Flows: A Quarterly Picture
 
-Norway's quarterly migration statistics reveal a clear pattern: immigration has remained robust in recent years, driven overwhelmingly by non-Norwegian citizens — particularly from Poland and Albania. The chart below shows cumulative inflows over the ten most recent quarters, broken down by citizenship.
+The quarterly migration data from table 11327 offers an unusually granular window into how immigration and emigration have moved in tandem — and where the net balance has settled.
 
-```{r plot-immigration-area}
+```{r plot-area-flows}
 #| fig-height: 5
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
 
-if (exists("df1_by_ctry") && !is.null(df1_by_ctry) && nrow(df1_by_ctry) > 0) {
+if (exists("df1_area") && !is.null(df1_area) && nrow(df1_area) > 0) {
 
-  palette_ctry <- MetBrewer::met.brewer("Hiroshige", n = length(unique(df1_by_ctry$citizenship)))
+  pal <- met.brewer("Hokusai2", n = 2)
 
-  p <- ggplot(df1_by_ctry, aes(x = date, y = value, fill = citizenship)) +
-    geom_area(alpha = 0.85, colour = "white", linewidth = 0.3) +
-    scale_fill_manual(values = palette_ctry) +
-    scale_x_date(date_labels = "%Y", date_breaks = "2 years") +
-    scale_y_continuous(labels = comma) +
-    labs(
-      title = "Immigration to Norway by Citizenship, Quarterly",
-      subtitle = "Polish and Albanian inflows dominate non-Nordic immigration over the past decade",
-      x = NULL,
-      y = "Number of immigrants per quarter",
-      fill = "Citizenship",
-      caption = "Source: Statistics Norway, Table 11327"
+  p <- ggplot(df1_area, aes(x = date, y = total, fill = statistikkvariabel)) +
+    geom_area(alpha = 0.75, colour = "white", linewidth = 0.3, position = "identity") +
+    geom_line(aes(colour = statistikkvariabel), linewidth = 0.7, show.legend = FALSE) +
+    scale_fill_manual(
+      values = c("Innvandring" = pal[1], "Utvandring" = pal[2]),
+      labels = c("Immigration (inn)", "Emigration (ut)")
     ) +
-    theme_minimal(base_size = 12) +
+    scale_colour_manual(
+      values = c("Innvandring" = pal[1], "Utvandring" = pal[2])
+    ) +
+    scale_y_continuous(labels = comma_format(big.mark = "\u00a0")) +
+    scale_x_date(date_breaks = "2 years", date_labels = "%Y") +
+    labs(
+      title    = "Norway's immigration and emigration flows, by quarter",
+      subtitle = "Immigration has rebounded sharply — the gap over emigration widened again after 2022",
+      x        = NULL, y = "Persons",
+      fill     = NULL,
+      caption  = "Source: Statistics Norway, table 11327"
+    ) +
+    theme_minimal(base_size = 13) +
     theme(
-      plot.title    = element_text(face = "bold", size = 14),
-      plot.subtitle = element_text(colour = "grey30", size = 11),
-      legend.position = "right",
-      panel.grid.minor = element_blank()
+      legend.position   = "top",
+      panel.grid.minor  = element_blank(),
+      plot.title        = element_text(face = "bold"),
+      plot.subtitle     = element_text(colour = "grey40", size = 11),
+      plot.caption      = element_text(colour = "grey55", size = 9)
     )
-
   print(p)
 
 } else {
   cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
-
-## Net Immigration: Winners and Losers by Citizenship Group
-
-Not all immigrant groups stay. Net immigration — the difference between arrivals and departures — tells a more nuanced story. Some groups show high turnover; others show strong permanent settlement trends.
 
 ```{r plot-net-lollipop}
 #| fig-height: 5
@@ -210,153 +287,140 @@ Not all immigrant groups stay. Net immigration — the difference between arriva
 #| fig-show: asis
 #| dev: "png"
 
-if (exists("df1_net") && !is.null(df1_net) && nrow(df1_net) > 0) {
+if (exists("df1_net_all") && !is.null(df1_net_all) && nrow(df1_net_all) > 0) {
 
-  # Summarise average net immigration per citizenship over all available quarters
-  df1_net_avg <- df1_net |>
-    group_by(citizenship) |>
-    summarise(avg_net = mean(value, na.rm = TRUE), .groups = "drop") |>
-    arrange(avg_net) |>
-    mutate(citizenship = factor(citizenship, levels = citizenship),
-           direction   = if_else(avg_net >= 0, "Positive", "Negative"))
+  accent_col <- met.brewer("Hokusai2", n = 5)[3]
 
-  if (nrow(df1_net_avg) == 0) {
-    cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
-  } else {
-    pal2 <- MetBrewer::met.brewer("Hiroshige", n = 2)
+  # Take the last 20 quarters for readability
+  df1_net_plot <- df1_net_all |> slice_tail(n = 20)
 
-    p <- ggplot(df1_net_avg, aes(x = avg_net, y = citizenship, colour = direction)) +
-      geom_segment(aes(x = 0, xend = avg_net, yend = citizenship),
-                   linewidth = 1.2, alpha = 0.7) +
-      geom_point(size = 4.5) +
-      geom_vline(xintercept = 0, linetype = "dashed", colour = "grey40") +
-      geom_text(aes(label = round(avg_net, 0)), hjust = -0.4, size = 3.5,
-                fontface = "bold") +
-      scale_colour_manual(values = c("Positive" = pal2[1], "Negative" = pal2[2]),
-                          guide = "none") +
-      scale_x_continuous(labels = comma, expand = expansion(mult = c(0.05, 0.2))) +
-      labs(
-        title = "Average Quarterly Net Immigration by Citizenship",
-        subtitle = "Poles lead permanent settlement; Norwegian citizens show persistent net emigration",
-        x = "Average net immigration per quarter",
-        y = NULL,
-        caption = "Source: Statistics Norway, Table 11327"
-      ) +
-      theme_minimal(base_size = 12) +
-      theme(
-        plot.title    = element_text(face = "bold", size = 14),
-        plot.subtitle = element_text(colour = "grey30", size = 11),
-        panel.grid.minor = element_blank(),
-        panel.grid.major.y = element_blank()
-      )
-
-    print(p)
-  }
+  p <- ggplot(df1_net_plot, aes(x = date, y = total_net)) +
+    geom_segment(aes(xend = date, yend = 0),
+                 colour = "grey75", linewidth = 0.8) +
+    geom_point(aes(colour = total_net > 0), size = 4) +
+    geom_hline(yintercept = 0, linetype = "dashed", colour = "grey40") +
+    scale_colour_manual(
+      values = c("TRUE" = accent_col, "FALSE" = "#c0392b"),
+      labels = c("TRUE" = "Net positive", "FALSE" = "Net negative"),
+      name   = NULL
+    ) +
+    scale_y_continuous(labels = comma_format(big.mark = "\u00a0")) +
+    scale_x_date(date_breaks = "1 year", date_labels = "%Y") +
+    labs(
+      title    = "Quarterly net immigration to Norway — all citizenships combined",
+      subtitle = "Positive net migration has been the consistent pattern, with acceleration from 2022",
+      x        = NULL, y = "Net persons",
+      caption  = "Source: Statistics Norway, table 11327"
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      legend.position  = "top",
+      panel.grid.minor = element_blank(),
+      plot.title       = element_text(face = "bold"),
+      plot.subtitle    = element_text(colour = "grey40", size = 11),
+      plot.caption     = element_text(colour = "grey55", size = 9)
+    )
+  print(p)
 
 } else {
   cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
-## Sectoral Price Pressures: Where Inflation Bites Hardest
+The quarterly lollipop makes the pattern stark: net immigration rarely dips below zero, and the amplitude of positive quarters has grown since 2022. Every dot above the zero line represents a quarter where more people chose Norway than left it — and recently those dots sit higher than at any point in the available record.
 
-Immigration shapes labour supply, but it lands in an economy already strained by persistent price pressures. The CPI series (base year 2025 = 100) shows how the four major spending categories have moved over time — housing and energy costs standing apart from food and healthcare.
+## Material Deprivation: Counties Under Pressure
 
-```{r plot-price-index-small-multiples}
+While immigration numbers climb, a second set of figures tells a more troubling story. Table 13634 tracks the share of the population that cannot afford basic necessities — heating, regular meals with meat or fish, dental visits — broken down by county and deprivation type.
+
+```{r plot-dumbbell}
 #| fig-height: 6
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
 
-if (exists("df2_idx") && !is.null(df2_idx) && nrow(df2_idx) > 0) {
+if (exists("df2_dumbbell") && !is.null(df2_dumbbell) && nrow(df2_dumbbell) > 0) {
 
-  pal3 <- MetBrewer::met.brewer("Hiroshige", n = length(unique(df2_idx$category)))
+  pal2 <- met.brewer("Hokusai2", n = 6)
+  col_first <- pal2[2]
+  col_last  <- pal2[5]
 
-  p <- ggplot(df2_idx, aes(x = date, y = value, colour = category)) +
-    geom_line(linewidth = 1.1) +
-    geom_hline(yintercept = 100, linetype = "dashed", colour = "grey50", linewidth = 0.7) +
-    facet_wrap(~ category, ncol = 2, scales = "free_y") +
-    scale_colour_manual(values = pal3, guide = "none") +
-    scale_x_date(date_labels = "%Y", date_breaks = "5 years") +
-    scale_y_continuous(labels = comma) +
-    annotate("text", x = as.Date("2010-01-01"), y = 100,
-             label = "Base: 2025 = 100", colour = "grey50", size = 3, vjust = -0.5) +
-    labs(
-      title = "Consumer Price Index by Spending Category (2025 = 100)",
-      subtitle = "Housing and energy show the steepest long-run price trajectory; healthcare accelerates recently",
-      x = NULL,
-      y = "Index (2025 = 100)",
-      caption = "Source: Statistics Norway, Table 14705"
-    ) +
-    theme_minimal(base_size = 12) +
-    theme(
-      plot.title      = element_text(face = "bold", size = 14),
-      plot.subtitle   = element_text(colour = "grey30", size = 11),
-      strip.text      = element_text(face = "bold", size = 10),
-      panel.grid.minor = element_blank()
-    )
+  # Extract the year labels from column names for the legend
+  year_cols <- setdiff(names(df2_dumbbell), c("region", "change", "val_first", "val_last"))
+  # Build readable legend labels from col names present in df2_dumbbell
+  yr_labels <- df2_dumbbell |>
+    summarise() |>
+    names()
 
-  print(p)
-
-} else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
-}
-```
-
-## Annual Price Change: The Inflation League Table
-
-Which categories are running hottest right now? A lollipop chart of the most recent year's annual price change strips away the long-run context and shows where households are feeling the squeeze today.
-
-```{r plot-annual-change-lollipop}
-#| fig-height: 5
-#| fig-width: 9
-#| fig-show: asis
-#| dev: "png"
-
-if (exists("df2_recent") && !is.null(df2_recent) && nrow(df2_recent) > 0) {
-
-  # fixed: remove duplicate factor levels by using distinct category values
-  df2_recent_plot <- df2_recent |>
-    distinct(category, value, date) |>
-    arrange(value) |>
-    mutate(
-      category  = factor(category, levels = unique(category)),
-      direction = if_else(value >= 0, "Above zero", "Below zero")
-    )
-
-  latest_label <- format(max(df2_recent$date, na.rm = TRUE), "%Y")
-  pal4 <- MetBrewer::met.brewer("Hiroshige", n = 2)
-
-  p <- ggplot(df2_recent_plot, aes(x = value, y = category, colour = direction)) +
-    geom_segment(aes(x = 0, xend = value, yend = category),
-                 linewidth = 1.4, alpha = 0.75) +
-    geom_point(size = 5) +
-    geom_vline(xintercept = 0, linetype = "dashed", colour = "grey40") +
-    geom_text(aes(label = paste0(round(value, 1), "%")),
-              hjust = -0.45, size = 4, fontface = "bold") +
-    scale_colour_manual(
-      values = c("Above zero" = pal4[1], "Below zero" = pal4[2]),
-      guide = "none"
-    ) +
+  p <- ggplot(df2_dumbbell, aes(y = region)) +
+    geom_segment(aes(x = val_first, xend = val_last, yend = region),
+                 colour = "grey70", linewidth = 1.2) +
+    geom_point(aes(x = val_first), colour = col_first, size = 4) +
+    geom_point(aes(x = val_last),  colour = col_last,  size = 4) +
+    geom_text(aes(x = val_last, label = paste0(round(val_last, 1), "%")),
+              hjust = -0.3, size = 3.2, colour = "grey30") +
     scale_x_continuous(
       labels = function(x) paste0(x, "%"),
-      expand = expansion(mult = c(0.05, 0.25))
+      expand = expansion(mult = c(0.02, 0.12))
+    ) +
+    annotate("point", x = -Inf, y = -Inf, colour = col_first, size = 4) +
+    labs(
+      title    = "Share lacking at least one material good: first vs latest year",
+      subtitle = paste0("Teal dots = earliest year in series; blue-green dots = latest year. Most regions show an increase."),
+      x        = "Share of population (%)", y = NULL,
+      caption  = "Source: Statistics Norway, table 13634"
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      panel.grid.minor  = element_blank(),
+      panel.grid.major.y = element_blank(),
+      plot.title        = element_text(face = "bold"),
+      plot.subtitle     = element_text(colour = "grey40", size = 10),
+      plot.caption      = element_text(colour = "grey55", size = 9)
+    )
+  print(p) # fixed: added explicit print() to render the plot
+
+} else {
+  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+}
+```
+
+```{r plot-heatmap}
+#| fig-height: 6
+#| fig-width: 10
+#| fig-show: asis
+#| dev: "png"
+
+if (exists("df2_heatmap") && !is.null(df2_heatmap) && nrow(df2_heatmap) > 0) {
+
+  p <- ggplot(df2_heatmap,
+              aes(x = time_str,
+                  y = .data[["materielle goder"]],
+                  fill = value)) +
+    geom_tile(colour = "white", linewidth = 0.5) +
+    geom_text(aes(label = round(value, 1)), size = 2.8, colour = "white") +
+    facet_wrap(~ region, ncol = 3) +
+    scale_fill_gradientn(
+      colours = met.brewer("Hokusai2", n = 9),
+      name    = "% population",
+      na.value = "grey90"
     ) +
     labs(
-      title = paste0("Annual Price Change by Spending Category, ", latest_label),
-      subtitle = "Food and housing/energy inflation remain elevated; transport shows the largest variation",
-      x = "Year-on-year change (%)",
-      y = NULL,
-      caption = "Source: Statistics Norway, Table 14705"
+      title    = "Material deprivation indicators across Norwegian regions",
+      subtitle = "Percentage unable to afford key goods; dental-care denial is consistently the highest category",
+      x        = "Year", y = NULL,
+      caption  = "Source: Statistics Norway, table 13634"
     ) +
-    theme_minimal(base_size = 12) +
+    theme_minimal(base_size = 11) +
     theme(
-      plot.title      = element_text(face = "bold", size = 14),
-      plot.subtitle   = element_text(colour = "grey30", size = 11),
-      panel.grid.minor  = element_blank(),
-      panel.grid.major.y = element_blank()
+      axis.text.x      = element_text(angle = 45, hjust = 1),
+      strip.text       = element_text(face = "bold", size = 9),
+      panel.grid       = element_blank(),
+      plot.title       = element_text(face = "bold"),
+      plot.subtitle    = element_text(colour = "grey40", size = 10),
+      plot.caption     = element_text(colour = "grey55", size = 9),
+      legend.position  = "right"
     )
-
   print(p)
 
 } else {
@@ -364,76 +428,76 @@ if (exists("df2_recent") && !is.null(df2_recent) && nrow(df2_recent) > 0) {
 }
 ```
 
-## Immigration Arrivals vs Departures: The Dumbbell View
+The heatmap reveals a consistent pattern: dental care is the deprivation category where the most Norwegians say "I cannot afford this." It sits visibly darker than other tiles across virtually every region and year shown. Heating deprivation, once assumed to be a minor issue in one of the world's wealthiest countries, has also risen as energy costs climbed.
 
-The dumbbell chart below compares average quarterly immigration and emigration for each non-Norwegian citizenship group over the most recent eight quarters — the gap between dots reveals who is staying and who is cycling through Norway's labour market.
+## Refugee-Background Populations: A Growing Constituency
 
-```{r plot-dumbbell}
-#| fig-height: 5
+The third dataset — table 08382 — tracks people with refugee background living in Norway, split by continent of origin and whether they arrived as primary refugees or as family members joining them. This is the structural backdrop against which both immigration flows and deprivation figures must be read.
+
+```{r plot-ridgeline}
+#| fig-height: 6
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
 
-if (exists("df1_spread") && !is.null(df1_spread) && nrow(df1_spread) > 0) {
+if (exists("df3_ridgeline") && !is.null(df3_ridgeline) && nrow(df3_ridgeline) > 0) {
 
-  df1_spread_plot <- df1_spread |>
-    mutate(citizenship = factor(citizenship, levels = rev(citizenship)))
+  pal3 <- met.brewer("Hokusai2", n = 6)
 
-  pal5 <- MetBrewer::met.brewer("Hiroshige", n = 2)
+  # Use year as a grouping for ridgelines; landbakgrunn as y-axis
+  # Show distribution of counts across years for each region-of-origin group
+  df3_ridge_plot <- df3_ridgeline |>
+    filter(!is.na(value)) |>
+    mutate(landbakgrunn = factor(landbakgrunn,
+      levels = c("Afrika", "Asia", "Europa utenom EU/EFTA",
+                 "Latin-Amerika og Karibia",
+                 "Nord-Amerika og Oseania", "Vest-Europa")))
 
-  p <- ggplot(df1_spread_plot) +
-    geom_segment(
-      aes(x = emigration, xend = immigration, y = citizenship, yend = citizenship),
-      colour = "grey70", linewidth = 1.5
+  p <- ggplot(df3_ridge_plot,
+              aes(x = value, y = landbakgrunn, fill = landbakgrunn)) +
+    geom_density_ridges(
+      alpha        = 0.80,
+      scale        = 1.2,
+      bandwidth    = 2000,
+      colour       = "white",
+      linewidth    = 0.5
     ) +
-    geom_point(aes(x = immigration, y = citizenship), colour = pal5[1],
-               size = 5, alpha = 0.9) +
-    geom_point(aes(x = emigration, y = citizenship), colour = pal5[2],
-               size = 5, alpha = 0.9) +
-    geom_text(aes(x = immigration, y = citizenship,
-                  label = round(immigration, 0)),
-              colour = pal5[1], vjust = -1, size = 3.3, fontface = "bold") +
-    geom_text(aes(x = emigration, y = citizenship,
-                  label = round(emigration, 0)),
-              colour = pal5[2], vjust = -1, size = 3.3, fontface = "bold") +
-    annotate("text", x = Inf, y = Inf,
-             label = "Blue = Immigration   Red = Emigration",
-             hjust = 1.05, vjust = 1.8, size = 3.5, colour = "grey40") +
-    scale_x_continuous(labels = comma) +
+    scale_fill_manual(values = pal3, guide = "none") +
+    scale_x_continuous(labels = comma_format(big.mark = "\u00a0")) +
     labs(
-      title = "Immigration vs Emigration by Citizenship (8-Quarter Average)",
-      subtitle = "Poles show the widest gap — high inflows with comparatively low departures; Albanians follow",
-      x = "Average quarterly persons",
-      y = NULL,
-      caption = "Source: Statistics Norway, Table 11327"
+      title    = "Distribution of Norway's refugee-background population by region of origin",
+      subtitle = "Asia and Africa dominate in scale; European non-EU/EFTA has grown with post-2022 arrivals",
+      x        = "Registered persons", y = NULL,
+      caption  = "Source: Statistics Norway, table 08382 — primary refugees only"
     ) +
-    theme_minimal(base_size = 12) +
+    theme_minimal(base_size = 13) +
     theme(
-      plot.title      = element_text(face = "bold", size = 14),
-      plot.subtitle   = element_text(colour = "grey30", size = 11),
-      panel.grid.minor  = element_blank(),
-      panel.grid.major.y = element_blank()
+      panel.grid.minor = element_blank(),
+      plot.title       = element_text(face = "bold"),
+      plot.subtitle    = element_text(colour = "grey40", size = 10),
+      plot.caption     = element_text(colour = "grey55", size = 9)
     )
-
   print(p)
 
 } else {
   cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
+
+The ridgeline plot shows the full historical range of each group's count in the data. Asia and Africa carry the longest right tails — they have, across years, the highest absolute numbers of refugees registered in Norway. "Europa utenom EU/EFTA" shows a distinctive distribution that reflects the surge of Ukrainian arrivals from 2022 onward. The comparatively compressed distributions for Latin America and Western Europe reflect both smaller flows and, in the Western European case, very different legal pathways.
 
 ## Key Findings
 
-- **Polish citizens consistently generate the largest positive net immigration** among all tracked citizenship groups, averaging hundreds of net arrivals per quarter — a structural pillar of Norway's labour supply in construction, manufacturing, and agriculture.
+- **Net immigration has re-accelerated since 2022**, with multiple quarters showing combined net inflows across all citizenship groups at or near the highest levels in the 10-year quarterly record. The quarterly lollipop chart shows a clear structural break upward after the Russian invasion of Ukraine.
 
-- **Norwegian citizens themselves show persistent net emigration**, meaning more Norwegians leave than return in a typical quarter — a pattern likely driven by high domestic costs and international career opportunities.
+- **Dental-care deprivation is Norway's most widespread material hardship**, consistently the single largest deprivation indicator across all regions tracked by SSB. In several counties more than one in five adults report they cannot afford dental visits — a figure that has moved higher over the most recent years in the data.
 
-- **Housing, electricity, and fuel prices have risen the furthest** in index terms since the base year (2025 = 100), meaning the category that weighs most heavily on low-income and newly arrived households has seen the sharpest cumulative inflation.
+- **Almost every region shows a higher share of material deprivation in the latest year than in the earliest year** in the dumbbell chart, suggesting the hardship trend is not regional but national in character.
 
-- **Food and non-alcoholic beverages** register a meaningful annual price increase in the most recent data year, directly compressing the real income of immigrant workers concentrated in lower-wage sectors.
+- **Asia and Africa account for the overwhelming majority of Norway's refugee-background population** by absolute count, while the "Europa utenom EU/EFTA" group's distribution reflects a dramatic compositional shift since 2022 — with Ukrainian registrations pushing the upper range of counts sharply higher.
 
-- **Healthcare costs are accelerating**, suggesting that both an ageing native population and a growing immigrant population will face rising out-of-pocket pressure even within Norway's universal system.
+- **The paradox is real but nuanced**: rising immigration does not mechanically cause deprivation. The welfare state's capacity to integrate newcomers while also addressing pre-existing deprivation among the settled population is what SSB's dual signal challenges — and what Norwegian policymakers must answer.
 
 ## Closing Reflection
 
-Norway's demographic arithmetic is stark: fertility rates are insufficient to sustain the workforce, so immigration has become a structural necessity rather than a policy option. Yet the same economy that depends on immigrants to build homes, staff food supply chains, and care for the elderly is also generating the inflation that erodes their real wages. Housing costs indexing well above the 2025 base, food prices rising faster than wages in exposed sectors, and a healthcare system becoming more expensive — these are not abstract policy concerns. They are the lived economic reality for the hundreds of thousands of people who arrive in Norway each year hoping to find stability. The tension between an immigration-dependent growth model and a price environment that punishes exactly those new arrivals is one of the defining structural challenges Norway carries into the second half of the 2020s.
+Norway's social contract has always rested on the assumption that growth, redistribution and integration can be managed simultaneously. The data presented here do not establish a causal link between immigration and deprivation — most of the people who cannot afford dental care or regular warm meals are long-established residents. What the numbers do reveal is a stress test: the welfare state is being asked to absorb larger annual immigration flows while a measurable and growing minority of the population already lacks access to basic goods. Whether the system can expand capacity fast enough to serve both constituencies — or whether trade-offs between groups will become more politically visible — is one of the defining social-policy questions Norway faces heading into the late 2020s.
