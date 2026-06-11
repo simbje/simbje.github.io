@@ -1,77 +1,11 @@
-## 2026-05-08
-
-**Error:** `Missing figure: plot-vacancy-area`
-**Fixes applied:** Added explicit print() calls to all three missing plot chunks (plot-vacancy-area, plot-dumbbell, plot-labourforce-ridgeline) to ensure ggplot objects render as figures
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-## 2026-06-02
-
-**Error:** `Missing figure: plot-vacancies-small-multiples`
-**Fixes applied:** Added explicit print(p) statements to all five plot chunks to ensure ggplot objects are rendered; all plot chunks now have unconditional print() after the ggplot() assignment.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-## 2026-06-08
-
-**Data unavailable:** SSB tables unknown returned no data or API error
-**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
-
-
-
-
-
-
-
-
-
-
-
-
-
-## 2026-06-08
-
-**Data unavailable:** SSB tables 13839, 06083, 13793 returned no data or API error
-**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
-
-
-
-
-
-
-
-
-
-
-
-
 ## 2026-06-09
 
 **Data unavailable:** SSB tables 14365, 08669, 13835 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
+
+
 
 
 
@@ -97,10 +31,18 @@
 
 
 
+
+
+
+
 ## 2026-06-09
 
 **Error:** `Error in `filter()`:`
 **Fixes applied:** Initialize df1_by_ctry before conditional block to prevent 'object not found' error; remove duplicate factor levels in df2_recent_plot; add explicit print() statements to ensure plot output
+
+
+
+
 
 
 
@@ -122,10 +64,18 @@
 
 
 
+
+
+
+
 ## 2026-06-09
 
 **Data unavailable:** SSB tables 11386, 08800 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
+
+
 
 
 
@@ -143,10 +93,18 @@
 
 
 
+
+
+
+
 ## 2026-06-10
 
 **Data unavailable:** SSB tables 05307, 08668 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
+
+
 
 
 
@@ -160,10 +118,18 @@
 
 
 
+
+
+
+
 ## 2026-06-10
 
 **Data unavailable:** SSB tables 12508, 04170, 11327 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
+
+
 
 
 
@@ -173,8 +139,42 @@
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
 
 
+
+
+
+
 ## 2026-06-10
 
 **Data unavailable:** SSB tables 13760, 09363 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
+
+
+
+## 2026-06-11
+
+**Data unavailable:** SSB tables 13931, 14220 returned no data or API error
+**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
+
+
+## 2026-06-11
+
+**Data unavailable:** SSB tables 14700, 07459 returned no data or API error
+**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
+
+## 2026-06-11
+
+**Data unavailable:** SSB tables 08484, 03013, 05196, 06265 returned no data or API error
+**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
+## 2026-06-11
+
+**Error:** `Error in `rename()`:`
+**Fixes applied:** rename() error due to column name case mismatch (kjonn vs kjønn or actual column name); missing print(p) in plot-dumbbell chunk causing silent failure
 
