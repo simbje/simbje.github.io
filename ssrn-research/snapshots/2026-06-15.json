@@ -1,0 +1,306 @@
+{
+  "run_date": "2026-06-15",
+  "candidates_count": 73,
+  "sources_used": ["arxiv:cs.LG", "arxiv:stat.ML", "arxiv:q-fin.MF", "arxiv:econ.GN", "arxiv:q-fin.PM", "arxiv:q-fin.RM", "arxiv:q-fin.TR", "arxiv:q-fin.ST", "arxiv:q-fin.CP", "arxiv:q-fin.GN", "arxiv:stat.ME", "arxiv:econ.EM", "arxiv:econ.TH"],
+  "bucket_counts": {
+    "data_science": 26,
+    "finance": 25,
+    "social_sciences": 25
+  },
+  "top_papers": {
+    "data_science": [
+      {
+        "id": "arxiv:2606.14211",
+        "rank": 1,
+        "title": "Closing the Reflection Gap: A Free Calibration Bonus for Agentic RL",
+        "authors": "Yinglun Zhu",
+        "url": "https://arxiv.org/abs/2606.14211",
+        "source": "arxiv",
+        "why_trending": "Addresses the critical reflection gap in LLM agents through reinforcement learning, enabling agents to better assess their own performance from environment feedback—highly relevant for agentic AI systems.",
+        "topics": [
+          "LLM-based Agents and Reinforcement Learning",
+          "Agent Self-Assessment and Calibration"
+        ]
+      },
+      {
+        "id": "arxiv:2606.14200",
+        "rank": 2,
+        "title": "When Should Agent Trust Be Conditional? Characterizing and Attacking Skill-Conditional Reputation in Agent Swarms",
+        "authors": "Yihan Xia",
+        "url": "https://arxiv.org/abs/2606.14200",
+        "source": "arxiv",
+        "why_trending": "Proposes skill-conditional trust for heterogeneous agent swarms, moving beyond global reputation scores to exploit specialization—critical for multi-agent platforms.",
+        "topics": [
+          "LLM-based Agents and Reinforcement Learning",
+          "Distributed Agent Systems"
+        ]
+      },
+      {
+        "id": "arxiv:2606.14268",
+        "rank": 3,
+        "title": "Gradient boosting for extremes: sampling theory and application to insurance",
+        "authors": "Stéphane Lhaut",
+        "url": "https://arxiv.org/abs/2606.14268",
+        "source": "arxiv",
+        "why_trending": "Develops statistical learning theory for gradient boosting on extreme-value distributions with non-asymptotic bounds—important for insurance and tail-risk modeling.",
+        "topics": [
+          "Extreme Value Theory and Risk Modeling",
+          "Gradient Boosting Methods"
+        ]
+      },
+      {
+        "id": "arxiv:2606.14313",
+        "rank": 4,
+        "title": "Nonlocal Bayesian Modeling of Continuous Spatio-Temporal Dynamics",
+        "authors": "Jaeyeong Lee",
+        "url": "https://arxiv.org/abs/2606.14313",
+        "source": "arxiv",
+        "why_trending": "Introduces a hierarchical Bayesian framework for continuous spatio-temporal forecasting with nonlocal interactions, addressing long-range spatial coupling—essential for complex physical systems.",
+        "topics": [
+          "Spatio-Temporal Modeling and Forecasting",
+          "Bayesian Deep Learning"
+        ]
+      },
+      {
+        "id": "arxiv:2606.14289",
+        "rank": 5,
+        "title": "Operator Calculus for Population-Based Optimization: A Mean-Field Convergence Theory",
+        "authors": "Pekka Malo",
+        "url": "https://arxiv.org/abs/2606.14289",
+        "source": "arxiv",
+        "why_trending": "Provides unified operator calculus theory for population-based optimization methods, bridging fragmented convergence analyses across evolution strategies and distributional methods.",
+        "topics": [
+          "Population-Based Optimization Theory",
+          "Convergence Analysis"
+        ]
+      }
+    ],
+    "finance": [
+      {
+        "id": "arxiv:2606.14050",
+        "rank": 1,
+        "title": "Battery Bidding under Price Uncertainty in Wholesale Electricity Markets",
+        "authors": "Vincent Yinjun-Wang",
+        "url": "https://arxiv.org/abs/2606.14050",
+        "source": "arxiv",
+        "why_trending": "Models battery bidding in wholesale electricity markets under price uncertainty using mean-CVaR objectives, addressing renewable energy integration in financial markets.",
+        "topics": [
+          "Energy Markets and Renewable Finance",
+          "Risk Management with CVaR"
+        ]
+      },
+      {
+        "id": "arxiv:2606.12612",
+        "rank": 2,
+        "title": "The Mathematics of Heuristic Portfolio Optimization (HPO)",
+        "authors": "Miquel Noguer i Alonso",
+        "url": "https://arxiv.org/abs/2606.12612",
+        "source": "arxiv",
+        "why_trending": "Develops Heuristic Portfolio Optimization theory showing closed-form optimality sets for practical allocation rules like HRP, bridging practitioner heuristics and theory.",
+        "topics": [
+          "Portfolio Optimization and Allocation",
+          "Heuristic Finance"
+        ]
+      },
+      {
+        "id": "arxiv:2606.13812",
+        "rank": 3,
+        "title": "CFOs Meet LLMs",
+        "authors": "John R. Graham",
+        "url": "https://arxiv.org/abs/2606.13812",
+        "source": "arxiv",
+        "why_trending": "Demonstrates that LLMs can forecast CFO sentiment and business optimism, offering scalable alternatives to traditional survey-based business cycle indicators.",
+        "topics": [
+          "LLM Applications in Finance",
+          "Economic Sentiment and Forecasting"
+        ]
+      },
+      {
+        "id": "arxiv:2606.09274",
+        "rank": 4,
+        "title": "Reverse Stress Testing for Multivariate Scenarios: A Conditional Framework for Stressed Time Series",
+        "authors": "Michele Sparviero",
+        "url": "https://arxiv.org/abs/2606.09274",
+        "source": "arxiv",
+        "why_trending": "Develops reverse stress testing framework for multivariate scenarios coherent with empirical dependence, addressing regulatory requirements for interconnected risk.",
+        "topics": [
+          "Risk Management and Stress Testing",
+          "Scenario Generation"
+        ]
+      },
+      {
+        "id": "arxiv:2606.14484",
+        "rank": 5,
+        "title": "Quantum Horizon: An evaluation of quantum computing as a threat to Bitcoin and Ethereum",
+        "authors": "Iosif M. Gershteyn",
+        "url": "https://arxiv.org/abs/2606.14484",
+        "source": "arxiv",
+        "why_trending": "Comprehensive assessment of quantum computing threats to Bitcoin and Ethereum, clarifying misconceptions about Shor vs. Grover algorithms for blockchain security.",
+        "topics": [
+          "Cryptocurrency and Blockchain Finance",
+          "Post-Quantum Cryptography"
+        ]
+      }
+    ],
+    "social_sciences": [
+      {
+        "id": "arxiv:2606.12892",
+        "rank": 1,
+        "title": "Prediction-Powered Causal Inference by Automatic Debiased Machine Learning and Semi-Supervised Riesz Regression",
+        "authors": "Masahiro Kato",
+        "url": "https://arxiv.org/abs/2606.12892",
+        "source": "arxiv",
+        "why_trending": "Develops prediction-powered causal inference using unlabeled auxiliary data to improve efficiency bounds, enabling better use of semi-supervised information in econometrics.",
+        "topics": [
+          "Causal Inference Methods",
+          "Semi-Supervised Learning in Economics"
+        ]
+      },
+      {
+        "id": "arxiv:2606.14621",
+        "rank": 2,
+        "title": "Evaluating the Impact of Rhode Island's Self-Sustaining Reemployment Services and Eligibility Assessment (RESEA) Program on Employment Outcomes",
+        "authors": "Harrison H Li",
+        "url": "https://arxiv.org/abs/2606.14621",
+        "source": "arxiv",
+        "why_trending": "Large-scale RCT (N=23,549) evaluating RESEA reemployment services shows measurable wage and UI duration effects, providing empirical evidence for labor market policy.",
+        "topics": [
+          "Labor Market Policy and Evaluation",
+          "Employment Interventions"
+        ]
+      },
+      {
+        "id": "arxiv:2606.13555",
+        "rank": 3,
+        "title": "Price Elasticity of Gas Demand on L1 and L2: Evidence from Ethereum and Arbitrum",
+        "authors": "Pranay Anchuri",
+        "url": "https://arxiv.org/abs/2606.13555",
+        "source": "arxiv",
+        "why_trending": "Estimates causal price elasticity of gas demand on Ethereum/Arbitrum using IV strategies, advancing understanding of fee mechanisms in Layer 2 blockchains.",
+        "topics": [
+          "Blockchain Economics and DeFi",
+          "Demand Estimation"
+        ]
+      },
+      {
+        "id": "arxiv:2606.14331",
+        "rank": 4,
+        "title": "Wealth Inequality and Planetary Boundaries in a Stylized Agent-Based Model",
+        "authors": "Thomas Valade",
+        "url": "https://arxiv.org/abs/2606.14331",
+        "source": "arxiv",
+        "why_trending": "Agent-based model exploring wealth inequality's impact on ecological transition, revealing how distributional factors constrain climate policy effectiveness.",
+        "topics": [
+          "Environmental Economics and Sustainability",
+          "Inequality and Policy"
+        ]
+      },
+      {
+        "id": "arxiv:2606.13519",
+        "rank": 5,
+        "title": "Semiparametric Local Projections",
+        "authors": "Silvia Goncalves",
+        "url": "https://arxiv.org/abs/2606.13519",
+        "source": "arxiv",
+        "why_trending": "Proposes semiparametric local projections for nonlinear impulse response functions, enabling flexible macroeconomic analysis with state-dependent effects.",
+        "topics": [
+          "Macroeconomic Methods",
+          "Impulse Response Analysis"
+        ]
+      }
+    ]
+  },
+  "topics": [
+    {
+      "name": "LLM-based Agents and Reinforcement Learning",
+      "paper_ids": [
+        "arxiv:2606.14211",
+        "arxiv:2606.14200",
+        "arxiv:2606.11798"
+      ],
+      "summary": "Papers on deploying LLMs as autonomous agents with RL-based learning, including reflection calibration, skill-conditional trust, and equilibrium learning in control problems."
+    },
+    {
+      "name": "Spatio-Temporal Modeling and Forecasting",
+      "paper_ids": [
+        "arxiv:2606.14313",
+        "arxiv:2606.14284",
+        "arxiv:2606.14222"
+      ],
+      "summary": "Methods for modeling continuous-time dynamics with irregular observations, including Bayesian frameworks for nonlocal interactions, hierarchical ODE clustering, and black-box adaptation."
+    },
+    {
+      "name": "Portfolio Optimization and Allocation",
+      "paper_ids": [
+        "arxiv:2606.12612",
+        "arxiv:2606.10805",
+        "arxiv:2606.09104",
+        "arxiv:2606.11318"
+      ],
+      "summary": "Frameworks for optimal asset allocation under uncertainty, including heuristic optimization, nonlinear extrapolation under stochastic volatility, and mean-variance under ambiguity."
+    },
+    {
+      "name": "Causal Inference Methods",
+      "paper_ids": [
+        "arxiv:2606.12892",
+        "arxiv:2606.14057",
+        "arxiv:2606.13519"
+      ],
+      "summary": "Advanced econometric and statistical methods for causal identification including prediction-powered inference, granular instrumental variables, and semiparametric local projections."
+    },
+    {
+      "name": "Risk Management and Stress Testing",
+      "paper_ids": [
+        "arxiv:2606.09274",
+        "arxiv:2606.14050",
+        "arxiv:2606.13431",
+        "arxiv:2606.11859"
+      ],
+      "summary": "Methodologies for quantifying and managing financial and operational risk, including reverse stress testing, scenario generation, chokepoint disruption modeling, and bootstrap methods."
+    },
+    {
+      "name": "Gradient Boosting and Extreme Value Theory",
+      "paper_ids": [
+        "arxiv:2606.14268",
+        "arxiv:2606.14259"
+      ],
+      "summary": "Statistical learning theory for gradient boosting applied to extremes and comparative analysis of Adam vs. SGD, with implications for tail-risk and machine learning optimization."
+    },
+    {
+      "name": "Labor Market Policy and Employment",
+      "paper_ids": [
+        "arxiv:2606.14621",
+        "arxiv:2606.13314",
+        "arxiv:2606.13506"
+      ],
+      "summary": "Empirical evaluation of employment programs, analysis of AI exposure inequality by caste, and skill-education labor mismatch effects on earnings."
+    },
+    {
+      "name": "Blockchain Economics and DeFi",
+      "paper_ids": [
+        "arxiv:2606.13555",
+        "arxiv:2606.09003",
+        "arxiv:2606.10658",
+        "arxiv:2606.14484"
+      ],
+      "summary": "Economic analysis of cryptocurrency markets including gas demand elasticity, PoS staking incentives, post-quantum DeFi security, and quantum threats to blockchain."
+    },
+    {
+      "name": "LLM Applications in Finance and Economics",
+      "paper_ids": [
+        "arxiv:2606.13812",
+        "arxiv:2606.12848"
+      ],
+      "summary": "Use of large language models for business sentiment forecasting and human-in-the-loop economic research, demonstrating scalable alternatives to traditional survey methods."
+    },
+    {
+      "name": "Environmental Economics and Sustainability",
+      "paper_ids": [
+        "arxiv:2606.14331",
+        "arxiv:2606.12787",
+        "arxiv:2606.12788"
+      ],
+      "summary": "Agent-based and RegTech approaches to wealth inequality-environment nexus, green-digital transformation, and trustworthy data sharing in supply chains."
+    }
+  ]
+}
