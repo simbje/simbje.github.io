@@ -1,0 +1,12 @@
+{
+  "run_date": "2026-07-01",
+  "candidates_count": 75,
+  "sources_used": ["arxiv:cs.LG", "arxiv:stat.ME", "arxiv:stat.ML", "arxiv:q-fin.RM", "arxiv:q-fin.ST", "arxiv:q-fin.TR", "arxiv:q-fin.GN", "arxiv:q-fin.CP", "arxiv:q-fin.PM", "arxiv:q-fin.MF", "arxiv:econ.GN", "arxiv:econ.TH", "arxiv:econ.EM", "arxiv:stat.AP"],
+  "note": "Agent failed to finalize; candidates fetched but not clustered.",
+  "top_papers": {
+    "data_science": [],
+    "finance": [],
+    "social_sciences": []
+  },
+  "topics": []
+}
