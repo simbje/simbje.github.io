@@ -1,0 +1,302 @@
+{
+  "run_date": "2026-07-15",
+  "candidates_count": 73,
+  "sources_used": ["arxiv:cs.LG", "arxiv:econ.GN", "arxiv:stat.ME", "arxiv:stat.ML", "arxiv:q-fin.ST", "arxiv:stat.AP", "arxiv:q-fin.MF", "arxiv:q-fin.CP", "arxiv:q-fin.RM", "arxiv:q-fin.GN", "arxiv:q-fin.TR", "arxiv:q-fin.PM", "arxiv:econ.EM", "arxiv:econ.TH"],
+  "bucket_counts": {
+    "data_science": 25,
+    "finance": 25,
+    "social_sciences": 26
+  },
+  "top_papers": {
+    "data_science": [
+      {
+        "id": "arxiv:2607.12345",
+        "rank": 1,
+        "title": "Forecasting Inflation with Microdata: An Adaptive Machine Learning Approach",
+        "authors": "Catherine Chen",
+        "url": "https://arxiv.org/abs/2607.12345",
+        "source": "arxiv",
+        "why_trending": "Bridges microeconomic heterogeneity and macroeconomic forecasting using adaptive ML pipelines with gradient boosted trees for inflation prediction, addressing key challenges in non-stationary environments.",
+        "topics": [
+          "Adaptive machine learning for economic forecasting",
+          "Heterogeneity-aware predictive models"
+        ]
+      },
+      {
+        "id": "arxiv:2607.12281",
+        "rank": 2,
+        "title": "SlimPer: Make Personalization Model Slim and Smart",
+        "authors": "Siqi Wang",
+        "url": "https://arxiv.org/abs/2607.12281",
+        "source": "arxiv",
+        "why_trending": "Reformulates personalized ranking for recommendation systems by exploiting task-specific structure, challenging the general-purpose transformer paradigm with practical efficiency gains.",
+        "topics": [
+          "Efficient neural architectures for recommendation systems"
+        ]
+      },
+      {
+        "id": "arxiv:2607.12369",
+        "rank": 3,
+        "title": "Nonparametric Multi Change Point Detection for Markov Chains via Adaptive Clustering",
+        "authors": "Imon Banerjee",
+        "url": "https://arxiv.org/abs/2607.12369",
+        "source": "arxiv",
+        "why_trending": "Establishes rigorous nonparametric guarantees for change point detection in Markovian (non-i.i.d.) data, addressing a major gap in signal processing and financial applications.",
+        "topics": [
+          "Change point detection and time series analysis"
+        ]
+      },
+      {
+        "id": "arxiv:2607.12391",
+        "rank": 4,
+        "title": "ReDiTT: Retrieval Augmented Conditional Diffusion Transformers for Asynchronous Time Series",
+        "authors": "Saiyue Lyu",
+        "url": "https://arxiv.org/abs/2607.12391",
+        "source": "arxiv",
+        "why_trending": "Combines retrieval-augmented generation with diffusion transformers for asynchronous event prediction, advancing generative models for irregular temporal data.",
+        "topics": [
+          "Diffusion models for time series",
+          "Retrieval-augmented neural systems"
+        ]
+      },
+      {
+        "id": "arxiv:2607.12454",
+        "rank": 5,
+        "title": "Exploring Zero-Shot Foundation Models for Multivariate Time Series Anomaly Detection",
+        "authors": "Martin Uray",
+        "url": "https://arxiv.org/abs/2607.12454",
+        "source": "arxiv",
+        "why_trending": "Investigates zero-shot application of foundation models to multivariate time series anomaly detection, bridging the gap between pretrained models and domain-specific reliability tasks.",
+        "topics": [
+          "Foundation models and transfer learning",
+          "Anomaly detection systems"
+        ]
+      }
+    ],
+    "finance": [
+      {
+        "id": "arxiv:2607.10960",
+        "rank": 1,
+        "title": "Reinforcement Learning for Execution under Dynamic Fees in a Closed-Loop DEX Simulator",
+        "authors": "Wen-Ting Wang",
+        "url": "https://arxiv.org/abs/2607.10960",
+        "source": "arxiv",
+        "why_trending": "Applies reinforcement learning to dynamic fee pricing in decentralized exchanges, closing the gap between theoretical equilibrium models and practical trader-facing fee optimization.",
+        "topics": [
+          "Reinforcement learning for trading and market design",
+          "Decentralized finance microstructure"
+        ]
+      },
+      {
+        "id": "arxiv:2607.10700",
+        "rank": 2,
+        "title": "An Extreme Value Perspective on Learning Stress Laws",
+        "authors": "Mantu Gupta",
+        "url": "https://arxiv.org/abs/2607.10700",
+        "source": "arxiv",
+        "why_trending": "Introduces Self-Similar Generative Estimation for rare-event simulation and stress testing, providing a theoretically grounded approach to tail risk measurement beyond historical samples.",
+        "topics": [
+          "Extreme value theory and tail risk estimation",
+          "Generative models for financial stress testing"
+        ]
+      },
+      {
+        "id": "arxiv:2607.12248",
+        "rank": 3,
+        "title": "When Directional Accuracy Lies: A Base-Rate-Honest Benchmark for LoRA-Adapted TimesFM on Equity Forecasting",
+        "authors": "Taizhen Cheung",
+        "url": "https://arxiv.org/abs/2607.12248",
+        "source": "arxiv",
+        "why_trending": "Exposes base-rate bias in directional accuracy metrics for equity forecasting with TimesFM, establishing proper benchmarking practices for financial time series models.",
+        "topics": [
+          "Foundation models for financial forecasting",
+          "Evaluation methodology and bias detection"
+        ]
+      },
+      {
+        "id": "arxiv:2607.10934",
+        "rank": 4,
+        "title": "Multidimensional stochastic liquidity in Kyle's model of informed trading",
+        "authors": "Ibrahim Ekren",
+        "url": "https://arxiv.org/abs/2607.10934",
+        "source": "arxiv",
+        "why_trending": "Extends Kyle's market microstructure model to multidimensional stochastic liquidity, advancing theoretical understanding of informed trading under realistic market conditions.",
+        "topics": [
+          "Market microstructure and informed trading",
+          "Stochastic liquidity models"
+        ]
+      },
+      {
+        "id": "arxiv:2607.09461",
+        "rank": 5,
+        "title": "Deep Learning for Dynamic Programming with Recursive Utility Using First-order Conditions",
+        "authors": "Xianhua Peng",
+        "url": "https://arxiv.org/abs/2607.09461",
+        "source": "arxiv",
+        "why_trending": "Develops deep learning methods for dynamic programming with recursive utility functions, enabling practical numerical solutions to complex asset pricing problems.",
+        "topics": [
+          "Deep learning for computational finance",
+          "Dynamic programming with recursive preferences"
+        ]
+      }
+    ],
+    "social_sciences": [
+      {
+        "id": "arxiv:2607.12371",
+        "rank": 1,
+        "title": "First They Came for the Others: A Theory of Divide-and-Conquer",
+        "authors": "Yeon-Koo Che",
+        "url": "https://arxiv.org/abs/2607.12371",
+        "source": "arxiv",
+        "why_trending": "Provides game-theoretic analysis of divide-and-conquer tactics through epistemic friction and inference failures, with implications for conflict, coordination, and strategic escalation.",
+        "topics": [
+          "Strategic conflict and coordination failures"
+        ]
+      },
+      {
+        "id": "arxiv:2607.12412",
+        "rank": 2,
+        "title": "Choice at Finite Capacity: The Bounded Agent as an Information Channel and the Recovery of Walrasian Demand",
+        "authors": "Avishek Bhandari",
+        "url": "https://arxiv.org/abs/2607.12412",
+        "source": "arxiv",
+        "why_trending": "Models bounded-rationality consumers as information channels, recovering Walrasian demand in the limit while explaining limited-attention behavior with a unified framework.",
+        "topics": [
+          "Bounded rationality and information-constrained choice"
+        ]
+      },
+      {
+        "id": "arxiv:2607.13002",
+        "rank": 3,
+        "title": "Shared Bidding Algorithms and Competition: Evidence from Electricity Markets",
+        "authors": "Nicolas Eschenbaum",
+        "url": "https://arxiv.org/abs/2607.13002",
+        "source": "arxiv",
+        "why_trending": "Empirically demonstrates how shared third-party bidding algorithms affect competition in electricity markets, raising regulatory questions about algorithmic coordination.",
+        "topics": [
+          "Algorithmic markets and competition",
+          "Market microstructure in digital economies"
+        ]
+      },
+      {
+        "id": "arxiv:2607.12622",
+        "rank": 4,
+        "title": "Orthogonal Integrated Conditional Moment Tests for Treatment Effect Heterogeneity",
+        "authors": "Haokun Lu",
+        "url": "https://arxiv.org/abs/2607.12622",
+        "source": "arxiv",
+        "why_trending": "Proposes nonparametric tests for treatment effect heterogeneity using Neyman-orthogonal scores, advancing causal inference methodology with improved robustness to nuisance parameter estimation.",
+        "topics": [
+          "Causal inference and treatment heterogeneity"
+        ]
+      },
+      {
+        "id": "arxiv:2607.10819",
+        "rank": 5,
+        "title": "Top Trading Cycles in Large Markets: The Asymptotic Irrelevance of Priorities",
+        "authors": "Yeon-Koo Che",
+        "url": "https://arxiv.org/abs/2607.10819",
+        "source": "arxiv",
+        "why_trending": "Shows that Top Trading Cycles loses its priority-respecting advantage in large markets, challenging foundational assumptions in mechanism design fairness.",
+        "topics": [
+          "Mechanism design and market allocation",
+          "Fairness in large-scale matching"
+        ]
+      }
+    ]
+  },
+  "topics": [
+    {
+      "name": "Adaptive machine learning for economic forecasting",
+      "paper_ids": [
+        "arxiv:2607.12345",
+        "arxiv:2607.12454"
+      ],
+      "summary": "Papers developing adaptive ML pipelines and zero-shot foundation models for forecasting inflation, anomaly detection, and time series analysis in data-scarce and non-stationary financial environments."
+    },
+    {
+      "name": "Diffusion models and generative AI for domain-specific tasks",
+      "paper_ids": [
+        "arxiv:2607.12391",
+        "arxiv:2607.12349",
+        "arxiv:2607.12464",
+        "arxiv:2607.10810"
+      ],
+      "summary": "Applications of diffusion transformers and generative models to asynchronous time series, drug discovery, medical image classification, and tail risk simulation, advancing conditional generation under uncertainty."
+    },
+    {
+      "name": "Change point detection and time series analysis",
+      "paper_ids": [
+        "arxiv:2607.12369",
+        "arxiv:2607.12391",
+        "arxiv:2607.09230"
+      ],
+      "summary": "Nonparametric methods for detecting distributional shifts in Markovian sequences, retrieval-augmented prediction of event timing, and state transitions in financial microstructure data."
+    },
+    {
+      "name": "Extreme value theory and tail risk estimation",
+      "paper_ids": [
+        "arxiv:2607.10700",
+        "arxiv:2607.10810",
+        "arxiv:2607.09906"
+      ],
+      "summary": "Theoretical and computational frameworks for modeling rare events, stress testing, and extracting extreme-scenario probabilities using generative models and quantum topological methods."
+    },
+    {
+      "name": "Market microstructure and informed trading",
+      "paper_ids": [
+        "arxiv:2607.10934",
+        "arxiv:2607.10297",
+        "arxiv:2607.09426",
+        "arxiv:2607.09230"
+      ],
+      "summary": "Analysis of liquidity dynamics, order-flow predictability, algorithmic trading signatures, and correlation structure recovery in financial markets under realistic conditions."
+    },
+    {
+      "name": "Reinforcement learning for trading and market design",
+      "paper_ids": [
+        "arxiv:2607.10960",
+        "arxiv:2607.11328",
+        "arxiv:2607.09461"
+      ],
+      "summary": "Deep reinforcement learning and optimal control methods for dynamic pricing, OTC market making with reputation constraints, and portfolio optimization with recursive preferences."
+    },
+    {
+      "name": "Bounded rationality and information-constrained choice",
+      "paper_ids": [
+        "arxiv:2607.12412",
+        "arxiv:2607.12299",
+        "arxiv:2607.11983"
+      ],
+      "summary": "Behavioral economics modeling of consumers and agents as limited information channels, quantum models for mental state evolution, and trade-offs between specialist blind spots and generalist flexibility."
+    },
+    {
+      "name": "Causal inference and treatment effect heterogeneity",
+      "paper_ids": [
+        "arxiv:2607.12622",
+        "arxiv:2607.11694",
+        "arxiv:2607.10558"
+      ],
+      "summary": "Nonparametric tests for heterogeneous treatment effects, temporal design methods for switchback experiments, and power analysis for honest confidence intervals in causal settings."
+    },
+    {
+      "name": "Mechanism design and market allocation",
+      "paper_ids": [
+        "arxiv:2607.10819",
+        "arxiv:2607.10756",
+        "arxiv:2607.11658",
+        "arxiv:2607.12371"
+      ],
+      "summary": "Strategic analysis of matching markets, fairness criteria in allocation mechanisms, stability under entry, and divide-and-conquer tactics in conflict and coordination."
+    },
+    {
+      "name": "Algorithmic markets and competition",
+      "paper_ids": [
+        "arxiv:2607.13002",
+        "arxiv:2607.11240",
+        "arxiv:2607.09514"
+      ],
+      "summary": "Impact of shared algorithms on market competition, block-building microstructure in blockchain systems, and regulatory effects on stablecoin trading patterns."
+    }
+  ]
+}
