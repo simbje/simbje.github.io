@@ -1,92 +1,12 @@
-## 2026-07-12
-
-**Data unavailable:** SSB tables 08771, 10949, 09363 returned no data or API error
-**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-## 2026-07-12
-
-**Data unavailable:** SSB tables 11386, 13931 returned no data or API error
-**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-## 2026-07-12
-
-**Data unavailable:** SSB tables 06083, 09190, 05110 returned no data or API error
-**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
-
-
-
-
-
-
-
-
-
-
-
-
-
-## 2026-07-12
-
-**Data unavailable:** SSB tables 08268, 07221, 03013 returned no data or API error
-**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
-
-
-
-
-
-
-
-
-
-
-
-
-## 2026-07-12
-
-**Data unavailable:** SSB tables 05307, 11653, 09186 returned no data or API error
-**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
-
-
-
-
-
-
-
-
-
-
-
 ## 2026-07-13
 
 **Data unavailable:** SSB tables 09170, 05111 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
+
+
+
 
 
 
@@ -110,10 +30,20 @@
 
 
 
+
+
+
+
+
 ## 2026-07-13
 
 **Error:** `Error in `max()`:`
 **Fixes applied:** max() error in dumbbell plot due to uninitialized df2_dumbbell, missing print() statement in gender dumbbell plot, improper null-guard logic preventing plot execution
+
+
+
+
+
 
 
 
@@ -133,10 +63,20 @@
 
 
 
+
+
+
+
+
 ## 2026-07-15
 
 **Data unavailable:** SSB tables 12349, 06921, 14651 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
+
+
+
 
 
 
@@ -152,10 +92,20 @@
 
 
 
+
+
+
+
+
 ## 2026-07-15
 
 **Error:** `Error in `mutate()`:`
 **Fixes applied:** fct_reorder() error in plot-dumbbell (cannot reorder by non-atomic vector of column names); missing print() statement in plot-dumbbell chunk
+
+
+
+
+
 
 
 
@@ -167,14 +117,64 @@
 
 
 
+
+
+
+
+
 ## 2026-07-16
 
 **Data unavailable:** SSB tables 13771, 08484, 11573 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
 
 
+
+
+
+
+
 ## 2026-07-16
 
 **Error:** `Error in `select()`:`
 **Fixes applied:** Removed non-existent `justering` column from df2 select statement; added explicit `print(p3)` guard in plot-labour-ridge to ensure plot renders
+
+
+
+
+
+
+## 2026-07-17
+
+**Data unavailable:** SSB tables 06988, 09429 returned no data or API error
+**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
+
+
+
+## 2026-07-17
+
+**Data unavailable:** SSB tables 09363, 09189, 10949 returned no data or API error
+**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
+
+
+## 2026-07-17
+
+**Data unavailable:** SSB tables 11327, 14620, 13642 returned no data or API error
+**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
+
+## 2026-07-17
+
+**Data unavailable:** SSB tables 11386, 03768, 06514 returned no data or API error
+**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
+## 2026-07-17
+
+**Error:** `Error in `mutate()`:`
+**Fixes applied:** Missing `print()` statements in plot-lollipop, plot-heatmap, and plot-slope chunks; non-numeric subtraction error in df_lollipop due to character column type from pivot_wider
 
