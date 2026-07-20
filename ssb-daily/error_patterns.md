@@ -1,26 +1,8 @@
 ## 2026-07-16
 
-**Data unavailable:** SSB tables 13771, 08484, 11573 returned no data or API error
-**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-## 2026-07-16
-
 **Error:** `Error in `select()`:`
 **Fixes applied:** Removed non-existent `justering` column from df2 select statement; added explicit `print(p3)` guard in plot-labour-ridge to ensure plot renders
+
 
 
 
@@ -52,10 +34,12 @@
 
 
 
+
 ## 2026-07-17
 
 **Data unavailable:** SSB tables 09363, 09189, 10949 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
 
 
 
@@ -83,10 +67,12 @@
 
 
 
+
 ## 2026-07-17
 
 **Data unavailable:** SSB tables 11386, 03768, 06514 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
 
 
 
@@ -110,10 +96,12 @@
 
 
 
+
 ## 2026-07-18
 
 **Data unavailable:** SSB tables 09788, 11503, 06083 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
 
 
 
@@ -133,10 +121,12 @@
 
 
 
+
 ## 2026-07-18
 
 **Data unavailable:** SSB tables 09186, 05110, 08268 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
 
 
 
@@ -152,10 +142,12 @@
 
 
 
+
 ## 2026-07-19
 
 **Data unavailable:** SSB tables 03013, 13760, 05803 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
 
 
 
@@ -167,14 +159,22 @@
 
 
 
+
 ## 2026-07-19
 
 **Data unavailable:** SSB tables 06921, 06512, 05247 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
 
 
+
 ## 2026-07-19
 
 **Error:** `Error in `mutate()`:`
 **Fixes applied:** Duplicate factor levels in df3_latest cat_short factor (caused by multiple categories mapping to same short name), missing print() statement in plot-lollipop-cpi chunk
+
+
+## 2026-07-20
+
+**Error:** `Error in `mutate()`:`
+**Fixes applied:** Error 1 - yr_first/yr_last coercion error (pivot_wider created list columns instead of numeric); Error 2 - pct_chg undefined in arrange() call (attempted use before conditional assignment completed); Missing figure plot-oil-lollipop (print(p2) was missing from conditional block)
 
