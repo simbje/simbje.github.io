@@ -1,44 +1,9 @@
-## 2026-07-18
-
-**Error:** `Error in `mutate()`:`
-**Fixes applied:** Non-numeric subtraction error in dumbbell calculation (yr_first_val and yr_last_val were character type after pivot_wider), missing print statement in plot-dumbbell chunk
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-## 2026-07-19
-
-**Data unavailable:** SSB tables 03013, 13760, 05803 returned no data or API error
-**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 ## 2026-07-19
 
 **Data unavailable:** SSB tables 14651, 13793, 12508 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
 
 
 
@@ -68,10 +33,14 @@
 
 
 
+
+
 ## 2026-07-19
 
 **Error:** `Error in `mutate()`:`
 **Fixes applied:** Duplicate factor levels in df3_latest cat_short factor (caused by multiple categories mapping to same short name), missing print() statement in plot-lollipop-cpi chunk
+
+
 
 
 
@@ -97,10 +66,14 @@
 
 
 
+
+
 ## 2026-07-21
 
 **Data unavailable:** SSB tables 11573, 11622, 07855 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
 
 
 
@@ -122,10 +95,14 @@
 
 
 
+
+
 ## 2026-07-21
 
 **Data unavailable:** SSB tables 13554, 14705, 09170 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
 
 
 
@@ -143,10 +120,14 @@
 
 
 
+
+
 ## 2026-07-21
 
 **Data unavailable:** SSB tables 11327, 09171, 13797 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
 
 
 
@@ -160,10 +141,14 @@
 
 
 
+
+
 ## 2026-07-22
 
 **Error:** `Error in `palette()`:`
 **Fixes applied:** Insufficient manual scale colors (5 provided but 6 contract types needed); missing print() call for plot-electricity-area chunk
+
+
 
 
 
@@ -173,8 +158,23 @@
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
 
 
+
+
 ## 2026-07-23
 
 **Error:** `Error in `palette()`:`
 **Fixes applied:** Insufficient color palette in plot-family-area (6 colors provided but 9 family types needed), missing print() statement in plot-family-area chunk
+
+
+
+## 2026-07-24
+
+**Data unavailable:** SSB tables 13863, 09186, 05111 returned no data or API error
+**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
+## 2026-07-24
+
+**Error:** `Error in `met.brewer()`:`
+**Fixes applied:** met.brewer() discrete palette color limit exceeded in plot-food-ridgeline and plot-food-index-line, missing print() statements for both plots, insufficient guard conditions
 
