@@ -1,26 +1,8 @@
-## 2026-07-22
-
-**Error:** `Error in `palette()`:`
-**Fixes applied:** Insufficient manual scale colors (5 provided but 6 contract types needed); missing print() call for plot-electricity-area chunk
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 ## 2026-07-23
 
 **Data unavailable:** SSB tables 13634, 11503, 06514 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
 
 
 
@@ -52,10 +34,12 @@
 
 
 
+
 ## 2026-07-24
 
 **Data unavailable:** SSB tables 13863, 09186, 05111 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
 
 
 
@@ -83,10 +67,12 @@
 
 
 
+
 ## 2026-07-25
 
 **Data unavailable:** SSB tables 10949, 11686, 12349 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
 
 
 
@@ -110,10 +96,12 @@
 
 
 
+
 ## 2026-07-25
 
 **Data unavailable:** SSB tables 14651, 09788, 08668 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
 
 
 
@@ -133,10 +121,12 @@
 
 
 
+
 ## 2026-07-25
 
 **Error:** `Error in `rename()`:`
 **Fixes applied:** Error 1 - fixed column name mismatch in rename() call for df1_dumbbell; Error 2 - reduced met.brewer palette size to match available discrete colors; Missing figures - added explicit print() statements and strengthened null-guards for both dumbbell and travel-modes plots
+
 
 
 
@@ -152,10 +142,12 @@
 
 
 
+
 ## 2026-07-26
 
 **Data unavailable:** SSB tables 14220, 11573 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
 
 
 
@@ -167,14 +159,22 @@
 
 
 
+
 ## 2026-07-26
 
 **Data unavailable:** SSB tables 06921, 06988, 14705 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
 
 
+
 ## 2026-07-26
 
 **Data unavailable:** SSB tables 14700, 07221, 13931 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
+## 2026-07-27
+
+**Error:** `Error in `group_by()`:`
+**Fixes applied:** Column name mismatch in df2 group_by (Region vs actual column), column name mismatch in df3 group_by (Statsbrgskap vs actual column), missing print() statements in three plot chunks
 
