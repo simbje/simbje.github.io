@@ -1,61 +1,10 @@
 ## 2026-07-25
 
-**Data unavailable:** SSB tables 09363, 07201, 03013 returned no data or API error
-**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-## 2026-07-25
-
-**Data unavailable:** SSB tables 14651, 09788, 08668 returned no data or API error
-**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-## 2026-07-25
-
-**Data unavailable:** SSB tables 09190, 11174, 05110 returned no data or API error
-**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
-
-
-
-
-
-
-
-
-
-
-
-
-
-## 2026-07-25
-
 **Error:** `Error in `rename()`:`
 **Fixes applied:** Error 1 - fixed column name mismatch in rename() call for df1_dumbbell; Error 2 - reduced met.brewer palette size to match available discrete colors; Missing figures - added explicit print() statements and strengthened null-guards for both dumbbell and travel-modes plots
+
+
+
 
 
 
@@ -83,10 +32,16 @@
 
 
 
+
+
+
 ## 2026-07-26
 
 **Data unavailable:** SSB tables 14220, 11573 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
+
 
 
 
@@ -110,10 +65,16 @@
 
 
 
+
+
+
 ## 2026-07-26
 
 **Data unavailable:** SSB tables 06921, 06988, 14705 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
+
 
 
 
@@ -133,10 +94,16 @@
 
 
 
+
+
+
 ## 2026-07-27
 
 **Error:** `Error in `group_by()`:`
 **Fixes applied:** Column name mismatch in df2 group_by (Region vs actual column), column name mismatch in df3 group_by (Statsbrgskap vs actual column), missing print() statements in three plot chunks
+
+
+
 
 
 
@@ -152,10 +119,16 @@
 
 
 
+
+
+
 ## 2026-07-28
 
 **Error:** `Error in `met.brewer()`:`
 **Fixes applied:** met.brewer() color count mismatch (Hiroshige palette insufficient for lollipop), manual scale color mismatch (6 categories but 4 colors provided), missing print() statements for crime lollipop and housing small multiples plots
+
+
+
 
 
 
@@ -167,14 +140,41 @@
 
 
 
+
+
+
 ## 2026-07-30
 
 **Data unavailable:** SSB tables 09171, 13863, 08484 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
 
 
+
+
+
 ## 2026-07-30
 
 **Error:** `Error in `if (!is.na(all_crime_label)) ...`:`
 **Fixes applied:** Initialize all_crime_label before conditional use to prevent "argument is of length zero" error; add print() statements to plot chunks that were missing figure output
+
+
+
+
+## 2026-07-31
+
+**Data unavailable:** SSB tables 10949, 09186 returned no data or API error
+**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
+
+## 2026-07-31
+
+**Data unavailable:** SSB tables 13764, 11503, 12508 returned no data or API error
+**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
+## 2026-07-31
+
+**Error:** `Error in `mutate()`:`
+**Fixes applied:** type coercion for Latest/Earliest (non-numeric), missing print() statements in plot-dumbbell-hardship and plot-area-hardship-national, palette size mismatch (11 regions but only 4 colors)
 
