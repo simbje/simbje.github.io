@@ -1,92 +1,12 @@
-## 2026-07-25
-
-**Error:** `Error in `rename()`:`
-**Fixes applied:** Error 1 - fixed column name mismatch in rename() call for df1_dumbbell; Error 2 - reduced met.brewer palette size to match available discrete colors; Missing figures - added explicit print() statements and strengthened null-guards for both dumbbell and travel-modes plots
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-## 2026-07-26
-
-**Data unavailable:** SSB tables 05803, 09429, 08800 returned no data or API error
-**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-## 2026-07-26
-
-**Data unavailable:** SSB tables 14220, 11573 returned no data or API error
-**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
-
-
-
-
-
-
-
-
-
-
-
-
-
-## 2026-07-26
-
-**Data unavailable:** SSB tables 13793, 13835, 06083 returned no data or API error
-**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
-
-
-
-
-
-
-
-
-
-
-
-
-## 2026-07-26
-
-**Data unavailable:** SSB tables 06921, 06988, 14705 returned no data or API error
-**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
-
-
-
-
-
-
-
-
-
-
-
 ## 2026-07-26
 
 **Data unavailable:** SSB tables 14700, 07221, 13931 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
+
+
+
 
 
 
@@ -110,10 +30,20 @@
 
 
 
+
+
+
+
+
 ## 2026-07-28
 
 **Data unavailable:** SSB tables 08268, 11327, 05307 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
+
+
+
 
 
 
@@ -133,10 +63,20 @@
 
 
 
+
+
+
+
+
 ## 2026-07-29
 
 **Error:** `Error in `select()`:`
 **Fixes applied:** Column name mismatch 'kjonn' vs actual column name in df1_dumbbell join; missing print() statement in plot-lollipop-change chunk
+
+
+
+
+
 
 
 
@@ -152,10 +92,20 @@
 
 
 
+
+
+
+
+
 ## 2026-07-30
 
 **Error:** `Error in `if (!is.na(all_crime_label)) ...`:`
 **Fixes applied:** Initialize all_crime_label before conditional use to prevent "argument is of length zero" error; add print() statements to plot chunks that were missing figure output
+
+
+
+
+
 
 
 
@@ -167,14 +117,64 @@
 
 
 
+
+
+
+
+
 ## 2026-07-31
 
 **Data unavailable:** SSB tables 13764, 11503, 12508 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
 
 
+
+
+
+
+
 ## 2026-07-31
 
 **Error:** `Error in `mutate()`:`
 **Fixes applied:** type coercion for Latest/Earliest (non-numeric), missing print() statements in plot-dumbbell-hardship and plot-area-hardship-national, palette size mismatch (11 regions but only 4 colors)
+
+
+
+
+
+
+## 2026-08-01
+
+**Data unavailable:** SSB tables 09788, 11653 returned no data or API error
+**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
+
+
+
+## 2026-08-01
+
+**Data unavailable:** SSB tables 03013, 10634, 08771 returned no data or API error
+**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
+
+
+## 2026-08-01
+
+**Data unavailable:** SSB tables 08800, 13760, 05803 returned no data or API error
+**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
+
+## 2026-08-01
+
+**Data unavailable:** SSB tables 14365, 12349, 14651 returned no data or API error
+**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
+## 2026-08-01
+
+**Data unavailable:** SSB tables 06265, 08381 returned no data or API error
+**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
 
