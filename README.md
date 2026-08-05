@@ -1,6 +1,6 @@
 # simbje.github.io — Personal Website
 
-A Quarto personal website with an automated daily SSB analysis blog, powered by the Anthropic API.
+A Quarto personal website with an automated SSB analysis blog (a new analysis every 3 days, plus a machine-learning forecasting special every Friday), powered by the Anthropic API.
 
 ## Structure
 
@@ -14,15 +14,16 @@ A Quarto personal website with an automated daily SSB analysis blog, powered by 
 │   ├── index.qmd                # Projects gallery
 │   └── *.qmd
 ├── ssb-daily/
-│   ├── index.qmd                # SSB Daily listing page (auto)
-│   ├── generate_post.R          # AI post generator
+│   ├── index.qmd                # SSB Analysis listing page (auto)
+│   ├── generate_post.R          # AI post generator (every 3 days)
+│   ├── generate_special.R       # Friday ML forecasting special (Opus)
 │   ├── r-packages.txt           # R deps for GH Actions cache
 │   └── posts/
-│       └── YYYY-MM-DD/          # Generated daily posts
+│       └── YYYY-MM-DD/          # Generated posts
 │           └── index.qmd
 ├── assets/styles.scss           # Custom theme
 ├── _quarto.yml                  # Site config
-└── .github/workflows/deploy.yml # Daily automation
+└── .github/workflows/deploy.yml # SSB automation
 ```
 
 ---
@@ -52,18 +53,18 @@ Go to **Settings → Pages → Source → GitHub Actions**
 
 ### 4. Push to main
 
-The workflow triggers on push — your site goes live. After that, every morning at 07:00 CET a new SSB analysis post is generated automatically.
+The workflow triggers on push — your site goes live. After that, a new SSB analysis post is generated automatically every 3 days, with a machine-learning forecasting special every Friday.
 
 ---
 
-## How the Daily Post Generation Works
+## How the Post Generation Works
 
 ```
-07:00 CET daily
+06:00 UTC · every 3 days (ML special on Fridays)
       ↓
 GitHub Actions runner starts
       ↓
-generate_post.R runs
+generate_post.R (or generate_special.R on Fridays) runs
   - Checks if today's post already exists (skips if so)
   - Sends a prompt to Claude (claude-opus-4-5) via Anthropic API
   - Claude picks SSB datasets, writes full .qmd with R code + analysis
@@ -79,7 +80,7 @@ New post live at yourusername.github.io/ssb-daily/
 ```
 
 Claude is instructed to:
-- Pick different datasets each day from a curated SSB catalogue
+- Pick different datasets each run from a curated SSB catalogue
 - Use different chart types (ridgelines, waffle, lollipop, maps, beeswarm, etc.)
 - Write with a TidyTuesday-inspired journalistic style
 - Always include 3–5 ggplot2 charts with cohesive color palettes
@@ -87,7 +88,7 @@ Claude is instructed to:
 
 ### Manually triggering a post
 
-Go to **Actions → Daily SSB Post + Deploy → Run workflow**.  
+Go to **Actions → SSB Analysis + Deploy → Run workflow**.  
 Toggle "Force regenerate" if you want to replace today's post.
 
 ### Customising the prompt

@@ -1,6 +1,6 @@
 ---
-title: "SSB Daily Analysis"
-subtitle: "The purpose of this section is to explore the power of AI generated analysis, with the help of AI 'swarms', getting AI to consistently analyse statistics and code visualisations.  A new AI-generated analysis of Norwegian statistics every morning. The system is set up such that it should be self improving and the ariticles and analysis will improve over time. "
+title: "SSB Analysis"
+subtitle: "The purpose of this section is to explore the power of AI generated analysis, with the help of AI 'swarms', getting AI to consistently analyse statistics and code visualisations.  A new AI-generated analysis of Norwegian statistics every 3 days. The system is set up such that it should be self improving and the ariticles and analysis will improve over time. "
 listing:
   contents: "posts"
   sort: "date desc"
@@ -17,7 +17,7 @@ page-layout: full
 <div style="background: linear-gradient(135deg, #1a1a2e, #0f3460); color:white; padding:2rem; border-radius:14px; margin-bottom:2rem; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;">
   <div>
     <div style="font-size:0.8rem; opacity:0.7; text-transform:uppercase; letter-spacing:0.08em; margin-bottom:0.25rem;">Powered by Claude + SSB API</div>
-    <div style="font-size:1rem; font-weight:500;">A new analysis generated every morning at 07:00 CET.</div>
+    <div style="font-size:1rem; font-weight:500;">A new analysis generated every 3 days.</div>
     <div style="font-size:0.85rem; opacity:0.7; margin-top:0.35rem;">Each post is unique — different datasets, different chart styles, different stories.</div>
     <div style="font-size:0.85rem; opacity:0.85; margin-top:0.35rem;">🔮 <strong>Friday Special:</strong> a weekly deep-dive that forecasts an SSB series with modern time-series machine learning (ETS · ARIMA · ensemble + backtesting), written by Claude Opus — and explains the method.</div>
     <div style="font-size:0.85rem; opacity:0.7; margin-top:0.35rem;">When a post fails, the pipeline logs the error and learns from it — each mistake makes the next post more reliable. <a href="/blog/posts/2026-04-29-ssb-daily/" style="color:#a0c4ff;">How it works →</a></div>

@@ -24,8 +24,8 @@ page-layout: full
 
   <a class="project-card" href="../ssb-daily/index.html">
     
-    <h3>SSB Daily Dashboard</h3>
-    <p>Automated daily analysis of Statistics Norway (SSB) economic data. Pulls key indicators from the SSB JSON-stat API each morning via GitHub Actions and renders a fresh Quarto report.</p>
+    <h3>SSB Analysis</h3>
+    <p>Automated analysis of Statistics Norway (SSB) economic data. Pulls key indicators from the SSB JSON-stat API every 3 days via GitHub Actions and renders a fresh Quarto report.</p>
     <div class="tech-tags">
       <span class="tag">PxWebApiData</span>
       <span class="tag">GitHub Actions</span>

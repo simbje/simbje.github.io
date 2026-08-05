@@ -3,7 +3,7 @@
 # generate_post.R
 # Phase 1: Discovery agent browses SSB via tool_use to find + verify datasets.
 # Phase 2: Generator writes the QMD using the agent's confirmed spec.
-# Run by GitHub Actions every morning at 07:00 CET.
+# Run by GitHub Actions every 3 days (see .github/workflows/deploy.yml).
 # =============================================================================
 
 library(httr2)

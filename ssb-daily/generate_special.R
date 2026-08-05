@@ -12,7 +12,7 @@
 #
 # Structure mirrors generate_post.R (same discovery agent + verified-spec flow)
 # so it plugs into the same render / fix_post.R / commit pipeline. It writes to
-# the same posts/<date> slug, so on Fridays it REPLACES the regular daily post.
+# the same posts/<date> slug, so on Fridays it REPLACES the regular post.
 # =============================================================================
 
 library(httr2)

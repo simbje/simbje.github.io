@@ -1,7 +1,10 @@
-name: 🇳🇴 Daily SSB Post + Deploy
+name: 🇳🇴 SSB Analysis + Deploy
 
 on:
   schedule:
+    # Runs daily as a checker, but only GENERATES a new analysis every 3 days
+    # (plus the ML special every Friday) — see the cadence gate in the generate
+    # step. Deploy still runs on every trigger so other site changes go live.
     - cron: '0 6 * * *'
   push:
     branches: [main]
@@ -91,49 +94,68 @@ jobs:
           set -u
           TODAY=$(date +%Y-%m-%d)
           DOW=$(date +%u)   # 1=Mon .. 7=Sun; 5 = Friday
-          if [ "${{ github.event.inputs.force_regenerate }}" = "true" ]; then
+          FORCE="${{ github.event.inputs.force_regenerate }}"
+          if [ "$FORCE" = "true" ]; then
             rm -rf "ssb-daily/posts/$TODAY"
           fi
-          # On Fridays run the ML "special" (forecasting deep-dive, Opus); it
-          # writes the same posts/<date> slug, so it replaces the regular daily.
-          if [ "$DOW" = "5" ]; then
-            GEN_SCRIPT="ssb-daily/generate_special.R"
-            echo "📅 Friday — generating the ML special."
+
+          # ── Cadence gate: a regular analysis every 3 days, plus the ML special
+          # every Friday. The workflow fires daily (and on every push) but only
+          # GENERATES when due, so pushes in between never create extra posts.
+          LATEST=$(ls -d ssb-daily/posts/*/ 2>/dev/null | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}' | sort | tail -n1)
+          if [ -n "$LATEST" ]; then
+            DAYS_SINCE=$(( ( $(date -u -d "$TODAY" +%s) - $(date -u -d "$LATEST" +%s) ) / 86400 ))
           else
-            GEN_SCRIPT="ssb-daily/generate_post.R"
+            DAYS_SINCE=999
           fi
-          MAX_ATTEMPTS=5
-          for i in $(seq 1 $MAX_ATTEMPTS); do
-            echo "::group::SSB post attempt $i of $MAX_ATTEMPTS ($GEN_SCRIPT)"
-            # Generate only if there is no post yet — fix_post.R deletes the post
-            # dir on a no-data scrap, which is what triggers a fresh attempt.
-            if [ ! -d "ssb-daily/posts/$TODAY" ]; then
-              Rscript "$GEN_SCRIPT" || true
-            fi
-            if [ ! -d "ssb-daily/posts/$TODAY" ]; then
-              echo "::warning::No post generated on attempt $i — retrying."
+
+          GEN_SCRIPT=""
+          if [ "$DOW" = "5" ]; then
+            # Friday: the ML special (Opus forecasting deep-dive). Writes the same
+            # posts/<date> slug, so it is this run's analysis.
+            GEN_SCRIPT="ssb-daily/generate_special.R"
+            echo "📅 Friday — generating the ML special (Opus forecasting edition)."
+          elif [ "$FORCE" = "true" ] || [ "$DAYS_SINCE" -ge 3 ]; then
+            GEN_SCRIPT="ssb-daily/generate_post.R"
+            echo "🗓️ ${DAYS_SINCE} day(s) since the last analysis — generating a new SSB analysis."
+          else
+            echo "⏸️ Only ${DAYS_SINCE} day(s) since the last analysis and not Friday — skipping generation; the site will still be re-rendered and deployed."
+          fi
+
+          if [ -n "$GEN_SCRIPT" ]; then
+            MAX_ATTEMPTS=5
+            for i in $(seq 1 $MAX_ATTEMPTS); do
+              echo "::group::SSB post attempt $i of $MAX_ATTEMPTS ($GEN_SCRIPT)"
+              # Generate only if there is no post yet — fix_post.R deletes the post
+              # dir on a no-data scrap, which is what triggers a fresh attempt.
+              if [ ! -d "ssb-daily/posts/$TODAY" ]; then
+                Rscript "$GEN_SCRIPT" || true
+              fi
+              if [ ! -d "ssb-daily/posts/$TODAY" ]; then
+                echo "::warning::No post generated on attempt $i — retrying."
+                echo "::endgroup::"
+                continue
+              fi
+              quarto render "ssb-daily/posts/$TODAY/index.qmd" || true
+              # fix_post.R fixes code bugs, OR scraps the post + blacklists its
+              # tables (logging to error_patterns.md) when SSB returned no data.
+              Rscript ssb-daily/fix_post.R || true
               echo "::endgroup::"
-              continue
+              if [ -d "ssb-daily/posts/$TODAY" ]; then
+                echo "✅ Article present after attempt $i."
+                break
+              fi
+              echo "::warning::Attempt $i had no usable data — finding a new dataset/article."
+              # If the Friday special keeps failing, fall back to the regular
+              # generator after a couple of tries so the day is never left empty.
+              if [ "$GEN_SCRIPT" = "ssb-daily/generate_special.R" ] && [ "$i" -ge 2 ]; then
+                echo "::warning::Friday special failed twice — falling back to the regular generator."
+                GEN_SCRIPT="ssb-daily/generate_post.R"
+              fi
+            done
+            if [ ! -d "ssb-daily/posts/$TODAY" ]; then
+              echo "::error::All $MAX_ATTEMPTS attempts failed to produce an article."
             fi
-            quarto render "ssb-daily/posts/$TODAY/index.qmd" || true
-            # fix_post.R fixes code bugs, OR scraps the post + blacklists its
-            # tables (logging to error_patterns.md) when SSB returned no data.
-            Rscript ssb-daily/fix_post.R || true
-            echo "::endgroup::"
-            if [ -d "ssb-daily/posts/$TODAY" ]; then
-              echo "✅ Article present after attempt $i."
-              break
-            fi
-            echo "::warning::Attempt $i had no usable data — finding a new dataset/article."
-            # If the Friday special keeps failing, fall back to the regular daily
-            # after a couple of tries so the day is never left without a post.
-            if [ "$GEN_SCRIPT" = "ssb-daily/generate_special.R" ] && [ "$i" -ge 2 ]; then
-              echo "::warning::Friday special failed twice — falling back to the daily generator."
-              GEN_SCRIPT="ssb-daily/generate_post.R"
-            fi
-          done
-          if [ ! -d "ssb-daily/posts/$TODAY" ]; then
-            echo "::error::All $MAX_ATTEMPTS attempts failed to produce an article today."
           fi
 
       - name: 🏗️ Render full site

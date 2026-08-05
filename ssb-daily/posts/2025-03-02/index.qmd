@@ -6,7 +6,7 @@ categories: [SSB, Housing, Labour Market, Inequality]
 freeze: true
 ---
 
-> This is the first post in the SSB Daily series. New analyses are generated automatically every morning at 07:00 CET using the Claude API and live SSB data.
+> This is the first post in the SSB Analysis series. New analyses are generated automatically every 3 days (with a machine-learning forecasting special every Friday) using the Claude API and live SSB data.
 
 ## The Story
 

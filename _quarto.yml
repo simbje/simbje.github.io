@@ -33,7 +33,7 @@ website:
             text: Oslo Housing
           - href: ssrn-research/index.qmd
             text: Research Trends
-      - text: "SSB Daily"
+      - text: "SSB Analysis"
         href: ssb-daily/index.qmd
       - text: "Risk analysis and Machine Learning"
         href: https://simen-bjerkelund.shinyapps.io/tradingstats_shiny_app/

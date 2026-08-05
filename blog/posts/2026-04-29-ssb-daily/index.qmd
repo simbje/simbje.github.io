@@ -1,5 +1,5 @@
 ---
-title: "How SSB Daily Works — and Why I Built It"
+title: "How SSB Analysis Works — and Why I Built It"
 description: "A self-improving AI pipeline that explores Norwegian statistics through code and visualizations. The goal: minimize hallucinations by making the AI prove its claims."
 date: "2026-04-29"
 categories: [meta, ai-pipeline, ssb]
@@ -12,22 +12,22 @@ Ask an AI model what Norway's unemployment rate was in Q3 2022, and it will give
 
 The standard fix is retrieval-augmented generation: give the model access to a database and let it look things up. That helps, but it still leaves the model narrating facts from memory rather than computing them directly. A model that *says* "unemployment peaked at 4.1%" and a model that *writes code which fetches the data and plots it* are doing fundamentally different things. The second one can be checked.
 
-That's the core idea behind SSB Daily: **make the AI prove every claim by writing the code that produces it.**
+That's the core idea behind SSB Analysis: **make the AI prove every claim by writing the code that produces it.**
 
 ## What the pipeline actually does
 
-Every morning, a two-phase AI pipeline runs on GitHub Actions and produces a new post about Norwegian statistics.
+Every three days, a two-phase AI pipeline runs on GitHub Actions and produces a new post about Norwegian statistics. A weekly Friday edition goes further, forecasting a series with modern time-series machine learning.
 
 **Phase 1 — Discovery.** A Claude Haiku agent browses 32 curated SSB tables using real API calls. It fetches column metadata, pulls sample rows, and works out what story the data can tell — without making anything up, because it's looking at the actual data. It ends by writing a precise specification: which table, which columns, which category values, what kind of chart.
 
 **Phase 2 — Generation.** Claude Sonnet receives that verified spec and writes a complete Quarto document — R code, ggplot2 charts, and written analysis — as if it were a journalist working from a brief. The R code uses the exact column names from Phase 1. A reviewer pass by Claude Haiku then checks for a short list of known bug types before the file is written to disk.
 
-The site is rendered with Quarto and deployed to GitHub Pages. A nightly error-fixer scans the rendered output for failed code blocks, patches them with Claude, and logs the error pattern so the next day's pipeline knows to avoid it.
+The site is rendered with Quarto and deployed to GitHub Pages. An automatic error-fixer scans the rendered output for failed code blocks, patches them with Claude, and logs the error pattern so the next run's pipeline knows to avoid it.
 
 ```{mermaid}
 %%{init: {'theme': 'dark', 'themeVariables': {'primaryColor': '#0f3460', 'primaryTextColor': '#ffffff', 'primaryBorderColor': '#e94560', 'lineColor': '#a0a8c0', 'secondaryColor': '#1a1a2e', 'tertiaryColor': '#16213e', 'clusterBkg': '#16213e', 'clusterBorder': '#e94560', 'edgeLabelBackground': '#1a1a2e', 'fontFamily': 'inherit'}}}%%
 flowchart TD
-    CRON(["GitHub Actions\n06:00 UTC · daily"])
+    CRON(["GitHub Actions\n06:00 UTC · every 3 days"])
 
     SSB[("SSB Open API\n32 curated tables")]
 
@@ -86,4 +86,4 @@ The other surprise was how stable the output became once the error log reached a
 
 ---
 
-*The full pipeline source is in `ssb-daily/generate_post.R` and `ssb-daily/fix_post.R` in the [site repository](https://github.com/simbje/simbje.github.io). Posts are generated fresh each morning and cover a different dataset every day.*
+*The full pipeline source is in `ssb-daily/generate_post.R`, `ssb-daily/generate_special.R` and `ssb-daily/fix_post.R` in the [site repository](https://github.com/simbje/simbje.github.io). Posts are generated every three days and cover a different dataset each time, with a machine-learning forecasting edition every Friday.*
