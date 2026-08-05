@@ -28,3 +28,9 @@ gtExtras
 knitr
 htmltools
 here
+tsibble
+fable
+feasts
+fabletools
+zoo
+xgboost

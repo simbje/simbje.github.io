@@ -598,7 +598,7 @@ Your job is to write a complete, self-contained Quarto (.qmd) blog post analyzin
   small multiples/facets, heatmap, alluvial (ggalluvial), beeswarm (ggbeeswarm), waterfall,
   polar, and classic line/bar/scatter combinations
 - Color packages: MetBrewer, nord, wesanderson, or viridis — one cohesive palette per post
-- Every chart: clear title, subtitle with insight, SSB caption, clean theme
+- Every chart: clear title, a neutral descriptive subtitle (say WHAT is plotted, never an unverified conclusion), SSB caption, clean theme
 - Use theme_minimal() or theme_void() as base, then customize
 - Add annotations, reference lines, and direct labels where helpful
 - Always assign ggplot to a variable then call print() explicitly
@@ -697,6 +697,47 @@ Only do seasonal charts if has_monthly is TRUE.
 #| dev: "png"
 ```
 
+## Commentary must follow the data (CRITICAL — the whole point of the post)
+You have NOT seen the actual numbers — only column names and a few example category
+labels. Therefore you must NEVER assert a specific numeric result, direction, ranking,
+share, or named winner/loser as static prose. Any such claim would be a guess, and if
+the underlying chart returns no data it becomes a comment about a visualization that does
+not exist — which tells the reader the analysis is not based on the data.
+
+Rules:
+1. Every interpretive claim about a chart — a number, percentage, "rose/fell", "largest",
+   "steepest", "near record", a named category — MUST be computed in R from the rendered
+   data frame and printed with cat()/sprintf() from INSIDE the if(nrow>0) guard for that
+   chart, AFTER print(p). Because it lives inside the guard, it automatically disappears when
+   the data is missing and the figure is omitted. No orphaned commentary.
+2. NEVER place a sentence describing the RESULT of a chart outside the guard for that chart.
+   If a figure is omitted, ZERO words about it may appear anywhere in the post.
+3. Section headings and body text between charts may frame the QUESTION ("How has housing
+   supply changed by region?") but must NOT state the ANSWER in static prose. The answer is
+   emitted by code, from the data.
+4. Chart titles/subtitles: neutral and descriptive of what is plotted. Do NOT bake a
+   conclusion into them ("collapses", "steepest decline", "holds near highs") unless that
+   word is justified by a value you compute — and if you compute it, put it in a cat() line,
+   not the subtitle.
+5. Intro and closing may give general, qualitative context about the topic, but must NOT
+   cite specific figures, dates, rankings, or per-series outcomes.
+
+Example — data-driven commentary that self-omits when data is absent:
+```{r plot-example}
+#| fig-show: asis
+if (exists("df1_national") && !is.null(df1_national) && nrow(df1_national) > 0) {
+  p <- ggplot(df1_national, aes(date, value, colour = type_label)) + geom_line()
+  print(p)
+  latest <- df1_national |> dplyr::filter(date == max(date))
+  top    <- latest[which.max(latest$value), ]
+  cat(sprintf("\nIn %s, %s led with %s dwellings started.\n\n",
+              format(max(df1_national$date), "%Y"), top$type_label,
+              scales::comma(top$value)))
+} else {
+  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+}
+```
+
 ## R code requirements
 - FIRST CHUNK (label: setup): combine knitr::opts_chunk$set(...), ALL library() calls, and ALL data fetch chunks into ONE single ```{r setup}``` block — no separate setup or library chunks
 - Do NOT split setup, libraries, or fetches into separate chunks
@@ -704,11 +745,11 @@ Only do seasonal charts if has_monthly is TRUE.
 - echo: true
 
 ## Post structure
-1. Brief intro (2-3 sentences) — the hook, why this matters
+1. Brief intro (2-3 sentences) — the hook, why this matters. General context only; NO specific figures or per-series outcomes.
 2. Data section — fetch + wrangle
-3. 2-3 analysis sections with charts
-4. Key findings — 3-5 bullet points with numbers
-5. Closing reflection — broader context
+3. 2-3 analysis sections with charts; the interpretation of each chart is emitted by code inside its guard (see "Commentary must follow the data")
+4. Key findings — do NOT hand-write these. Emit them from ONE guarded R chunk that, for each dataset, appends a bullet ONLY if that data frame is non-null and non-empty, with every number computed from the data via cat()/sprintf(). A series with no data contributes no bullet. If nothing has data, print nothing.
+5. Closing reflection — broader qualitative context only; NO specific figures or rankings
 
 ## YAML front matter
 ---
@@ -746,7 +787,10 @@ USER_PROMPT <- paste0(
   "CHUNK 2+ — Wrangle chunk(s): data transformation after fetching.\n\n",
   "CHUNK N+ — Plot chunks (3-5 total): guard with if (exists(\"df\") && !is.null(df) && nrow(df) > 0) { ...; print(p) }\n",
   "           ALWAYS add an else { cat(\"\\n*Figure omitted — Statistics Norway returned no data for this series.*\\n\\n\") }\n",
-  "           Use series_col / measure_col variables for filtering — see spec for exact values."
+  "           Use series_col / measure_col variables for filtering — see spec for exact values.\n",
+  "           After print(p), emit the chart's interpretation with cat()/sprintf() computed from the data, INSIDE the same guard.\n",
+  "           Do NOT write any numeric result, ranking, or named category as static prose outside a guard — see 'Commentary must follow the data'.\n\n",
+  "FINAL CHUNK — Key findings: ONE guarded R chunk that appends a bullet per dataset ONLY when its data frame is non-null and non-empty, every number computed from the data. Do NOT hand-write findings in markdown."
 )
 
 # ── Generation call ────────────────────────────────────────────────────────────

@@ -65,7 +65,8 @@ jobs:
               'sf', 'rnaturalearth', 'rnaturalearthdata',
               'gt', 'gtExtras', 'knitr', 'rmarkdown',
               'leaflet', 'DT',
-              'visNetwork', 'igraph', 'fs'
+              'visNetwork', 'igraph', 'fs',
+              'tsibble', 'fable', 'feasts', 'fabletools', 'zoo', 'xgboost'
             )
             missing <- pkgs[!pkgs %in% installed.packages()[,'Package']]
             if (length(missing) > 0) {
@@ -89,16 +90,25 @@ jobs:
         run: |
           set -u
           TODAY=$(date +%Y-%m-%d)
+          DOW=$(date +%u)   # 1=Mon .. 7=Sun; 5 = Friday
           if [ "${{ github.event.inputs.force_regenerate }}" = "true" ]; then
             rm -rf "ssb-daily/posts/$TODAY"
           fi
+          # On Fridays run the ML "special" (forecasting deep-dive, Opus); it
+          # writes the same posts/<date> slug, so it replaces the regular daily.
+          if [ "$DOW" = "5" ]; then
+            GEN_SCRIPT="ssb-daily/generate_special.R"
+            echo "📅 Friday — generating the ML special."
+          else
+            GEN_SCRIPT="ssb-daily/generate_post.R"
+          fi
           MAX_ATTEMPTS=5
           for i in $(seq 1 $MAX_ATTEMPTS); do
-            echo "::group::SSB post attempt $i of $MAX_ATTEMPTS"
+            echo "::group::SSB post attempt $i of $MAX_ATTEMPTS ($GEN_SCRIPT)"
             # Generate only if there is no post yet — fix_post.R deletes the post
             # dir on a no-data scrap, which is what triggers a fresh attempt.
             if [ ! -d "ssb-daily/posts/$TODAY" ]; then
-              Rscript ssb-daily/generate_post.R || true
+              Rscript "$GEN_SCRIPT" || true
             fi
             if [ ! -d "ssb-daily/posts/$TODAY" ]; then
               echo "::warning::No post generated on attempt $i — retrying."
@@ -115,6 +125,12 @@ jobs:
               break
             fi
             echo "::warning::Attempt $i had no usable data — finding a new dataset/article."
+            # If the Friday special keeps failing, fall back to the regular daily
+            # after a couple of tries so the day is never left without a post.
+            if [ "$GEN_SCRIPT" = "ssb-daily/generate_special.R" ] && [ "$i" -ge 2 ]; then
+              echo "::warning::Friday special failed twice — falling back to the daily generator."
+              GEN_SCRIPT="ssb-daily/generate_post.R"
+            fi
           done
           if [ ! -d "ssb-daily/posts/$TODAY" ]; then
             echo "::error::All $MAX_ATTEMPTS attempts failed to produce an article today."
