@@ -1,92 +1,12 @@
-## 2026-07-31
-
-**Error:** `Error in `mutate()`:`
-**Fixes applied:** type coercion for Latest/Earliest (non-numeric), missing print() statements in plot-dumbbell-hardship and plot-area-hardship-national, palette size mismatch (11 regions but only 4 colors)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-## 2026-08-01
-
-**Data unavailable:** SSB tables 09788, 11653 returned no data or API error
-**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-## 2026-08-01
-
-**Data unavailable:** SSB tables 03013, 10634, 08771 returned no data or API error
-**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
-
-
-
-
-
-
-
-
-
-
-
-
-
-## 2026-08-01
-
-**Data unavailable:** SSB tables 08800, 13760, 05803 returned no data or API error
-**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
-
-
-
-
-
-
-
-
-
-
-
-
-## 2026-08-01
-
-**Data unavailable:** SSB tables 14365, 12349, 14651 returned no data or API error
-**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
-
-
-
-
-
-
-
-
-
-
-
 ## 2026-08-01
 
 **Data unavailable:** SSB tables 06265, 08381 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
+
+
+
 
 
 
@@ -110,10 +30,20 @@
 
 
 
+
+
+
+
+
 ## 2026-08-05
 
 **Data unavailable:** SSB tables 07221, 11386, 06988 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
+
+
+
 
 
 
@@ -133,10 +63,20 @@
 
 
 
+
+
+
+
+
 ## 2026-08-07
 
 **Data unavailable:** SSB tables 06921 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
+
+
+
 
 
 
@@ -152,10 +92,20 @@
 
 
 
+
+
+
+
+
 ## 2026-08-07
 
 **Data unavailable:** SSB tables 10947, 13642, 05247 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
+
+
+
 
 
 
@@ -167,14 +117,64 @@
 
 
 
+
+
+
+
+
 ## 2026-08-07
 
 **Data unavailable:** SSB tables 06083, 09363, 05307 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
 
 
+
+
+
+
+
 ## 2026-08-08
 
 **Error:** `Error in `mutate()`:`
 **Fixes applied:** Duplicate factor levels in df3_lollipop lollipop plot (cat_en factor creation), missing print() statements in plot-area-consumption and plot-lollipop-cpi chunks
+
+
+
+
+
+
+## 2026-08-11
+
+**Data unavailable:** SSB tables 08668, 10949 returned no data or API error
+**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
+
+
+
+## 2026-08-11
+
+**Data unavailable:** SSB tables 09171, 11327, 13863 returned no data or API error
+**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
+
+
+## 2026-08-11
+
+**Data unavailable:** SSB tables 12508, 09186, 08307 returned no data or API error
+**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
+
+## 2026-08-11
+
+**Data unavailable:** SSB tables 09788, 05196, 13931 returned no data or API error
+**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
+## 2026-08-11
+
+**Error:** `Error in `mutate()`:`
+**Fixes applied:** removed duplicate factor levels in df1_latest_lollipop mutate; added explicit print(p) statements to plot-lollipop-latest and plot-slope-price-volume chunks
 
