@@ -1,0 +1,313 @@
+{
+  "run_date": "2026-08-15",
+  "candidates_count": 73,
+  "sources_used": ["arxiv:stat.ME", "arxiv:cs.LG", "arxiv:stat.ML", "arxiv:q-fin.CP", "arxiv:q-fin.TR", "arxiv:econ.EM", "arxiv:stat.AP", "arxiv:q-fin.MF", "arxiv:q-fin.RM", "arxiv:q-fin.GN", "arxiv:q-fin.ST", "arxiv:q-fin.PM", "arxiv:econ.TH", "arxiv:econ.GN"],
+  "bucket_counts": {
+    "data_science": 26,
+    "finance": 25,
+    "social_sciences": 25
+  },
+  "top_papers": {
+    "data_science": [
+      {
+        "id": "arxiv:2608.13096",
+        "rank": 1,
+        "title": "FlowLOB: Efficient and Controllable Limit Order Book Generation with Flow Matching",
+        "authors": "Zhuohan Wang",
+        "url": "https://arxiv.org/abs/2608.13096",
+        "source": "arxiv",
+        "why_trending": "Novel flow-matching approach to LOB generation combines realistic market dynamics with computational efficiency and controllable scenario generation—directly applicable to high-frequency trading simulation.",
+        "topics": [
+          "Generative models for financial data",
+          "Limit order book simulation"
+        ]
+      },
+      {
+        "id": "arxiv:2608.13131",
+        "rank": 2,
+        "title": "Huber-Wasserstein barycenters for robust distribution-valued data",
+        "authors": "Carlos Cardoso-Perelló",
+        "url": "https://arxiv.org/abs/2608.13131",
+        "source": "arxiv",
+        "why_trending": "Introduces Huber-Wasserstein barycenters for robust distribution analysis, bridging robust statistics and optimal transport with practical applications to heterogeneous data.",
+        "topics": [
+          "Robust statistical methods",
+          "Optimal transport"
+        ]
+      },
+      {
+        "id": "arxiv:2608.13133",
+        "rank": 3,
+        "title": "Statistical Properties of Robust Learning under Distributional Shifts",
+        "authors": "Zhiyi Li",
+        "url": "https://arxiv.org/abs/2608.13133",
+        "source": "arxiv",
+        "why_trending": "First systematic study of finite-sample guarantees for DRO and robust satisficing under distributional shifts, filling a critical gap in understanding robust learning frameworks.",
+        "topics": [
+          "Robust learning under distribution shift",
+          "Generalization theory"
+        ]
+      },
+      {
+        "id": "arxiv:2608.12998",
+        "rank": 4,
+        "title": "WIRED: Weighted Adaptive Prediction with Structured Dependence for Probabilistic Multiseries Forecasting",
+        "authors": "Giancarlo Vercellino",
+        "url": "https://arxiv.org/abs/2608.12998",
+        "source": "arxiv",
+        "why_trending": "WIRED package presents practical copula-based ensemble approach for multi-series probabilistic forecasting with comprehensive benchmark evaluation and software implementation.",
+        "topics": [
+          "Probabilistic forecasting",
+          "Time series methods"
+        ]
+      },
+      {
+        "id": "arxiv:2608.13079",
+        "rank": 5,
+        "title": "Learning Discrete Decisions for MIPs with Constraint-Aware Diffusion",
+        "authors": "Vincenzo Di Vito",
+        "url": "https://arxiv.org/abs/2608.13079",
+        "source": "arxiv",
+        "why_trending": "First diffusion-based approach to mixed-integer optimization integrating constraint feasibility directly into the reverse process, advancing neural combinatorial solvers.",
+        "topics": [
+          "Generative models for optimization",
+          "Combinatorial optimization"
+        ]
+      }
+    ],
+    "finance": [
+      {
+        "id": "arxiv:2608.12583",
+        "rank": 1,
+        "title": "Diffusion Models in Finance: A Survey",
+        "authors": "Zhuohan Wang",
+        "url": "https://arxiv.org/abs/2608.12583",
+        "source": "arxiv",
+        "why_trending": "Comprehensive survey of diffusion models in finance across time series, LOBs, and option surfaces—timely consolidation of rapidly emerging generative paradigm with Itô calculus alignment.",
+        "topics": [
+          "Generative models for financial data",
+          "Survey and synthesis"
+        ]
+      },
+      {
+        "id": "arxiv:2608.12251",
+        "rank": 2,
+        "title": "Regime-Gated Residual Mixture-of-Experts for Cross-Sectional Volatility Forecasting",
+        "authors": "Junyi Ye",
+        "url": "https://arxiv.org/abs/2608.12251",
+        "source": "arxiv",
+        "why_trending": "RG-ResMoE demonstrates regime-dependent volatility forecasting with careful ablations across 1,027 equities; shows neural networks can capture market regimes without destabilizing training.",
+        "topics": [
+          "Volatility forecasting",
+          "Neural network architectures for finance"
+        ]
+      },
+      {
+        "id": "arxiv:2608.12493",
+        "rank": 3,
+        "title": "Beyond the Skew-Stickiness Ratio: Transport Geometry of Spot-Driven Variance Surface Dynamics",
+        "authors": "Charlie Che",
+        "url": "https://arxiv.org/abs/2608.12493",
+        "source": "arxiv",
+        "why_trending": "Develops transport-geometric theory of implied variance surface dynamics, unifying classical stickiness regimes through higher-order transport coefficients—novel theoretical perspective.",
+        "topics": [
+          "Option surface dynamics",
+          "Transport geometry in finance"
+        ]
+      },
+      {
+        "id": "arxiv:2608.13056",
+        "rank": 4,
+        "title": "Simulating Stress Laws under Extremal Dependence: Characterizing What Generative Models Must Preserve",
+        "authors": "Mantu Gupta",
+        "url": "https://arxiv.org/abs/2608.13056",
+        "source": "arxiv",
+        "why_trending": "Shows stress-scenario generation under extremal dependence requires preserving tail dependence measure; critical for risk modeling in heavy-tailed regimes.",
+        "topics": [
+          "Stress testing and scenario generation",
+          "Tail risk and extremal dependence"
+        ]
+      },
+      {
+        "id": "arxiv:2608.12587",
+        "rank": 5,
+        "title": "DYSANOS Generative Dynamic Smooth Arbitrage-free Non-parametric Option Surfaces",
+        "authors": "Hans Buehler",
+        "url": "https://arxiv.org/abs/2608.12587",
+        "source": "arxiv",
+        "why_trending": "DYSANOS is first generative market model producing arbitrage-free option surfaces across all strikes and expiries for multi-year paths, advancing synthetic market simulation.",
+        "topics": [
+          "Generative models for financial data",
+          "Option pricing and arbitrage"
+        ]
+      }
+    ],
+    "social_sciences": [
+      {
+        "id": "arxiv:2608.12236",
+        "rank": 1,
+        "title": "How Organizations Use AI: Evidence from ChatGPT",
+        "authors": "Aaron Chatterji",
+        "url": "https://arxiv.org/abs/2608.12236",
+        "source": "arxiv",
+        "why_trending": "First large-scale empirical study linking ChatGPT Enterprise adoption records to worker roles and tasks across 1,500+ organizations—unprecedented data on how firms use frontier AI.",
+        "topics": [
+          "AI adoption and organizational change",
+          "Digital transformation"
+        ]
+      },
+      {
+        "id": "arxiv:2608.13327",
+        "rank": 2,
+        "title": "Breaking the Chain: Division Norms and Criminal Deterrence",
+        "authors": "Constantine Sorokin",
+        "url": "https://arxiv.org/abs/2608.13327",
+        "source": "arxiv",
+        "why_trending": "Models organized crime deterrence through division norms and membership dynamics, introducing novel application of game theory to law enforcement resource allocation.",
+        "topics": [
+          "Game theory and mechanism design",
+          "Law and economics"
+        ]
+      },
+      {
+        "id": "arxiv:2608.12538",
+        "rank": 3,
+        "title": "Training AI For When Humans Will Use It",
+        "authors": "Kevin A. Bryan",
+        "url": "https://arxiv.org/abs/2608.12538",
+        "source": "arxiv",
+        "why_trending": "Frames AI economic value through its interaction with surrounding decision environment; shows optimal training can be discontinuous in economic parameters—bridges AI capability to human use.",
+        "topics": [
+          "AI adoption and organizational change",
+          "Economic theory of AI"
+        ]
+      },
+      {
+        "id": "arxiv:2608.13431",
+        "rank": 4,
+        "title": "Measuring the Arrow of Time: Identification, Estimation, and Inference for Directional Structure in Multivariate Time Series",
+        "authors": "Avishek Bhandari",
+        "url": "https://arxiv.org/abs/2608.13431",
+        "source": "arxiv",
+        "why_trending": "Develops complete framework for measuring directionality in coupled time series via time-reversal asymmetry; answers causality question without structural assumptions.",
+        "topics": [
+          "Causal inference methods",
+          "Time series econometrics"
+        ]
+      },
+      {
+        "id": "arxiv:2608.11626",
+        "rank": 5,
+        "title": "Organizational Technology Ladders: Remote Work and Generative AI Adoption",
+        "authors": "Gregor Schubert",
+        "url": "https://arxiv.org/abs/2608.11626",
+        "source": "arxiv",
+        "why_trending": "Shows remote-work adoption during COVID shaped later generative AI uptake; introduces 'organizational technology ladder' concept with IV identification of causal effect.",
+        "topics": [
+          "AI adoption and organizational change",
+          "Labor economics"
+        ]
+      }
+    ]
+  },
+  "topics": [
+    {
+      "name": "Generative models for financial data",
+      "paper_ids": [
+        "arxiv:2608.13096",
+        "arxiv:2608.12583",
+        "arxiv:2608.12587",
+        "arxiv:2608.13082"
+      ],
+      "summary": "Diffusion and flow-matching approaches for generating realistic financial data including limit order books, option surfaces, and time series with controllable scenarios and arbitrage-free properties."
+    },
+    {
+      "name": "Robust learning under distribution shift",
+      "paper_ids": [
+        "arxiv:2608.13133",
+        "arxiv:2608.13131",
+        "arxiv:2608.13209"
+      ],
+      "summary": "Methods for maintaining model performance under domain shift, distributional changes, and tail risks through robust optimization, Wasserstein-based approaches, and chance constraints."
+    },
+    {
+      "name": "Volatility and option surface forecasting",
+      "paper_ids": [
+        "arxiv:2608.12251",
+        "arxiv:2608.12493",
+        "arxiv:2608.10693",
+        "arxiv:2608.12259"
+      ],
+      "summary": "Neural and classical approaches to forecasting implied volatility surfaces, regime-dependent dynamics, and the impact of macroeconomic events like FOMC announcements."
+    },
+    {
+      "name": "AI adoption and organizational change",
+      "paper_ids": [
+        "arxiv:2608.12236",
+        "arxiv:2608.11626",
+        "arxiv:2608.12538"
+      ],
+      "summary": "Empirical and theoretical studies of how organizations adopt and integrate frontier AI tools, including technology ladders, worker roles, and alignment with decision-making contexts."
+    },
+    {
+      "name": "Probabilistic forecasting and uncertainty quantification",
+      "paper_ids": [
+        "arxiv:2608.12998",
+        "arxiv:2608.13039",
+        "arxiv:2608.13152",
+        "arxiv:2608.12424"
+      ],
+      "summary": "Methods for multi-series probabilistic forecasting, feature importance assessment, calibration, and inference under measurement error or model misspecification."
+    },
+    {
+      "name": "Game theory and mechanism design",
+      "paper_ids": [
+        "arxiv:2608.12818",
+        "arxiv:2608.13001",
+        "arxiv:2608.13327",
+        "arxiv:2608.11710",
+        "arxiv:2608.11682"
+      ],
+      "summary": "Equilibrium concepts, strategic interaction models, and optimal mechanism design for diverse settings from market competition to queue management and matching problems."
+    },
+    {
+      "name": "Causal inference and mediation analysis",
+      "paper_ids": [
+        "arxiv:2608.13094",
+        "arxiv:2608.13431",
+        "arxiv:2608.13466",
+        "arxiv:2608.10336"
+      ],
+      "summary": "Methods for decomposing treatment effects, identifying causality under interference and temporal dependence, and handling time-to-event outcomes with structured confounding."
+    },
+    {
+      "name": "Neural network optimization and efficiency",
+      "paper_ids": [
+        "arxiv:2608.13141",
+        "arxiv:2608.13040",
+        "arxiv:2608.13087",
+        "arxiv:2608.13079"
+      ],
+      "summary": "Techniques for reducing parameter counts, inference costs, and improving sample efficiency in deep learning through token merging, self-distillation, and constraint-aware generation."
+    },
+    {
+      "name": "Stress testing and tail risk",
+      "paper_ids": [
+        "arxiv:2608.13056",
+        "arxiv:2608.10788",
+        "arxiv:2608.12023"
+      ],
+      "summary": "Methods for scenario generation under extremal dependence, early warning systems for systemic risk, and network-based stress indices that capture rare-event correlations."
+    },
+    {
+      "name": "AI governance, explainability and verification",
+      "paper_ids": [
+        "arxiv:2608.11344",
+        "arxiv:2608.09087",
+        "arxiv:2608.09069",
+        "arxiv:2608.13118"
+      ],
+      "summary": "Frameworks for governing self-adapting AI systems, model risk management under continuous updates, relational verification of neural networks, and telemetry architectures."
+    }
+  ]
+}
