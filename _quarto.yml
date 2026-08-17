@@ -28,6 +28,10 @@ website:
           - href: data-projects/tennis-slams.qmd
             text: Grand Slam Point-by-Point
           - text: "---"
+          - text: "Finance"
+          - href: llm-alpha/index.qmd
+            text: LLM Alpha Farming
+          - text: "---"
           - text: "Ad Hoc"
           - href: finn-housing/index.qmd
             text: Oslo Housing

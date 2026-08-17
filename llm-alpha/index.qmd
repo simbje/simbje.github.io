@@ -1,0 +1,164 @@
+---
+title: "LLM Alpha Farming"
+description: "Can you farm tradable equity signals out of a language model? Three agents propose, implement and document cross-sectional alpha; one deterministic harness judges them all — and discounts every result for the size of the search."
+date: 2026-08-17
+date-format: long
+categories: [finance, quant, ai-agent, llm]
+execute:
+  echo: false
+  freeze: false
+format:
+  html:
+    page-layout: full
+    toc: true
+    toc-depth: 2
+---
+
+
+<style>
+.la-hero{background:linear-gradient(135deg,#1a1a2e 0%,#0f3460 100%);color:#fff;
+  border-radius:14px;padding:2.5rem 2rem;margin:0 0 2rem}
+.la-hero h2{color:#fff;margin:0 0 .4rem;font-size:1.9rem;border:0}
+.la-hero .la-sub{opacity:.85;font-weight:300;font-size:1.05rem;margin-bottom:1.25rem}
+.la-hero .la-meta{display:flex;gap:.6rem;flex-wrap:wrap}
+.la-hero .la-chip{background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.28);
+  padding:.32rem .85rem;border-radius:2rem;font-size:.8rem;font-weight:500}
+.la-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));
+  gap:1rem;margin:1.5rem 0 2rem}
+.la-metric{background:#fff;border:1px solid #e9ecef;border-radius:10px;padding:1.15rem;text-align:center}
+.la-metric .v{font-size:1.7rem;font-weight:700;color:#1a1a2e;line-height:1.15}
+.la-metric .l{font-size:.72rem;color:#6c757d;text-transform:uppercase;letter-spacing:.05em;margin-top:.3rem}
+.la-metric.good .v{color:#198754}
+.la-flow{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:.9rem;margin:1.5rem 0}
+.la-step{background:#fff;border:1px solid #e9ecef;border-left:4px solid #0f3460;
+  border-radius:10px;padding:1.1rem}
+.la-step .n{font-family:'JetBrains Mono',monospace;font-size:.7rem;color:#e94560;font-weight:600}
+.la-step h4{margin:.35rem 0 .45rem;font-size:.98rem;color:#1a1a2e}
+.la-step p{margin:0;font-size:.86rem;color:#6c757d;line-height:1.45}
+.la-step .m{display:inline-block;margin-top:.6rem;font-family:'JetBrains Mono',monospace;
+  font-size:.7rem;background:#f8f9fa;color:#0f3460;padding:.15rem .5rem;border-radius:1rem}
+.la-table{width:100%;border-collapse:collapse;font-size:.87rem;margin:1rem 0}
+.la-table th{text-align:left;font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;
+  color:#6c757d;border-bottom:2px solid #e9ecef;padding:.55rem .5rem;font-weight:600}
+.la-table td{padding:.55rem .5rem;border-bottom:1px solid #f1f3f5;vertical-align:middle}
+.la-table tr:hover td{background:#fbfcfd}
+.la-table .sig code{font-family:'JetBrains Mono',monospace;font-size:.82rem;
+  background:#f8f9fa;color:#1a1a2e;padding:.15rem .45rem;border-radius:4px;font-weight:600}
+.la-table .mono{font-family:'JetBrains Mono',monospace;font-size:.83rem}
+.la-pill{display:inline-block;padding:.16rem .6rem;border-radius:1rem;font-size:.7rem;
+  font-weight:600;color:#fff;white-space:nowrap}
+.la-bar{display:inline-flex;align-items:center;gap:.45rem}
+.la-bar-fill{display:inline-block;width:var(--w);height:8px;border-radius:4px;background:var(--c);min-width:2px}
+.la-bar-num{font-family:'JetBrains Mono',monospace;font-size:.78rem;color:#495057}
+.la-dash{color:#adb5bd}
+.la-note{background:#f8f9fa;border-left:4px solid #e94560;border-radius:8px;
+  padding:1rem 1.15rem;margin:1.5rem 0;font-size:.9rem}
+.la-note strong{color:#1a1a2e}
+.la-next{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1rem;margin:1.5rem 0}
+.la-card{background:#fff;border:1px solid #e9ecef;border-radius:10px;padding:1.25rem}
+.la-card h4{margin:0 0 .5rem;font-size:.95rem;color:#1a1a2e}
+.la-card p{margin:0 0 .6rem;font-size:.86rem;color:#6c757d;line-height:1.5}
+.la-card .eff{font-size:.72rem;font-family:'JetBrains Mono',monospace;color:#0f3460;
+  background:#f8f9fa;padding:.15rem .5rem;border-radius:1rem}
+@media (max-width:768px){.la-hero{padding:1.75rem 1.25rem}.la-table{font-size:.8rem}}
+</style>
+
+
+<div class="la-hero">
+  <h2>Farming alpha out of a language model</h2>
+  <div class="la-sub">Three cooperating agents invent, implement and document equity
+    signals. One deterministic harness judges every one of them under identical,
+    point-in-time-correct rules — and then discounts the result for the size of the search.</div>
+  <div class="la-meta"><span class="la-chip">Run 2026-08-17</span><span class="la-chip">11 signals evaluated</span><span class="la-chip">280 months of history</span></div>
+</div>
+
+<div class="la-metrics"><div class="la-metric "><div class="v">11</div><div class="l">Signals evaluated</div></div><div class="la-metric good"><div class="v">2</div><div class="l">Survive correction</div></div><div class="la-metric "><div class="v">0.45</div><div class="l">Search hurdle (Sharpe)</div></div><div class="la-metric "><div class="v">11</div><div class="l">Trials priced in</div></div><div class="la-metric "><div class="v">0.92</div><div class="l">Best raw Sharpe</div></div><div class="la-metric "><div class="v">4.26</div><div class="l">Best alpha t-stat</div></div></div>
+
+## How the pipeline works
+
+The premise is a meta-experiment: generate hypotheses with the most capable model
+available, implement them with a cheaper one, and measure how many survive a
+ruthless, uniform backtest. The interesting number was never the best Sharpe — it
+is the **survival rate**, and that only means something if the judging is identical
+for every candidate and honest about the size of the search.
+
+<div class="la-flow"><div class="la-step"><div class="n">01</div><h4>Idea agent</h4><p>Mines the asset-pricing literature for an economically motivated hypothesis that can actually be built from the panel — with a stated mechanism, a formula, an expected sign, and references.</p><span class="m">Opus 5</span></div><div class="la-step"><div class="n">02</div><h4>Data agent</h4><p>Maps each requested concept onto a real panel column and gates on coverage. An idea that needs data we do not have dies here, cheaply, before any code is written.</p><span class="m">Sonnet 5</span></div><div class="la-step"><div class="n">03</div><h4>Coder agent</h4><p>Writes a self-contained module implementing the signal interface, then self-corrects against the validator's complaints. Generated code is untrusted: a static check blocks file, network and process access before the module is ever imported.</p><span class="m">Sonnet 5</span></div><div class="la-step"><div class="n">04</div><h4>Shared harness</h4><p>Monthly cross-sectional decile long/short on a survivorship-safe, liquidity-filtered universe. Identical for every signal — invented or canonical — so nothing gets a bespoke advantage.</p><span class="m">deterministic</span></div><div class="la-step"><div class="n">05</div><h4>Robustness battery</h4><p>Subperiod stability, transaction-cost sweep, sector-neutral variant, parameter and universe sensitivity, and holding-horizon decay.</p><span class="m">deterministic</span></div><div class="la-step"><div class="n">06</div><h4>Selection-bias layer</h4><p>Factor attribution against market, size, value and momentum; Benjamini-Hochberg across the library; and a deflated Sharpe that prices in how many ideas were tried to find this one.</p><span class="m">deterministic</span></div></div>
+
+::: {.callout-note appearance="simple"}
+**Everything is point-in-time.** Fundamentals join as of the SEC filing date, never
+the fiscal period. The universe keeps delisted names. Signals must pass a
+no-look-ahead validator: recomputing on a time-truncated panel may not change any
+earlier value, or even its missing/not-missing status. A name that leaves the panel
+books a delisting return rather than silently disappearing from the cross-section —
+otherwise the worst outcomes quietly vanish from whichever decile was holding them.
+:::
+
+
+## Results
+
+*Last refreshed 2026-08-17 — regenerated automatically on every pipeline run.*
+
+
+<table class="la-table">
+<thead><tr>
+  <th>Signal</th><th>Verdict</th><th>Sharpe</th><th>95% CI</th>
+  <th>Alpha t</th><th>Factor R²</th><th>Deflated Sharpe</th><th>q-value</th>
+</tr></thead>
+<tbody><tr><td class="sig"><code>gross_profitability</code></td><td><span class="la-pill" style="background:#198754">Survivor</span></td><td class="mono">0.92</td><td class="mono">[0.51, 1.36]</td><td class="mono">3.22</td><td class="mono">21%</td><td><span class="la-bar" style="--w:94.3px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.98</span></span></td><td class="mono">0.000</td></tr><tr><td class="sig"><code>net_share_issuance</code></td><td><span class="la-pill" style="background:#198754">Survivor</span></td><td class="mono">0.73</td><td class="mono">[0.36, 1.09]</td><td class="mono">4.26</td><td class="mono">59%</td><td><span class="la-bar" style="--w:88.1px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.92</span></span></td><td class="mono">0.003</td></tr><tr><td class="sig"><code>asset_growth</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.43</td><td class="mono">[0.02, 0.81]</td><td class="mono">2.27</td><td class="mono">45%</td><td><span class="la-bar" style="--w:44.6px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.46</span></span></td><td class="mono">0.185</td></tr><tr><td class="sig"><code>earnings_yield</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.34</td><td class="mono">[-0.10, 0.80]</td><td class="mono">-0.00</td><td class="mono">62%</td><td><span class="la-bar" style="--w:28.2px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.29</span></span></td><td class="mono">0.409</td></tr><tr><td class="sig"><code>momentum_12_1</code></td><td><span class="la-pill" style="background:#6c757d">Factor tilt</span></td><td class="mono">0.27</td><td class="mono">[-0.16, 0.73]</td><td class="mono">-0.10</td><td class="mono">92%</td><td><span class="la-bar" style="--w:19.4px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.20</span></span></td><td class="mono">0.413</td></tr><tr><td class="sig"><code>low_volatility</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.25</td><td class="mono">[-0.15, 0.65]</td><td class="mono">2.39</td><td class="mono">83%</td><td><span class="la-bar" style="--w:15.7px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.16</span></span></td><td class="mono">0.413</td></tr><tr><td class="sig"><code>accruals</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.18</td><td class="mono">[-0.25, 0.64]</td><td class="mono">1.96</td><td class="mono">21%</td><td><span class="la-bar" style="--w:9.3px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.10</span></span></td><td class="mono">0.623</td></tr><tr><td class="sig"><code>credit_beta_defensive</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.11</td><td class="mono">[-0.29, 0.44]</td><td class="mono">0.25</td><td class="mono">34%</td><td><span class="la-bar" style="--w:4.6px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.05</span></span></td><td class="mono">0.771</td></tr><tr><td class="sig"><code>book_to_market</code></td><td><span class="la-pill" style="background:#e94560">Loses to factors</span></td><td class="mono">0.11</td><td class="mono">[-0.36, 0.58]</td><td class="mono">-3.14</td><td class="mono">92%</td><td><span class="la-bar" style="--w:4.5px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.05</span></span></td><td class="mono">0.776</td></tr><tr><td class="sig"><code>credit_spread_timing</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.09</td><td class="mono">[-0.40, 0.52]</td><td class="mono">0.60</td><td class="mono">15%</td><td><span class="la-bar" style="--w:4.3px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.04</span></span></td><td class="mono">0.776</td></tr><tr><td class="sig"><code>market_trend_timing</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.06</td><td class="mono">[-0.43, 0.53]</td><td class="mono">1.17</td><td class="mono">36%</td><td><span class="la-bar" style="--w:3.5px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.04</span></span></td><td class="mono">0.801</td></tr></tbody>
+</table>
+
+
+<div class="la-note">
+<strong>Why the board is not sorted by Sharpe.</strong> Farm enough strategies and one
+will post a fine Sharpe by luck alone. With 11 trials priced in,
+the expected best-of-search Sharpe — the <em>hurdle</em> — is
+<strong>0.45</strong>. Anything below that is
+indistinguishable from noise no matter how good the raw number looks.
+<br><br>
+<strong>Alpha t</strong> is the return left after regressing on market, size, value and
+momentum, with Newey-West standard errors. A high Sharpe next to a high <strong>Factor
+R²</strong> and a flat alpha t means the strategy is a repackaged factor tilt, not a
+discovery. The reverse also happens: a modest Sharpe with a strong alpha t is worth
+more than it first looks.
+<br><br>
+<strong>Deflated Sharpe</strong> is the probability the signal is real once the size of
+the search is accounted for; <strong>q-value</strong> is the Benjamini-Hochberg
+false-discovery rate across the whole library.
+</div>
+
+
+![Net long/short equity curves for the signals that survived multiple-testing correction. Log scale — a straight line is a constant compounding rate.](figures/equity.png){fig-alt="Equity curves of surviving alpha signals"}
+
+## What this run found
+
+- 2 of 11 signals survive correction: <code>gross_profitability</code>, <code>net_share_issuance</code>. These clear Benjamini-Hochberg across the library *and* retain a high deflated Sharpe, meaning the result is not an artefact of how many ideas were tried.
+
+- 1 is a factor tilt in disguise. The clearest case is <code>momentum_12_1</code>, whose returns are 92% explained by the standard factors with an alpha t-stat of -0.10 — it is not adding anything the four-factor model does not already capture.
+
+- <code>low_volatility</code> is the case for looking past raw Sharpe: only 0.25 on its own, but an alpha t-stat of 2.39 once the known factors are stripped out — its raw performance understates it.
+
+- <code>book_to_market</code> is the inverse warning: it tracks the standard factors closely (92% of variance) yet delivers significantly *negative* alpha against them (t=-3.14). On this universe and sample you would have been better off holding the plain factor than this construction of it.
+
+
+
+## Where this goes next
+
+The pipeline works; the constraint now is the *hypothesis space*, not the
+machinery. Ranked roughly by expected value per unit of effort:
+
+<div class="la-next"><div class="la-card"><h4>Widen the data surface</h4><p>Every signal is bounded by what the panel contains. The highest-leverage additions are short interest and borrow cost (crowding and limits to arbitrage), institutional 13F holdings (ownership churn), analyst revisions and dispersion (expectation dynamics), and options-implied volatility surfaces (skew as a crash-risk premium). Each new provider under <code>data/features/</code> multiplies the hypothesis space rather than adding to it.</p><span class="eff">high impact · medium effort</span></div><div class="la-card"><h4>Walk-forward, not full-sample</h4><p>The harness currently scores each signal over the whole history. A purged, embargoed walk-forward protocol — fit and select on an expanding window, evaluate only on the untouched next block — would turn every number on this page into an out-of-sample one, and would catch signals that only work in the regime they were invented from.</p><span class="eff">high impact · medium effort</span></div><div class="la-card"><h4>Let the agents read their own failures</h4><p>The idea agent sees which themes are thin, but not <em>why</em> past ideas died. Feeding back the specific failure — the validator's complaint, the coverage gate, the factor attribution that revealed a tilt — should raise the hit rate per unit of spend, and it costs nothing but prompt tokens.</p><span class="eff">high impact · low effort</span></div><div class="la-card"><h4>Search combinations, not just singles</h4><p>Most published anomalies are weak alone and strong combined. A composite layer — rank-average within a theme, or a shrunk regression on standardized signals — would test whether the farmed library is greater than its parts. The novelty machinery already stores the return streams needed for it.</p><span class="eff">medium impact · low effort</span></div><div class="la-card"><h4>Model capacity honestly</h4><p>Costs are a flat per-unit-traded charge. Real capacity binds through market impact that scales with size and inversely with liquidity. A square-root impact model plus an explicit AUM assumption would tell us which of these signals survive at size rather than only on paper.</p><span class="eff">medium impact · medium effort</span></div><div class="la-card"><h4>Turn the delisting assumption into a measurement</h4><p>Delisted names currently book a configurable return, defaulted to a liquidation at the last observed price. Sharadar's corporate-actions table carries the actual delisting events; using them would replace an assumption with data, and would matter most for exactly the distressed, cheap names that value signals load on.</p><span class="eff">medium impact · low effort</span></div><div class="la-card"><h4>Regime-condition the evaluation</h4><p>A signal that works only in high-dispersion or high-rate regimes is still useful — if you know which regime you are in. Conditioning the report on macro states already in the panel would separate genuinely broken signals from ones that are simply out of season.</p><span class="eff">medium impact · medium effort</span></div><div class="la-card"><h4>Raise the bar as the library grows</h4><p>The deflation hurdle scales with the number of trials, so the more this pipeline runs, the harder it becomes to claim a discovery — correctly. The counter-move is not a lower bar but a better prior: pre-register the economic mechanism before the backtest, and treat signals whose mechanism was stated in advance as a separate, smaller family of tests.</p><span class="eff">structural · ongoing</span></div></div>
+
+The honest summary is that a language model is a good generator of *plausible*
+hypotheses and a poor judge of which ones are real. That division of labour is the
+whole design: let the model propose freely, and make the harness — not the model —
+decide what counts.
+
+The next farming round is steered at categories the library barely covers (`combo`, `other`, `size`) and data sources still under-used (`fundamental`), because a library that keeps re-deriving the same value factor learns nothing new about where alpha lives.
+
+
+::: {.callout-warning appearance="simple"}
+**Research, not investment advice.** Data ends around February 2024. Transaction
+costs use a simple per-unit-traded model with no market-impact term, so capacity
+is not addressed. Delisting returns are approximated rather than sourced from the
+corporate-actions table. Every number here is a backtest.
+:::
