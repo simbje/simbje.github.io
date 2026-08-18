@@ -1,7 +1,7 @@
 ---
 title: "LLM Alpha Farming"
 description: "Can you farm tradable equity signals out of a language model? Three agents propose, implement and document cross-sectional alpha; one deterministic harness judges them all — and discounts every result for the size of the search."
-date: 2026-08-17
+date: 2026-08-18
 date-format: long
 categories: [finance, quant, ai-agent, llm]
 execute:
@@ -54,6 +54,34 @@ format:
 .la-note{background:#f8f9fa;border-left:4px solid #e94560;border-radius:8px;
   padding:1rem 1.15rem;margin:1.5rem 0;font-size:.9rem}
 .la-note strong{color:#1a1a2e}
+.la-details{border:1px solid #e9ecef;border-radius:12px;margin:1.5rem 0;background:#fff;overflow:hidden}
+.la-details>summary{cursor:pointer;padding:1.05rem 1.35rem;font-weight:600;color:#1a1a2e;
+  list-style:none;display:flex;align-items:center;gap:.65rem;background:#fbfcfd;
+  border-bottom:1px solid transparent}
+.la-details>summary::-webkit-details-marker{display:none}
+.la-details>summary::before{content:"\25B8";color:#e94560;font-size:1.05rem;
+  display:inline-block;transition:transform .18s ease}
+.la-details[open]>summary::before{transform:rotate(90deg)}
+.la-details[open]>summary{border-bottom-color:#e9ecef}
+.la-details>summary:hover{background:#f4f6f8}
+.la-details .hint{font-weight:400;color:#6c757d;font-size:.82rem;margin-left:auto}
+.la-body{padding:.25rem 1.35rem 1.35rem}
+.la-cmp{width:100%;border-collapse:collapse;font-size:.88rem;margin:1rem 0}
+.la-cmp th{text-align:right;font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;
+  color:#6c757d;border-bottom:2px solid #e9ecef;padding:.5rem .6rem;font-weight:600}
+.la-cmp th:first-child{text-align:left}
+.la-cmp td{padding:.5rem .6rem;border-bottom:1px solid #f1f3f5;text-align:right;
+  font-family:'JetBrains Mono',monospace;font-size:.84rem}
+.la-cmp td:first-child{text-align:left;font-family:inherit;color:#495057}
+.la-cmp .win{color:#198754;font-weight:600}
+.la-cmp .lose{color:#b02a37}
+.la-gloss dt{font-weight:600;color:#1a1a2e;margin-top:1.15rem;font-size:.94rem}
+.la-gloss dd{margin:.35rem 0 0;color:#495057;font-size:.9rem;line-height:1.62}
+.la-formula{font-family:'JetBrains Mono',monospace;background:#f8f9fa;border-left:3px solid #0f3460;
+  padding:.5rem .8rem;border-radius:4px;font-size:.8rem;color:#0f3460;margin:.55rem 0;
+  display:block;overflow-x:auto;white-space:pre}
+.la-guard{font-size:.82rem;color:#6c757d;margin-top:.35rem}
+.la-guard b{color:#b02a37;font-weight:600}
 .la-next{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1rem;margin:1.5rem 0}
 .la-card{background:#fff;border:1px solid #e9ecef;border-radius:10px;padding:1.25rem}
 .la-card h4{margin:0 0 .5rem;font-size:.95rem;color:#1a1a2e}
@@ -69,7 +97,7 @@ format:
   <div class="la-sub">Three cooperating agents invent, implement and document equity
     signals. One deterministic harness judges every one of them under identical,
     point-in-time-correct rules — and then discounts the result for the size of the search.</div>
-  <div class="la-meta"><span class="la-chip">Run 2026-08-17</span><span class="la-chip">11 signals evaluated</span><span class="la-chip">280 months of history</span></div>
+  <div class="la-meta"><span class="la-chip">Run 2026-08-18</span><span class="la-chip">11 signals evaluated</span><span class="la-chip">280 months of history</span></div>
 </div>
 
 <div class="la-metrics"><div class="la-metric "><div class="v">11</div><div class="l">Signals evaluated</div></div><div class="la-metric good"><div class="v">2</div><div class="l">Survive correction</div></div><div class="la-metric "><div class="v">0.45</div><div class="l">Search hurdle (Sharpe)</div></div><div class="la-metric "><div class="v">11</div><div class="l">Trials priced in</div></div><div class="la-metric "><div class="v">0.92</div><div class="l">Best raw Sharpe</div></div><div class="la-metric "><div class="v">4.26</div><div class="l">Best alpha t-stat</div></div></div>
@@ -82,21 +110,26 @@ ruthless, uniform backtest. The interesting number was never the best Sharpe —
 is the **survival rate**, and that only means something if the judging is identical
 for every candidate and honest about the size of the search.
 
+<details class="la-details">
+<summary>The six stages, end to end <span class="hint">click to expand</span></summary>
+<div class="la-body">
 <div class="la-flow"><div class="la-step"><div class="n">01</div><h4>Idea agent</h4><p>Mines the asset-pricing literature for an economically motivated hypothesis that can actually be built from the panel — with a stated mechanism, a formula, an expected sign, and references.</p><span class="m">Opus 5</span></div><div class="la-step"><div class="n">02</div><h4>Data agent</h4><p>Maps each requested concept onto a real panel column and gates on coverage. An idea that needs data we do not have dies here, cheaply, before any code is written.</p><span class="m">Sonnet 5</span></div><div class="la-step"><div class="n">03</div><h4>Coder agent</h4><p>Writes a self-contained module implementing the signal interface, then self-corrects against the validator's complaints. Generated code is untrusted: a static check blocks file, network and process access before the module is ever imported.</p><span class="m">Sonnet 5</span></div><div class="la-step"><div class="n">04</div><h4>Shared harness</h4><p>Monthly cross-sectional decile long/short on a survivorship-safe, liquidity-filtered universe. Identical for every signal — invented or canonical — so nothing gets a bespoke advantage.</p><span class="m">deterministic</span></div><div class="la-step"><div class="n">05</div><h4>Robustness battery</h4><p>Subperiod stability, transaction-cost sweep, sector-neutral variant, parameter and universe sensitivity, and holding-horizon decay.</p><span class="m">deterministic</span></div><div class="la-step"><div class="n">06</div><h4>Selection-bias layer</h4><p>Factor attribution against market, size, value and momentum; Benjamini-Hochberg across the library; and a deflated Sharpe that prices in how many ideas were tried to find this one.</p><span class="m">deterministic</span></div></div>
 
-::: {.callout-note appearance="simple"}
-**Everything is point-in-time.** Fundamentals join as of the SEC filing date, never
-the fiscal period. The universe keeps delisted names. Signals must pass a
+<div class="la-note">
+<strong>Everything is point-in-time.</strong> Fundamentals join as of the SEC filing
+date, never the fiscal period. The universe keeps delisted names. Signals must pass a
 no-look-ahead validator: recomputing on a time-truncated panel may not change any
 earlier value, or even its missing/not-missing status. A name that leaves the panel
 books a delisting return rather than silently disappearing from the cross-section —
 otherwise the worst outcomes quietly vanish from whichever decile was holding them.
-:::
+</div>
+</div>
+</details>
 
 
 ## Results
 
-*Last refreshed 2026-08-17 — regenerated automatically on every pipeline run.*
+*Last refreshed 2026-08-18 — regenerated automatically on every pipeline run.*
 
 
 <table class="la-table">
@@ -139,6 +172,86 @@ false-discovery rate across the whole library.
 
 - <code>book_to_market</code> is the inverse warning: it tracks the standard factors closely (92% of variance) yet delivers significantly *negative* alpha against them (t=-3.14). On this universe and sample you would have been better off holding the plain factor than this construction of it.
 
+
+## Best signal vs the market
+
+The top of the board is <code>gross_profitability</code>. Here it is against a **large-cap
+benchmark** — the 500 biggest eligible names each month, cap-weighted, rebalanced
+monthly, run through the identical point-in-time and delisting machinery.
+
+![Cumulative growth and drawdown of the best signal against the cap-weighted large-cap benchmark. Log scale on the upper panel.](figures/benchmark.png){fig-alt="Best signal versus large-cap benchmark equity curves and drawdowns"}
+
+<table class="la-cmp">
+<thead><tr><th>Metric</th><th>gross_profitability</th><th>Benchmark</th></tr></thead>
+<tbody><tr><td>Annualized return</td><td class="win">11.1%</td><td class="">8.3%</td></tr><tr><td>Annualized volatility</td><td class="win">12.3%</td><td class="">15.5%</td></tr><tr><td>Sharpe ratio</td><td class="win">0.92</td><td class="">0.60</td></tr><tr><td>Max drawdown</td><td class="win">-21.3%</td><td class="">-45.2%</td></tr><tr><td>Hit rate (months up)</td><td class="">62.9%</td><td class="win">65.4%</td></tr></tbody>
+</table>
+
+<div class="la-note">
+<strong>These are not the same kind of return.</strong> The signal is a
+<em>market-neutral</em> long/short book: it holds the top decile and shorts the
+bottom, so it carries almost no market exposure and its return does not depend on
+the market going up. The benchmark is long-only and fully exposed. Comparing their
+raw returns rewards whichever one happened to suit the sample — the relationship
+between them is the informative part:
+<br><br>
+Correlation to the benchmark is <strong>-0.11</strong> and beta is
+<strong>-0.09</strong>. A beta near zero is the point of a long/short
+construction, not a shortfall: it means the return is not repackaged market
+exposure. Up-capture is <strong>19%</strong> and
+down-capture <strong>-39%</strong> — how much of the
+market's average up-month and down-month the strategy tracked. Low or negative
+down-capture is the property a diversifying book is actually bought for.
+<br><br>
+Measured over 280 overlapping months. A market-neutral book with a
+lower headline return than a bull-market index can still be the more valuable asset
+in a portfolio, because it supplies a return stream the index cannot.
+</div>
+
+
+## The factors and the statistics, in depth
+
+<details class="la-details">
+<summary>The four factors — what they are and how they are built here
+<span class="hint">click to expand</span></summary>
+<div class="la-body">
+<p style="font-size:.9rem;color:#495057;line-height:1.6">
+A new signal is only interesting if it earns something the known premia do not
+already pay for. These four are the standard yardstick. All are built from the same
+panel the signals are scored on — equal-weighted top-third minus bottom-third
+spreads on the same eligible universe — so attribution is like-for-like rather than
+against an external dataset with different conventions.</p>
+<dl class="la-gloss"><dt>MKT — Market</dt><dd>The excess return of holding equities at all. Every long-only strategy earns most of its return here, so it is the first thing to strip out.<span class="la-formula">Built here as: Equal-weighted return of the whole eligible universe each month.</span></dd><dt>SMB — Size (small minus big)</dt><dd>Small-cap stocks have historically earned more than large caps — compensation for illiquidity and distress risk, and partly a reflection of how hard small names are to trade at size.<span class="la-formula">Built here as: Long the smallest third by market cap, short the largest third.</span></dd><dt>HML — Value (high minus low)</dt><dd>Cheap stocks relative to book value have outearned expensive ones. The debate over whether this is risk compensation or a behavioural mispricing is unsettled; either way it is a known, harvestable premium, so a new signal should not be paid twice for it.<span class="la-formula">Built here as: Long the cheapest third by price-to-book, short the most expensive third.</span></dd><dt>UMD — Momentum (up minus down)</dt><dd>Past winners keep winning over horizons of roughly three to twelve months, usually attributed to under-reaction to news and to slow diffusion of information.<span class="la-formula">Built here as: Long the top third by 12-1 month return, short the bottom third.</span></dd></dl>
+</div>
+</details>
+
+<details class="la-details">
+<summary>The statistics — what each one answers, and the failure it guards against
+<span class="hint">click to expand</span></summary>
+<div class="la-body">
+<p style="font-size:.9rem;color:#495057;line-height:1.6">
+Each statistic exists because a simpler one can be fooled in a specific way. Read
+top to bottom and the argument builds: a Sharpe is not enough, so bound it; a bound
+is not enough on skewed returns, so reshape it; and none of it means anything until
+you price in how many strategies were tried to find this one.</p>
+<dl class="la-gloss"><dt>Sharpe ratio</dt><dd>Return per unit of volatility, annualized. The default headline — and the single most misleading number on any farmed leaderboard, because it says nothing about how many strategies were tried before this one was picked.<span class="la-formula">Sharpe = mean(r) / sd(r) × √12</span><div class="la-guard"><b>Guards against:</b> Says nothing about selection. Rewards fat left tails.</div></dd><dt>95% confidence interval</dt><dd>A circular block bootstrap resamples contiguous blocks of months — preserving short-run autocorrelation an i.i.d. bootstrap would destroy — and re-computes the Sharpe a few thousand times. The interval is the middle 95% of that distribution. If it straddles zero, the point estimate is not doing the work you think it is.<span class="la-formula">block length ≈ T^(1/3), 2,000 resamples</span><div class="la-guard"><b>Guards against:</b> A single Sharpe with no interval invites false confidence.</div></dd><dt>Newey-West t-statistic</dt><dd>The t-stat of the mean return, with standard errors corrected for autocorrelation and heteroskedasticity. Monthly strategy returns are rarely independent, and ignoring that inflates significance.<span class="la-formula">t = mean(r) / SE_NW(r),  lags = ⌊4(T/100)^(2/9)⌋</span><div class="la-guard"><b>Guards against:</b> Plain OLS errors overstate significance on persistent series.</div></dd><dt>Factor R²</dt><dd>The share of the strategy's month-to-month variance explained by regressing it on market, size, value and momentum. High R² means you have largely rebuilt a portfolio of things that already have names.<span class="la-formula">R² from  r_t = α + β₁MKT + β₂SMB + β₃HML + β₄UMD + ε_t</span><div class="la-guard"><b>Guards against:</b> A high Sharpe can be entirely factor exposure.</div></dd><dt>Alpha t-statistic</dt><dd>The intercept of that same regression — the return the four factors cannot explain — divided by its Newey-West standard error. This is the closest thing here to a test of whether a signal is genuinely new. Note the sign: a large negative alpha t means the construction <em>loses</em> to the factor it tracks.<span class="la-formula">α from the regression above; t = α / SE_NW(α)</span><div class="la-guard"><b>Guards against:</b> Sharpe alone cannot tell a discovery from a repackaged tilt.</div></dd><dt>Probabilistic Sharpe (PSR)</dt><dd>The probability the true Sharpe exceeds zero, adjusted for skew and kurtosis. Strategies that make small gains most months and lose badly occasionally — the classic short-leg blow-up shape — get marked down relative to their raw Sharpe.<span class="la-formula">PSR = Φ( (SR − SR*)·√(T−1) / √(1 − γ₃SR + (γ₄−1)SR²/4) )</span><div class="la-guard"><b>Guards against:</b> Raw Sharpe assumes normality that returns rarely have.</div></dd><dt>Search hurdle</dt><dd>The Sharpe you would expect from the <em>best</em> of N random strategies, given how dispersed the Sharpes in this library actually are. It is the bar luck alone clears. Anything under it is not evidence of anything.<span class="la-formula">E[max SR] ≈ √V · [ (1−γ)Φ⁻¹(1 − 1/N) + γΦ⁻¹(1 − 1/(Ne)) ]</span><div class="la-guard"><b>Guards against:</b> Testing many strategies guarantees a good-looking winner.</div></dd><dt>Deflated Sharpe (DSR)</dt><dd>The PSR measured against that hurdle instead of against zero: the probability the signal is real <em>given</em> the size of the search that found it. This is what the board is sorted by. N counts every farming attempt in the ledger — including the ideas that died at the data or compile stage — because counting only survivors would understate the search and flatter every number.<span class="la-formula">DSR = PSR evaluated at SR* = E[max SR]</span><div class="la-guard"><b>Guards against:</b> The headline result of a bulk search is biased upward by construction.</div></dd><dt>Benjamini-Hochberg q-value</dt><dd>Ranks every p-value in the library and controls the expected proportion of false discoveries among those called significant. Far less brutal than Bonferroni when signals are correlated — which factor strategies always are — while still bounding the damage.<span class="la-formula">q_(i) = min over j ≥ i of  p_(j) · m / j</span><div class="la-guard"><b>Guards against:</b> Per-signal p-values ignore that the library is a search.</div></dd></dl>
+<div class="la-note" style="margin-bottom:0">
+<strong>How to read a row in one pass.</strong> Start at the deflated Sharpe: if it
+is low, nothing else on the row rescues the signal. If it is high, check the alpha
+t-stat to see whether the return is genuinely new or a factor tilt wearing a
+different name. Then check the confidence interval: if it straddles zero, the
+sample is too short to lean on regardless of what the point estimates say.
+</div>
+</div>
+</details>
+
+
+## Run history
+
+<table class="la-table">
+<thead><tr><th>Run</th><th>Signals</th><th>Survivors</th>
+<th>Hurdle</th><th>Best Sharpe</th></tr></thead>
+<tbody><tr><td class="mono">2026-08-18</td><td class="mono">11</td><td class="mono">2</td><td class="mono">0.45</td><td class="mono">0.92</td></tr><tr><td class="mono">2026-08-17</td><td class="mono">11</td><td class="mono">2</td><td class="mono">0.45</td><td class="mono">0.92</td></tr></tbody>
+</table>
 
 
 ## Where this goes next
