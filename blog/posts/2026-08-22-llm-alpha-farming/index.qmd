@@ -1,0 +1,325 @@
+---
+title: "Farming Alpha Out of a Language Model"
+description: "Three agents invent equity signals, one harness judges them all, and a statistics layer decides whether any of it is real. Sixteen farmed signals in, the answer is no — which is the interesting part."
+date: "2026-08-22"
+categories: [finance, quant, ai-agent, llm, meta]
+image: ""
+---
+
+## The question
+
+A language model has read an enormous amount of finance. Working papers, textbooks,
+factor zoo surveys, decades of published anomalies. So here is a question worth
+asking directly:
+
+> Can you *farm* tradable equity signals out of that knowledge?
+
+Not "can it explain momentum" — obviously it can. The question is whether it can
+propose a **new** cross-sectional predictor, one that survives a ruthless backtest
+it was not allowed to influence.
+
+The honest way to answer that is to build the ruthless backtest first, and only
+then let the model start guessing. That inversion is the whole project. It is easy
+to build a pipeline where the model proposes ideas and you eyeball the Sharpe
+ratios and get excited. It is harder, and much more useful, to build one where the
+model's ideas are judged by machinery that cannot be talked into anything.
+
+This post is about that machinery: what it does, why each piece is there, and how
+you would write a signal for it yourself.
+
+## What "farming" means here
+
+The setup is a division of labour between three agents and one harness.
+
+```{mermaid}
+%%{init: {'theme': 'dark', 'themeVariables': {'primaryColor': '#0f3460', 'primaryTextColor': '#ffffff', 'primaryBorderColor': '#e94560', 'lineColor': '#a0a8c0', 'secondaryColor': '#1a1a2e', 'tertiaryColor': '#16213e', 'clusterBkg': '#16213e', 'clusterBorder': '#e94560', 'edgeLabelBackground': '#1a1a2e', 'fontFamily': 'inherit'}}}%%
+flowchart TD
+    FRONTIER[("Research frontier\nwhat the library holds\nwhich themes are thin")]
+
+    subgraph AGENTS["The creative half — costs money, can be wrong"]
+        IDEA["Idea agent · Opus 5\nhypothesis + mechanism\nformula, sign, references"]
+        DATA["Data agent · Sonnet 5\nmap concepts to real columns\ngate on coverage"]
+        CODER["Coder agent · Sonnet 5\nwrite the Signal module\nself-correct on failure"]
+        IDEA --> DATA --> CODER
+    end
+
+    subgraph HARNESS["The judging half — deterministic, identical for everyone"]
+        VAL["No-look-ahead validator"]
+        BT["Decile long/short backtest"]
+        ROB["Robustness battery"]
+        STAT["Factor attribution\nDeflated Sharpe · BH-FDR"]
+        VAL --> BT --> ROB --> STAT
+    end
+
+    LEDGER[("Ledger\nevery attempt, including\nthe ones that died")]
+
+    FRONTIER --> IDEA
+    CODER --> VAL
+    STAT --> LEDGER
+    LEDGER -.->|raises the bar| STAT
+    STAT --> ARTICLE["Published results"]
+```
+
+The **idea agent** runs on the most capable model available, because generating a
+genuinely novel economic hypothesis is the one step where capability plausibly
+matters. It gets a research frontier — what is already in the library, which
+categories and data sources are thin — and is told to go somewhere new.
+
+The **data agent** runs on a cheaper model and does something unglamorous but
+essential: map each requested concept onto a column that actually exists, and kill
+the idea if it doesn't. On the first live run this gate caught the idea agent
+inventing a column called `macro_cpi_chg12m_scale` out of thin air. No such column.
+The hypothesis died before a line of code was written, at a cost of about two cents.
+
+The **coder agent** writes the actual module, then self-corrects against the
+validator's complaints for up to three attempts. Its output is treated as
+untrusted: a static check rejects file, network and process access before the
+module is ever imported.
+
+Then everything hits the same harness. That part has no model in it at all.
+
+## What a signal actually is
+
+This is the concept everything else rests on, and it is simpler than it sounds.
+
+A **cross-sectional signal** is one number per stock per month. That's it. Not a
+buy/sell decision, not a price target — just a score.
+
+The crucial property: **only the ranking matters.** The absolute level is
+meaningless. A signal that outputs book-to-market ratios between 0.1 and 8, and a
+signal that outputs their logarithms, are the same signal. All the harness ever
+does with your number is sort by it.
+
+Each month, mechanically:
+
+1. Take every eligible stock — liquid, above $5, common stock, real exchange.
+2. Compute the score for each one.
+3. Sort. Long the top 10%, short the bottom 10%, equal-weighted.
+4. Hold for one month. Earn the spread.
+5. Repeat, 280 times, from 2000 to 2024.
+
+If the ranking carries information about next month's returns, the spread is
+positive on average and compounds. If it doesn't, you get a random walk with
+transaction costs bolted on. That's the entire test.
+
+### Orientation, and why the interface has an `expected_sign`
+
+There's a design wrinkle worth explaining because it shapes how you write a signal.
+
+Some predictors work the "right" way up: high gross profitability predicts high
+returns. Others are inverted: high asset growth predicts *low* returns, and so does
+high volatility. If every signal had to be written so that "high = good", you'd be
+constantly writing `-volatility` or `1/asset_growth`, and guarding the division,
+and getting the sign wrong at 2am.
+
+So the interface separates the two concerns. You write the **natural** formula, and
+declare which way it points:
+
+```python
+class LowVolatility(BaseSignal):
+    name = "low_volatility"
+    category = "low_risk"
+    expected_sign = -1        # LOW vol predicts HIGH return
+    description = "Low-volatility anomaly: trailing 1y realized vol (low = long)."
+
+    def compute(self, panel):
+        return panel["vol_252"]      # the natural quantity, not its negation
+```
+
+The harness multiplies by `expected_sign` before ranking, so after orientation
+"high score = go long" always holds. You get to write `vol_252` and mean it.
+
+There is a second archetype too. A `strategy_type = "macro_timing"` signal returns
+one number *per date* rather than per stock — a desired market exposure. The
+harness standardizes it using only past data, maps it to a position in [−1, 1], and
+earns that fraction of the market. Same interface, different shape.
+
+## The part that matters: point-in-time correctness
+
+Every backtest is a claim about what you *would have known* at the time. Almost all
+the ways to get that wrong are subtle.
+
+**Fundamentals join on the filing date, never the fiscal period.** A company's Q3
+figures describe September but become public in November. Joining on the fiscal
+date hands your backtest two months of clairvoyance and produces beautiful,
+worthless results.
+
+**The universe keeps delisted names.** This one bites in a way that's easy to miss.
+When a company is acquired or goes bankrupt it stops appearing in the data — so its
+final month has no "next month" to compute a return from, and the naive fix is to
+drop the row. But dropping it silently removes the worst outcomes from whichever
+decile was holding them. In this dataset, 12,754 of roughly 19,800 tickers end
+before the sample does. That is not a rounding error; it is a systematic upward
+bias aimed squarely at the cheap, distressed names value signals love. The harness
+books an explicit delisting return instead of letting those rows vanish.
+
+**And every signal has to prove it isn't cheating.** Before anything is backtested,
+the validator recomputes it on a time-truncated panel and compares:
+
+> Recomputing a signal with the last 40% of history deleted must not change any
+> earlier value — or even its missing/not-missing status.
+
+That single check catches the entire family of look-ahead bugs. A full-sample
+z-score fails it. A `.fillna()` that propagates backwards fails it. A negative shift
+fails it. And notice that the NaN-status clause matters as much as the values: a
+signal that quietly becomes computable earlier when it can see the future is
+leaking, even if the numbers it produces look plausible.
+
+## The part nobody builds: deciding whether the result is real
+
+Here is the failure mode this whole project is designed around.
+
+Suppose you generate a hundred signals, backtest them all, and report the best one.
+Its Sharpe ratio is not an estimate of its quality. It's an estimate of **how many
+things you tried.** Run enough random strategies against the same 280 months and
+one of them will look excellent, guaranteed, with no alpha anywhere in sight.
+
+So the leaderboard is deliberately **not** sorted by Sharpe. Three things sit on top
+of it.
+
+**Factor attribution.** Every signal's returns are regressed on market, size, value
+and momentum — factors built from the same panel, so the comparison is like for
+like — with Newey-West standard errors. What matters is the intercept: the return
+the known premia *cannot* explain. This is brutally clarifying. The library's
+`momentum_12_1` signal has a factor R² of 0.92 and an alpha t-stat of −0.10. It
+isn't a discovery. It *is* the momentum factor, rediscovered, and it should be paid
+for exactly once.
+
+**A search hurdle.** Given how dispersed the Sharpes in the library are, you can
+compute the Sharpe you'd expect from the *best* of N random strategies. That's the
+bar luck alone clears. With 17 attempts on the ledger it currently sits at **0.60**.
+Anything below it is not evidence of anything.
+
+**Deflated Sharpe and Benjamini-Hochberg.** The deflated Sharpe is the probability a
+signal is real *given* the size of the search that found it. The BH q-value controls
+the false-discovery rate across the whole library at once. The denominator for both
+comes from the ledger, which records every attempt — including the ones that died at
+the data gate or failed to compile. Counting only survivors would understate the
+search and flatter every number on the page.
+
+This machinery has a property I've come to appreciate: **it gets harder to satisfy
+the more you use it.** Every farming run adds trials, which raises the hurdle for
+everything already in the library. A search large enough will push its own earlier
+discoveries back below significance. That is not a bug — it is the honest accounting
+finally showing up on the balance sheet.
+
+## What it found
+
+Sixteen farmed signals in, across two campaign days:
+
+| | |
+|---|---|
+| Signals in the library | 27 (11 canonical, 16 farmed) |
+| Farming attempts on the ledger | 17 |
+| Search hurdle (Sharpe) | 0.60 |
+| Best farmed Sharpe | 0.26 |
+| Farmed signals above the hurdle | **0** |
+| Farmed signals surviving FDR | **0** |
+
+Every one of them compiled. Every one passed the no-look-ahead validator. Every one
+had a coherent economic story attached — inventory growth gaps, stock-comp dilution,
+oil-beta interactions, turn-of-year tax-loss reversals. And not one is
+distinguishable from noise.
+
+The only signal in the library that survives correction is `gross_profitability`,
+which is Novy-Marx's, published in 2013, and was in the library before any agent
+ran.
+
+I want to be precise about what that does and doesn't show. It is two days of
+farming against a fixed dataset. It is not proof that the approach can't work. But
+it is a real result, and it lines up with the thing quantitative researchers already
+know and outsiders consistently underestimate: **plausible is cheap.** The hard part
+of finding alpha was never generating hypotheses. A language model generates twelve
+excellent-sounding ones for eighty cents. The hard part is that almost all
+hypotheses are wrong, and the only way to know which is to test them in a way that
+can tell you no.
+
+One entry is worth watching. `market_breadth_high_ratio_timing` posts a Sharpe of
+just 0.12 — nothing — but an alpha t-stat of **2.64**. Real explanatory power the
+factor model misses, wrapped in a construction too weak to trade. That is the
+shape a genuine discovery would first appear in, and it is exactly the shape a
+Sharpe-sorted leaderboard would throw away.
+
+## How you'd implement a signal
+
+Everything above exists so this part can be short. Here is the whole contract:
+
+```python
+from __future__ import annotations
+import pandas as pd
+from llm_alpha.signals.base import BaseSignal
+
+
+class GrossMarginTrend(BaseSignal):
+    name = "gross_margin_trend"
+    category = "quality"
+    expected_sign = 1
+    description = "Year-over-year change in gross margin: improving pricing power."
+
+    def compute(self, panel: pd.DataFrame) -> pd.Series:
+        gm = panel["grossmargin"]
+        gm_prior = gm.groupby(level="ticker").shift(12)
+        return gm - gm_prior
+```
+
+That's a complete, working signal. Four class attributes and one method. Walking
+through what each part is doing:
+
+**The panel** is a DataFrame indexed by `(date, ticker)` — one row per stock per
+month-end, about 1.9 million of them. It carries price-derived features
+(`ret_12_1`, `vol_252`, `beta_252`, `high_ratio`), daily valuation ratios (`pe`,
+`pb`, `marketcap`), and point-in-time quarterly fundamentals (`revenue`, `assets`,
+`gp`, `ncfo`, `grossmargin`, …) already joined as of their filing date. You never
+load data yourself; it's all there.
+
+**`compute` returns a Series indexed exactly like the panel.** Same index, one score
+per row. Return `NaN` wherever the signal is undefined — the harness will simply
+exclude those names from that month's cross-section. Missing data is expected and
+handled; do not paper over it.
+
+**`groupby(level="ticker").shift(12)`** is the single most important idiom, and the
+one the coder agent most often gets wrong on its first attempt. It means "this
+ticker's value twelve months ago". The `groupby` is not optional: without it, `shift`
+walks off the end of one stock and into another, silently comparing Apple to
+Amgen. A **negative** shift would reach into the future and the validator will
+reject it.
+
+**Guard your denominators.** The reference implementations do this everywhere:
+
+```python
+    def compute(self, panel):
+        assets = panel["assets"]
+        return (panel["gp"] / assets).where(assets > 0)
+```
+
+`.where(assets > 0)` yields `NaN` where the denominator is non-positive, rather
+than `inf` or a sign-flipped nonsense value. A single `inf` can dominate a
+cross-sectional ranking and quietly wreck a month.
+
+**Then set `expected_sign` honestly** and don't pre-negate anything. If you believe
+low values predict high returns, write the natural quantity and set `-1`.
+
+Drop that file into `signals/library/`, and the rest is automatic: the registry
+discovers it, the validator truncates the panel and checks it for look-ahead, the
+harness backtests it identically to every other signal, the robustness battery
+sweeps costs and sub-periods and universes, the factor model tells you whether it's
+new, and the deflation layer tells you whether to believe it.
+
+You do not get to tune any of that. Which is the point — the harness was built
+before the hypotheses, precisely so it couldn't be.
+
+## What I'd do next
+
+The bottleneck is not the pipeline, and after sixteen signals it is fairly clearly
+not the model's imagination either. It is the **hypothesis space**, which is bounded
+by what the panel contains — prices, fundamentals, a handful of macro series.
+
+Running the same agent against the same columns another thousand times mostly
+manufactures trials, and every trial raises the bar for everything already found.
+Adding a genuinely new data source — short interest and borrow cost, 13F ownership
+churn, analyst revisions and dispersion, options-implied skew — multiplies the space
+instead of re-searching it.
+
+That's the next move: fewer, better-fed guesses rather than more of the same. The
+campaign keeps running daily, and [the results page](../../../llm-alpha/index.qmd)
+regenerates itself on every run, hurdle and all.
