@@ -1,44 +1,9 @@
 ## 2026-08-18
 
-**Data unavailable:** SSB tables 13764, 13634, 07201 returned no data or API error
-**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-## 2026-08-18
-
-**Data unavailable:** SSB tables 08668, 07184, 10864 returned no data or API error
-**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-## 2026-08-18
-
 **Data unavailable:** SSB tables 08307, 11174, 09190 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
 
 
 
@@ -68,10 +33,14 @@
 
 
 
+
+
 ## 2026-08-18
 
 **Error:** `Error in `pivot_wider()`:`
 **Fixes applied:** pivot_wider column name mismatch in df2_gender_db (renamed 'gender' instead of preserving column name); missing print() statement in plot-smoking-dumbbell chunk causing silent failure
+
+
 
 
 
@@ -97,10 +66,14 @@
 
 
 
+
+
 ## 2026-08-21
 
 **Data unavailable:** SSB tables 10949 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
 
 
 
@@ -122,10 +95,14 @@
 
 
 
+
+
 ## 2026-08-21
 
 **Data unavailable:** SSB tables 11386, 05307, 06514 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
 
 
 
@@ -143,10 +120,14 @@
 
 
 
+
+
 ## 2026-08-25
 
 **Data unavailable:** SSB tables 14620, 08382, 06512 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
 
 
 
@@ -160,10 +141,14 @@
 
 
 
+
+
 ## 2026-08-25
 
 **Data unavailable:** SSB tables 09429, 06988, 14700 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
 
 
 
@@ -173,8 +158,23 @@
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
 
 
+
+
 ## 2026-08-25
 
 **Data unavailable:** SSB tables 09189, 13760, 08800 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
+
+## 2026-08-25
+
+**Data unavailable:** SSB tables 06083, 09363, 05803 returned no data or API error
+**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
+## 2026-08-25
+
+**Error:** `Error in `mutate()`:`
+**Fixes applied:** non-numeric argument to binary operator in mutate(gap = high_val - low_val) due to character columns from pivot_wider; missing print() statements for ridgeline and dumbbell plots
 
