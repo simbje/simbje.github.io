@@ -1,7 +1,7 @@
 ---
 title: "LLM Alpha Farming"
 description: "Can you farm tradable equity signals out of a language model? Three agents propose, implement and document cross-sectional alpha; one deterministic harness judges them all — and discounts every result for the size of the search."
-date: 2026-08-24
+date: 2026-08-25
 date-format: long
 categories: [finance, quant, ai-agent, llm]
 execute:
@@ -88,6 +88,33 @@ format:
 .la-card p{margin:0 0 .6rem;font-size:.86rem;color:#6c757d;line-height:1.5}
 .la-card .eff{font-size:.72rem;font-family:'JetBrains Mono',monospace;color:#0f3460;
   background:#f8f9fa;padding:.15rem .5rem;border-radius:1rem}
+.la-lib-intro{font-size:.9rem;color:#495057;line-height:1.6}
+.la-group{margin:1.6rem 0 .2rem;font-size:.95rem;color:#1a1a2e}
+.la-group:first-of-type{margin-top:.6rem}
+.la-group-note{margin:.15rem 0 .9rem;font-size:.83rem;color:#6c757d;line-height:1.5}
+.la-sig{border:1px solid #eef0f2;border-radius:9px;margin:.5rem 0;background:#fff;overflow:hidden}
+.la-sig>summary{cursor:pointer;padding:.65rem .9rem;list-style:none;display:flex;
+  align-items:baseline;gap:.55rem;flex-wrap:wrap;font-size:.87rem}
+.la-sig>summary::-webkit-details-marker{display:none}
+.la-sig>summary::before{content:"B8";color:#e94560;font-size:.9rem;
+  display:inline-block;transition:transform .18s ease;align-self:center}
+.la-sig[open]>summary::before{transform:rotate(90deg)}
+.la-sig>summary:hover{background:#fbfcfd}
+.la-sig>summary code{font-family:'JetBrains Mono',monospace;font-size:.82rem;
+  background:#f8f9fa;color:#1a1a2e;padding:.15rem .45rem;border-radius:4px;font-weight:600}
+.la-sig .gist{color:#6c757d;font-size:.82rem;flex:1 1 14rem;min-width:0}
+.la-tag{font-size:.66rem;text-transform:uppercase;letter-spacing:.04em;font-weight:600;
+  color:#0f3460;background:#eef2f7;border-radius:1rem;padding:.12rem .5rem;white-space:nowrap}
+.la-sig-body{padding:.1rem .95rem 1rem;border-top:1px solid #f1f3f5}
+.la-sig-body p{margin:.8rem 0 .6rem;font-size:.87rem;color:#495057;line-height:1.6}
+.la-meta{display:flex;gap:.4rem;flex-wrap:wrap;margin:.55rem 0}
+.la-meta span{font-size:.7rem;color:#495057;background:#f8f9fa;border:1px solid #eef0f2;
+  border-radius:1rem;padding:.14rem .55rem}
+.la-meta b{color:#1a1a2e;font-weight:600}
+.la-code{font-family:'JetBrains Mono',monospace;font-size:.76rem;line-height:1.5;
+  background:#f8f9fa;border:1px solid #eef0f2;border-left:3px solid #0f3460;border-radius:6px;
+  padding:.7rem .85rem;margin:.55rem 0 0;color:#1a1a2e;overflow:auto;max-height:26rem;
+  white-space:pre;-webkit-overflow-scrolling:touch}
 @media (max-width:768px){.la-hero{padding:1.75rem 1.25rem}.la-table{font-size:.8rem}}
 </style>
 
@@ -97,10 +124,10 @@ format:
   <div class="la-sub">Three cooperating agents invent, implement and document equity
     signals. One deterministic harness judges every one of them under identical,
     point-in-time-correct rules — and then discounts the result for the size of the search.</div>
-  <div class="la-meta"><span class="la-chip">Run 2026-08-24</span><span class="la-chip">48 signals evaluated</span><span class="la-chip">280 months of history</span><span class="la-chip">API spend $0.88</span></div>
+  <div class="la-meta"><span class="la-chip">Run 2026-08-25</span><span class="la-chip">58 signals evaluated</span><span class="la-chip">280 months of history</span><span class="la-chip">API spend $0.82</span></div>
 </div>
 
-<div class="la-metrics"><div class="la-metric "><div class="v">48</div><div class="l">Signals evaluated</div></div><div class="la-metric "><div class="v">0</div><div class="l">Survive correction</div></div><div class="la-metric "><div class="v">0.75</div><div class="l">Search hurdle (Sharpe)</div></div><div class="la-metric "><div class="v">41</div><div class="l">Trials priced in</div></div><div class="la-metric "><div class="v">0.92</div><div class="l">Best raw Sharpe</div></div><div class="la-metric "><div class="v">4.26</div><div class="l">Best alpha t-stat</div></div></div>
+<div class="la-metrics"><div class="la-metric "><div class="v">58</div><div class="l">Signals evaluated</div></div><div class="la-metric "><div class="v">0</div><div class="l">Survive correction</div></div><div class="la-metric "><div class="v">0.83</div><div class="l">Search hurdle (Sharpe)</div></div><div class="la-metric "><div class="v">53</div><div class="l">Trials priced in</div></div><div class="la-metric "><div class="v">0.92</div><div class="l">Best raw Sharpe</div></div><div class="la-metric "><div class="v">4.26</div><div class="l">Best alpha t-stat</div></div></div>
 
 ## How the pipeline works
 
@@ -129,7 +156,7 @@ otherwise the worst outcomes quietly vanish from whichever decile was holding th
 
 ## Results
 
-*Last refreshed 2026-08-24 — regenerated automatically on every pipeline run.*
+*Last refreshed 2026-08-25 — regenerated automatically on every pipeline run.*
 
 
 <table class="la-table">
@@ -137,15 +164,15 @@ otherwise the worst outcomes quietly vanish from whichever decile was holding th
   <th>Signal</th><th>Verdict</th><th>Sharpe</th><th>95% CI</th>
   <th>Alpha t</th><th>Factor R²</th><th>Deflated Sharpe</th><th>q-value</th>
 </tr></thead>
-<tbody><tr><td class="sig"><code>gross_profitability</code></td><td><span class="la-pill" style="background:#b8860b">Candidate</span></td><td class="mono">0.92</td><td class="mono">[0.51, 1.36]</td><td class="mono">3.22</td><td class="mono">21%</td><td><span class="la-bar" style="--w:75.7px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.79</span></span></td><td class="mono">0.001</td></tr><tr><td class="sig"><code>payout_funding_gap</code></td><td><span class="la-pill" style="background:#b8860b">Candidate</span></td><td class="mono">0.82</td><td class="mono">[0.40, 1.28]</td><td class="mono">3.55</td><td class="mono">42%</td><td><span class="la-bar" style="--w:61.0px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.64</span></span></td><td class="mono">0.006</td></tr><tr><td class="sig"><code>net_share_issuance</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.73</td><td class="mono">[0.36, 1.09]</td><td class="mono">4.26</td><td class="mono">59%</td><td><span class="la-bar" style="--w:45.2px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.47</span></span></td><td class="mono">0.009</td></tr><tr><td class="sig"><code>predicted_dividend_month_premium</code></td><td><span class="la-pill" style="background:#e94560">Loses to factors</span></td><td class="mono">0.41</td><td class="mono">[-0.00, 0.89]</td><td class="mono">-4.06</td><td class="mono">95%</td><td><span class="la-bar" style="--w:6.2px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.06</span></span></td><td class="mono">0.246</td></tr><tr><td class="sig"><code>asset_growth</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.43</td><td class="mono">[0.02, 0.81]</td><td class="mono">2.27</td><td class="mono">45%</td><td><span class="la-bar" style="--w:5.6px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.06</span></span></td><td class="mono">0.246</td></tr><tr><td class="sig"><code>aggregate_accruals_market_timing</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.37</td><td class="mono">[-0.07, 0.78]</td><td class="mono">1.70</td><td class="mono">14%</td><td><span class="la-bar" style="--w:4.2px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.04</span></span></td><td class="mono">0.460</td></tr><tr><td class="sig"><code>average_systematic_comovement_timing</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.36</td><td class="mono">[-0.12, 0.88]</td><td class="mono">0.25</td><td class="mono">39%</td><td><span class="la-bar" style="--w:3.7px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.04</span></span></td><td class="mono">0.498</td></tr><tr><td class="sig"><code>earnings_yield</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.34</td><td class="mono">[-0.10, 0.80]</td><td class="mono">-0.00</td><td class="mono">62%</td><td><span class="la-bar" style="--w:2.2px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.02</span></span></td><td class="mono">0.498</td></tr><tr><td class="sig"><code>cash_backed_earnings_surprise</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.28</td><td class="mono">[-0.13, 0.69]</td><td class="mono">0.81</td><td class="mono">57%</td><td><span class="la-bar" style="--w:1.6px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.02</span></span></td><td class="mono">0.503</td></tr><tr><td class="sig"><code>momentum_12_1</code></td><td><span class="la-pill" style="background:#6c757d">Factor tilt</span></td><td class="mono">0.27</td><td class="mono">[-0.16, 0.73]</td><td class="mono">-0.10</td><td class="mono">92%</td><td><span class="la-bar" style="--w:1.4px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.01</span></span></td><td class="mono">0.515</td></tr><tr><td class="sig"><code>inventory_growth_gap</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.26</td><td class="mono">[-0.14, 0.70]</td><td class="mono">0.22</td><td class="mono">25%</td><td><span class="la-bar" style="--w:1.1px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.01</span></span></td><td class="mono">0.515</td></tr><tr><td class="sig"><code>inflation_passthrough_margin_expansion</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.23</td><td class="mono">[-0.20, 0.69]</td><td class="mono">0.75</td><td class="mono">27%</td><td><span class="la-bar" style="--w:0.9px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.01</span></span></td><td class="mono">0.586</td></tr><tr><td class="sig"><code>sticky_cost_downturn_drag</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.24</td><td class="mono">[-0.14, 0.62]</td><td class="mono">-0.15</td><td class="mono">42%</td><td><span class="la-bar" style="--w:0.8px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.01</span></span></td><td class="mono">0.515</td></tr><tr><td class="sig"><code>low_volatility</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.25</td><td class="mono">[-0.15, 0.65]</td><td class="mono">2.39</td><td class="mono">83%</td><td><span class="la-bar" style="--w:0.8px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.01</span></span></td><td class="mono">0.515</td></tr><tr><td class="sig"><code>tax_loss_selling_turn_of_year_pressure</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">-0.58</td><td class="mono">[-1.48, 0.18]</td><td class="mono">-0.73</td><td class="mono">8%</td><td><span class="la-bar" style="--w:0.6px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.01</span></span></td><td class="mono">0.460</td></tr><tr><td class="sig"><code>aggregate_equity_issuance_market_timing</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.20</td><td class="mono">[-0.34, 0.70]</td><td class="mono">1.11</td><td class="mono">7%</td><td><span class="la-bar" style="--w:0.5px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.01</span></span></td><td class="mono">0.797</td></tr><tr><td class="sig"><code>accruals</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.18</td><td class="mono">[-0.25, 0.64]</td><td class="mono">1.96</td><td class="mono">21%</td><td><span class="la-bar" style="--w:0.3px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.771</td></tr><tr><td class="sig"><code>credit_vol_complacency_divergence_timing</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.12</td><td class="mono">[-0.21, 0.51]</td><td class="mono">-0.47</td><td class="mono">17%</td><td><span class="la-bar" style="--w:0.3px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.820</td></tr><tr><td class="sig"><code>cash_vs_accounting_value_divergence</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.19</td><td class="mono">[-0.25, 0.64]</td><td class="mono">1.90</td><td class="mono">26%</td><td><span class="la-bar" style="--w:0.3px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.771</td></tr><tr><td class="sig"><code>tax_loss_overhang_turn_of_year</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">-0.49</td><td class="mono">[-1.37, 0.44]</td><td class="mono">-0.62</td><td class="mono">3%</td><td><span class="la-bar" style="--w:0.2px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.586</td></tr><tr><td class="sig"><code>market_breadth_high_ratio_timing</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.12</td><td class="mono">[-0.24, 0.50]</td><td class="mono">2.64</td><td class="mono">24%</td><td><span class="la-bar" style="--w:0.2px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.827</td></tr><tr><td class="sig"><code>credit_spread_timing</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.09</td><td class="mono">[-0.40, 0.52]</td><td class="mono">0.60</td><td class="mono">15%</td><td><span class="la-bar" style="--w:0.1px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.868</td></tr><tr><td class="sig"><code>credit_beta_defensive</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.11</td><td class="mono">[-0.29, 0.44]</td><td class="mono">0.25</td><td class="mono">34%</td><td><span class="la-bar" style="--w:0.1px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.829</td></tr><tr><td class="sig"><code>book_to_market</code></td><td><span class="la-pill" style="background:#e94560">Loses to factors</span></td><td class="mono">0.11</td><td class="mono">[-0.36, 0.58]</td><td class="mono">-3.14</td><td class="mono">92%</td><td><span class="la-bar" style="--w:0.1px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.862</td></tr><tr><td class="sig"><code>oil_beta_trend_interaction</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.10</td><td class="mono">[-0.33, 0.50]</td><td class="mono">-0.49</td><td class="mono">16%</td><td><span class="la-bar" style="--w:0.1px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.862</td></tr><tr><td class="sig"><code>market_trend_timing</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.06</td><td class="mono">[-0.43, 0.53]</td><td class="mono">1.17</td><td class="mono">36%</td><td><span class="la-bar" style="--w:0.1px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.894</td></tr><tr><td class="sig"><code>money_illusion_real_yield_gap_timing</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.05</td><td class="mono">[-0.34, 0.49]</td><td class="mono">-1.86</td><td class="mono">39%</td><td><span class="la-bar" style="--w:0.1px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.894</td></tr><tr><td class="sig"><code>stock_comp_earnings_dilution</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.08</td><td class="mono">[-0.39, 0.53]</td><td class="mono">-1.27</td><td class="mono">53%</td><td><span class="la-bar" style="--w:0.1px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.886</td></tr><tr><td class="sig"><code>vix_beta_drift</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.07</td><td class="mono">[-0.41, 0.52]</td><td class="mono">0.02</td><td class="mono">15%</td><td><span class="la-bar" style="--w:0.1px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.886</td></tr><tr><td class="sig"><code>hidden_rate_duration_mismatch</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.04</td><td class="mono">[-0.36, 0.52]</td><td class="mono">1.23</td><td class="mono">32%</td><td><span class="la-bar" style="--w:0.0px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.917</td></tr><tr><td class="sig"><code>book_tax_gap_earnings_quality</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.03</td><td class="mono">[-0.38, 0.42]</td><td class="mono">-0.97</td><td class="mono">13%</td><td><span class="la-bar" style="--w:0.0px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.943</td></tr><tr><td class="sig"><code>variance_risk_premium_timing</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">-0.01</td><td class="mono">[-0.46, 0.45]</td><td class="mono">-1.67</td><td class="mono">31%</td><td><span class="la-bar" style="--w:0.0px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.981</td></tr><tr><td class="sig"><code>cross_sectional_return_dispersion_timing</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">-0.05</td><td class="mono">[-0.62, 0.45]</td><td class="mono">0.49</td><td class="mono">28%</td><td><span class="la-bar" style="--w:0.0px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.917</td></tr><tr><td class="sig"><code>rollover_risk_credit_cycle_interaction</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.01</td><td class="mono">[-0.39, 0.45]</td><td class="mono">1.40</td><td class="mono">12%</td><td><span class="la-bar" style="--w:0.0px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.980</td></tr><tr><td class="sig"><code>sentiment_gap_contrarian_timing</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">-0.12</td><td class="mono">[-0.74, 0.50]</td><td class="mono">-0.69</td><td class="mono">9%</td><td><span class="la-bar" style="--w:0.0px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.863</td></tr><tr><td class="sig"><code>halloween_volatility_scaled_timing</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">-0.11</td><td class="mono">[-0.47, 0.27]</td><td class="mono">0.30</td><td class="mono">5%</td><td><span class="la-bar" style="--w:0.0px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.829</td></tr><tr><td class="sig"><code>net_cash_yield_rate_change_interaction</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">-0.09</td><td class="mono">[-0.48, 0.32]</td><td class="mono">-1.04</td><td class="mono">12%</td><td><span class="la-bar" style="--w:0.0px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.862</td></tr><tr><td class="sig"><code>credit_sensitivity_amplified_balance_sheet_safety</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">-0.10</td><td class="mono">[-0.55, 0.34]</td><td class="mono">2.54</td><td class="mono">60%</td><td><span class="la-bar" style="--w:0.0px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.862</td></tr><tr><td class="sig"><code>real_policy_stance_timing</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">-0.16</td><td class="mono">[-0.55, 0.33]</td><td class="mono">-2.07</td><td class="mono">21%</td><td><span class="la-bar" style="--w:0.0px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.800</td></tr><tr><td class="sig"><code>abnormal_reporting_lag</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">-0.16</td><td class="mono">[-0.60, 0.29]</td><td class="mono">0.17</td><td class="mono">21%</td><td><span class="la-bar" style="--w:0.0px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.800</td></tr><tr><td class="sig"><code>operating_leverage_business_cycle</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">-0.19</td><td class="mono">[-0.69, 0.28]</td><td class="mono">-0.56</td><td class="mono">3%</td><td><span class="la-bar" style="--w:0.0px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.797</td></tr><tr><td class="sig"><code>same_quarter_earnings_seasonality</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">-0.29</td><td class="mono">[-0.72, 0.16]</td><td class="mono">-0.68</td><td class="mono">23%</td><td><span class="la-bar" style="--w:0.0px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.503</td></tr><tr><td class="sig"><code>turnover_shock_price_run_reversal</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">-0.42</td><td class="mono">[-0.78, -0.10]</td><td class="mono">-3.92</td><td class="mono">31%</td><td><span class="la-bar" style="--w:0.0px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.072</td></tr><tr><td class="sig"><code>annual_return_seasonality</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">-0.43</td><td class="mono">[-0.89, 0.02]</td><td class="mono">-2.07</td><td class="mono">11%</td><td><span class="la-bar" style="--w:0.0px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.246</td></tr><tr><td class="sig"><code>earnings_smoothing_vs_cashflow_volatility</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">-0.41</td><td class="mono">[-0.84, 0.01]</td><td class="mono">-2.58</td><td class="mono">42%</td><td><span class="la-bar" style="--w:0.0px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.292</td></tr><tr><td class="sig"><code>macro_beta_instability</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">-0.51</td><td class="mono">[-0.88, -0.12]</td><td class="mono">-1.64</td><td class="mono">41%</td><td><span class="la-bar" style="--w:0.0px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.161</td></tr><tr><td class="sig"><code>expected_earnings_announcement_month</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">-0.57</td><td class="mono">[-0.95, -0.20]</td><td class="mono">-2.46</td><td class="mono">3%</td><td><span class="la-bar" style="--w:0.0px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.068</td></tr><tr><td class="sig"><code>tax_loss_selling_turn_of_year_reversal</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">-0.47</td><td class="mono">[-0.78, -0.11]</td><td class="mono">-2.26</td><td class="mono">3%</td><td><span class="la-bar" style="--w:0.0px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.125</td></tr></tbody>
+<tbody><tr><td class="sig"><code>gross_profitability</code></td><td><span class="la-pill" style="background:#b8860b">Candidate</span></td><td class="mono">0.92</td><td class="mono">[0.51, 1.36]</td><td class="mono">3.22</td><td class="mono">21%</td><td><span class="la-bar" style="--w:62.9px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.66</span></span></td><td class="mono">0.001</td></tr><tr><td class="sig"><code>payout_funding_gap</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.82</td><td class="mono">[0.40, 1.28]</td><td class="mono">3.55</td><td class="mono">42%</td><td><span class="la-bar" style="--w:45.3px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.47</span></span></td><td class="mono">0.005</td></tr><tr><td class="sig"><code>net_share_issuance</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.73</td><td class="mono">[0.36, 1.09]</td><td class="mono">4.26</td><td class="mono">59%</td><td><span class="la-bar" style="--w:28.8px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.30</span></span></td><td class="mono">0.008</td></tr><tr><td class="sig"><code>macro_systematic_variance_share</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.57</td><td class="mono">[0.11, 0.98]</td><td class="mono">1.78</td><td class="mono">53%</td><td><span class="la-bar" style="--w:12.6px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.13</span></span></td><td class="mono">0.091</td></tr><tr><td class="sig"><code>predicted_dividend_month_premium</code></td><td><span class="la-pill" style="background:#e94560">Loses to factors</span></td><td class="mono">0.41</td><td class="mono">[-0.00, 0.89]</td><td class="mono">-4.06</td><td class="mono">95%</td><td><span class="la-bar" style="--w:2.6px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.03</span></span></td><td class="mono">0.229</td></tr><tr><td class="sig"><code>asset_growth</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.43</td><td class="mono">[0.02, 0.81]</td><td class="mono">2.27</td><td class="mono">45%</td><td><span class="la-bar" style="--w:2.1px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.02</span></span></td><td class="mono">0.229</td></tr><tr><td class="sig"><code>aggregate_accruals_market_timing</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.37</td><td class="mono">[-0.07, 0.78]</td><td class="mono">1.70</td><td class="mono">14%</td><td><span class="la-bar" style="--w:1.7px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.02</span></span></td><td class="mono">0.425</td></tr><tr><td class="sig"><code>average_systematic_comovement_timing</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.36</td><td class="mono">[-0.12, 0.88]</td><td class="mono">0.25</td><td class="mono">39%</td><td><span class="la-bar" style="--w:1.4px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.01</span></span></td><td class="mono">0.452</td></tr><tr><td class="sig"><code>retained_vs_contributed_capital_value</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.38</td><td class="mono">[0.01, 0.75]</td><td class="mono">1.76</td><td class="mono">65%</td><td><span class="la-bar" style="--w:1.3px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.01</span></span></td><td class="mono">0.250</td></tr><tr><td class="sig"><code>earnings_yield</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.34</td><td class="mono">[-0.10, 0.80]</td><td class="mono">-0.00</td><td class="mono">62%</td><td><span class="la-bar" style="--w:0.7px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.01</span></span></td><td class="mono">0.452</td></tr><tr><td class="sig"><code>cash_backed_earnings_surprise</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.28</td><td class="mono">[-0.13, 0.69]</td><td class="mono">0.81</td><td class="mono">57%</td><td><span class="la-bar" style="--w:0.5px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.01</span></span></td><td class="mono">0.470</td></tr><tr><td class="sig"><code>excess_speculative_volatility</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.29</td><td class="mono">[-0.09, 0.67]</td><td class="mono">2.95</td><td class="mono">50%</td><td><span class="la-bar" style="--w:0.5px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.435</td></tr><tr><td class="sig"><code>momentum_12_1</code></td><td><span class="la-pill" style="background:#6c757d">Factor tilt</span></td><td class="mono">0.27</td><td class="mono">[-0.16, 0.73]</td><td class="mono">-0.10</td><td class="mono">92%</td><td><span class="la-bar" style="--w:0.4px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.503</td></tr><tr><td class="sig"><code>tax_loss_selling_turn_of_year_pressure</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">-0.58</td><td class="mono">[-1.48, 0.18]</td><td class="mono">-0.73</td><td class="mono">8%</td><td><span class="la-bar" style="--w:0.4px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.425</td></tr><tr><td class="sig"><code>equity_rate_correlation_regime_timing</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.25</td><td class="mono">[-0.17, 0.73]</td><td class="mono">0.18</td><td class="mono">26%</td><td><span class="la-bar" style="--w:0.4px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.561</td></tr><tr><td class="sig"><code>inventory_growth_gap</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.26</td><td class="mono">[-0.14, 0.70]</td><td class="mono">0.22</td><td class="mono">25%</td><td><span class="la-bar" style="--w:0.3px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.503</td></tr><tr><td class="sig"><code>inflation_passthrough_margin_expansion</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.23</td><td class="mono">[-0.20, 0.69]</td><td class="mono">0.75</td><td class="mono">27%</td><td><span class="la-bar" style="--w:0.3px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.561</td></tr><tr><td class="sig"><code>sticky_cost_downturn_drag</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.24</td><td class="mono">[-0.14, 0.62]</td><td class="mono">-0.15</td><td class="mono">42%</td><td><span class="la-bar" style="--w:0.2px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.503</td></tr><tr><td class="sig"><code>low_volatility</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.25</td><td class="mono">[-0.15, 0.65]</td><td class="mono">2.39</td><td class="mono">83%</td><td><span class="la-bar" style="--w:0.2px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.503</td></tr><tr><td class="sig"><code>aggregate_equity_issuance_market_timing</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.20</td><td class="mono">[-0.34, 0.70]</td><td class="mono">1.11</td><td class="mono">7%</td><td><span class="la-bar" style="--w:0.1px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.765</td></tr><tr><td class="sig"><code>credit_vol_complacency_divergence_timing</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.12</td><td class="mono">[-0.21, 0.51]</td><td class="mono">-0.47</td><td class="mono">17%</td><td><span class="la-bar" style="--w:0.1px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.803</td></tr><tr><td class="sig"><code>tax_loss_overhang_turn_of_year</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">-0.49</td><td class="mono">[-1.37, 0.44]</td><td class="mono">-0.62</td><td class="mono">3%</td><td><span class="la-bar" style="--w:0.1px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.561</td></tr><tr><td class="sig"><code>seasonal_risk_appetite_credit_timing</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.20</td><td class="mono">[-0.19, 0.52]</td><td class="mono">1.41</td><td class="mono">4%</td><td><span class="la-bar" style="--w:0.1px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.624</td></tr><tr><td class="sig"><code>accruals</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.18</td><td class="mono">[-0.25, 0.64]</td><td class="mono">1.96</td><td class="mono">21%</td><td><span class="la-bar" style="--w:0.1px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.728</td></tr><tr><td class="sig"><code>cash_vs_accounting_value_divergence</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.19</td><td class="mono">[-0.25, 0.64]</td><td class="mono">1.90</td><td class="mono">26%</td><td><span class="la-bar" style="--w:0.1px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.728</td></tr><tr><td class="sig"><code>market_breadth_high_ratio_timing</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.12</td><td class="mono">[-0.24, 0.50]</td><td class="mono">2.64</td><td class="mono">24%</td><td><span class="la-bar" style="--w:0.0px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.815</td></tr><tr><td class="sig"><code>credit_spread_timing</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.09</td><td class="mono">[-0.40, 0.52]</td><td class="mono">0.60</td><td class="mono">15%</td><td><span class="la-bar" style="--w:0.0px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.889</td></tr><tr><td class="sig"><code>credit_beta_defensive</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.11</td><td class="mono">[-0.29, 0.44]</td><td class="mono">0.25</td><td class="mono">34%</td><td><span class="la-bar" style="--w:0.0px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.826</td></tr><tr><td class="sig"><code>oil_beta_trend_interaction</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.10</td><td class="mono">[-0.33, 0.50]</td><td class="mono">-0.49</td><td class="mono">16%</td><td><span class="la-bar" style="--w:0.0px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.876</td></tr><tr><td class="sig"><code>book_to_market</code></td><td><span class="la-pill" style="background:#e94560">Loses to factors</span></td><td class="mono">0.11</td><td class="mono">[-0.36, 0.58]</td><td class="mono">-3.14</td><td class="mono">92%</td><td><span class="la-bar" style="--w:0.0px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.876</td></tr><tr><td class="sig"><code>market_trend_timing</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.06</td><td class="mono">[-0.43, 0.53]</td><td class="mono">1.17</td><td class="mono">36%</td><td><span class="la-bar" style="--w:0.0px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.915</td></tr><tr><td class="sig"><code>money_illusion_real_yield_gap_timing</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.05</td><td class="mono">[-0.34, 0.49]</td><td class="mono">-1.86</td><td class="mono">39%</td><td><span class="la-bar" style="--w:0.0px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.915</td></tr><tr><td class="sig"><code>vix_beta_drift</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.07</td><td class="mono">[-0.41, 0.52]</td><td class="mono">0.02</td><td class="mono">15%</td><td><span class="la-bar" style="--w:0.0px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.914</td></tr><tr><td class="sig"><code>stock_comp_earnings_dilution</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.08</td><td class="mono">[-0.39, 0.53]</td><td class="mono">-1.27</td><td class="mono">53%</td><td><span class="la-bar" style="--w:0.0px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.912</td></tr><tr><td class="sig"><code>macro_beta_instability</code></td><td><span class="la-pill" style="background:#6c757d">Factor tilt</span></td><td class="mono">0.04</td><td class="mono">[-0.33, 0.41]</td><td class="mono">0.93</td><td class="mono">70%</td><td><span class="la-bar" style="--w:0.0px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.915</td></tr><tr><td class="sig"><code>hidden_rate_duration_mismatch</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.04</td><td class="mono">[-0.36, 0.52]</td><td class="mono">1.23</td><td class="mono">32%</td><td><span class="la-bar" style="--w:0.0px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.915</td></tr><tr><td class="sig"><code>funding_conditioned_beta_tilt</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.03</td><td class="mono">[-0.35, 0.38]</td><td class="mono">-0.47</td><td class="mono">7%</td><td><span class="la-bar" style="--w:0.0px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.915</td></tr><tr><td class="sig"><code>book_tax_gap_earnings_quality</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.03</td><td class="mono">[-0.38, 0.42]</td><td class="mono">-0.97</td><td class="mono">13%</td><td><span class="la-bar" style="--w:0.0px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.936</td></tr><tr><td class="sig"><code>cross_sectional_return_dispersion_timing</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">-0.05</td><td class="mono">[-0.62, 0.45]</td><td class="mono">0.49</td><td class="mono">28%</td><td><span class="la-bar" style="--w:0.0px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.915</td></tr><tr><td class="sig"><code>variance_risk_premium_timing</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">-0.01</td><td class="mono">[-0.46, 0.45]</td><td class="mono">-1.67</td><td class="mono">31%</td><td><span class="la-bar" style="--w:0.0px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.981</td></tr><tr><td class="sig"><code>rollover_risk_credit_cycle_interaction</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">0.01</td><td class="mono">[-0.39, 0.45]</td><td class="mono">1.40</td><td class="mono">12%</td><td><span class="la-bar" style="--w:0.0px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.976</td></tr><tr><td class="sig"><code>aggregate_illiquidity_shock_timing</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">-0.04</td><td class="mono">[-0.50, 0.36]</td><td class="mono">-1.47</td><td class="mono">29%</td><td><span class="la-bar" style="--w:0.0px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.915</td></tr><tr><td class="sig"><code>sentiment_gap_contrarian_timing</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">-0.12</td><td class="mono">[-0.74, 0.50]</td><td class="mono">-0.69</td><td class="mono">9%</td><td><span class="la-bar" style="--w:0.0px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.881</td></tr><tr><td class="sig"><code>halloween_volatility_scaled_timing</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">-0.11</td><td class="mono">[-0.47, 0.27]</td><td class="mono">0.30</td><td class="mono">5%</td><td><span class="la-bar" style="--w:0.0px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.826</td></tr><tr><td class="sig"><code>net_cash_yield_rate_change_interaction</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">-0.09</td><td class="mono">[-0.48, 0.32]</td><td class="mono">-1.04</td><td class="mono">12%</td><td><span class="la-bar" style="--w:0.0px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.876</td></tr><tr><td class="sig"><code>credit_sensitivity_amplified_balance_sheet_safety</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">-0.10</td><td class="mono">[-0.55, 0.34]</td><td class="mono">2.54</td><td class="mono">60%</td><td><span class="la-bar" style="--w:0.0px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.876</td></tr><tr><td class="sig"><code>real_policy_stance_timing</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">-0.16</td><td class="mono">[-0.55, 0.33]</td><td class="mono">-2.07</td><td class="mono">21%</td><td><span class="la-bar" style="--w:0.0px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.779</td></tr><tr><td class="sig"><code>abnormal_reporting_lag</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">-0.16</td><td class="mono">[-0.60, 0.29]</td><td class="mono">0.17</td><td class="mono">21%</td><td><span class="la-bar" style="--w:0.0px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.779</td></tr><tr><td class="sig"><code>operating_leverage_business_cycle</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">-0.19</td><td class="mono">[-0.69, 0.28]</td><td class="mono">-0.56</td><td class="mono">3%</td><td><span class="la-bar" style="--w:0.0px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.765</td></tr><tr><td class="sig"><code>same_quarter_earnings_seasonality</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">-0.29</td><td class="mono">[-0.72, 0.16]</td><td class="mono">-0.68</td><td class="mono">23%</td><td><span class="la-bar" style="--w:0.0px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.470</td></tr><tr><td class="sig"><code>turnover_shock_price_run_reversal</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">-0.42</td><td class="mono">[-0.78, -0.10]</td><td class="mono">-3.92</td><td class="mono">31%</td><td><span class="la-bar" style="--w:0.0px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.054</td></tr><tr><td class="sig"><code>annual_return_seasonality</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">-0.43</td><td class="mono">[-0.89, 0.02]</td><td class="mono">-2.07</td><td class="mono">11%</td><td><span class="la-bar" style="--w:0.0px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.229</td></tr><tr><td class="sig"><code>earnings_smoothing_vs_cashflow_volatility</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">-0.41</td><td class="mono">[-0.84, 0.01]</td><td class="mono">-2.58</td><td class="mono">42%</td><td><span class="la-bar" style="--w:0.0px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.259</td></tr><tr><td class="sig"><code>expected_earnings_announcement_month</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">-0.57</td><td class="mono">[-0.95, -0.20]</td><td class="mono">-2.46</td><td class="mono">3%</td><td><span class="la-bar" style="--w:0.0px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.047</td></tr><tr><td class="sig"><code>same_calendar_month_return_seasonality</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">-0.75</td><td class="mono">[-1.33, -0.25]</td><td class="mono">-3.15</td><td class="mono">2%</td><td><span class="la-bar" style="--w:0.0px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.024</td></tr><tr><td class="sig"><code>same_month_return_seasonality</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">-0.75</td><td class="mono">[-1.33, -0.25]</td><td class="mono">-3.15</td><td class="mono">2%</td><td><span class="la-bar" style="--w:0.0px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.024</td></tr><tr><td class="sig"><code>tax_loss_selling_turn_of_year_reversal</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">-0.47</td><td class="mono">[-0.78, -0.11]</td><td class="mono">-2.26</td><td class="mono">3%</td><td><span class="la-bar" style="--w:0.0px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.091</td></tr><tr><td class="sig"><code>attention_spike_return_reversal</code></td><td><span class="la-pill" style="background:#6c757d">Noise</span></td><td class="mono">-0.75</td><td class="mono">[-1.28, -0.33]</td><td class="mono">-5.32</td><td class="mono">10%</td><td><span class="la-bar" style="--w:0.0px;--c:#0f3460"><span class="la-bar-fill"></span><span class="la-bar-num">0.00</span></span></td><td class="mono">0.002</td></tr></tbody>
 </table>
 
 
 <div class="la-note">
 <strong>Why the board is not sorted by Sharpe.</strong> Farm enough strategies and one
-will post a fine Sharpe by luck alone. With 41 trials priced in,
+will post a fine Sharpe by luck alone. With 53 trials priced in,
 the expected best-of-search Sharpe — the <em>hurdle</em> — is
-<strong>0.75</strong>. Anything below that is
+<strong>0.83</strong>. Anything below that is
 indistinguishable from noise no matter how good the raw number looks.
 <br><br>
 <strong>Alpha t</strong> is the return left after regressing on market, size, value and
@@ -164,11 +191,11 @@ false-discovery rate across the whole library.
 
 ## What this run found
 
-- No signal in this run survives correction. With a hurdle Sharpe of 0.75, nothing on the board is currently distinguishable from the best of a random search of the same size — which is itself the honest headline, not a failure of the machinery.
+- No signal in this run survives correction. With a hurdle Sharpe of 0.83, nothing on the board is currently distinguishable from the best of a random search of the same size — which is itself the honest headline, not a failure of the machinery.
 
-- 1 is a factor tilt in disguise. The clearest case is <code>momentum_12_1</code>, whose returns are 92% explained by the standard factors with an alpha t-stat of -0.10 — it is not adding anything the four-factor model does not already capture.
+- 2 are factor tilts in disguise. The clearest case is <code>momentum_12_1</code>, whose returns are 92% explained by the standard factors with an alpha t-stat of -0.10 — it is not adding anything the four-factor model does not already capture.
 
-- <code>market_breadth_high_ratio_timing</code> is the case for looking past raw Sharpe: only 0.12 on its own, but an alpha t-stat of 2.64 once the known factors are stripped out — its raw performance understates it.
+- <code>excess_speculative_volatility</code> is the case for looking past raw Sharpe: only 0.29 on its own, but an alpha t-stat of 2.95 once the known factors are stripped out — its raw performance understates it.
 
 - <code>predicted_dividend_month_premium</code> is the inverse warning: it tracks the standard factors closely (95% of variance) yet delivers significantly *negative* alpha against them (t=-4.06). On this universe and sample you would have been better off holding the plain factor than this construction of it.
 
@@ -250,7 +277,7 @@ sample is too short to lean on regardless of what the point estimates say.
 <table class="la-table">
 <thead><tr><th>Run</th><th>Signals</th><th>Survivors</th>
 <th>Hurdle</th><th>Best Sharpe</th></tr></thead>
-<tbody><tr><td class="mono">2026-08-24</td><td class="mono">48</td><td class="mono">0</td><td class="mono">0.75</td><td class="mono">0.92</td></tr><tr><td class="mono">2026-08-23</td><td class="mono">39</td><td class="mono">0</td><td class="mono">0.66</td><td class="mono">0.92</td></tr><tr><td class="mono">2026-08-22</td><td class="mono">27</td><td class="mono">1</td><td class="mono">0.60</td><td class="mono">0.92</td></tr><tr><td class="mono">2026-08-21</td><td class="mono">21</td><td class="mono">1</td><td class="mono">0.49</td><td class="mono">0.92</td></tr><tr><td class="mono">2026-08-18</td><td class="mono">11</td><td class="mono">2</td><td class="mono">0.45</td><td class="mono">0.92</td></tr><tr><td class="mono">2026-08-17</td><td class="mono">11</td><td class="mono">2</td><td class="mono">0.45</td><td class="mono">0.92</td></tr></tbody>
+<tbody><tr><td class="mono">2026-08-25</td><td class="mono">58</td><td class="mono">0</td><td class="mono">0.83</td><td class="mono">0.92</td></tr><tr><td class="mono">2026-08-24</td><td class="mono">48</td><td class="mono">0</td><td class="mono">0.75</td><td class="mono">0.92</td></tr><tr><td class="mono">2026-08-23</td><td class="mono">39</td><td class="mono">0</td><td class="mono">0.66</td><td class="mono">0.92</td></tr><tr><td class="mono">2026-08-22</td><td class="mono">27</td><td class="mono">1</td><td class="mono">0.60</td><td class="mono">0.92</td></tr><tr><td class="mono">2026-08-21</td><td class="mono">21</td><td class="mono">1</td><td class="mono">0.49</td><td class="mono">0.92</td></tr><tr><td class="mono">2026-08-18</td><td class="mono">11</td><td class="mono">2</td><td class="mono">0.45</td><td class="mono">0.92</td></tr><tr><td class="mono">2026-08-17</td><td class="mono">11</td><td class="mono">2</td><td class="mono">0.45</td><td class="mono">0.92</td></tr></tbody>
 </table>
 
 
@@ -265,6 +292,1098 @@ The honest summary is that a language model is a good generator of *plausible*
 hypotheses and a poor judge of which ones are real. That division of labour is the
 whole design: let the model propose freely, and make the harness — not the model —
 decide what counts.
+
+
+## The signal library
+
+<details class="la-details">
+<summary>All 58 signals — what each one measures, and the code that computes it
+<span class="hint">click to expand</span></summary>
+<div class="la-body">
+<p class="la-lib-intro">
+One entry per signal currently in the library: the reference anomalies from the
+literature and every agent-written signal that compiled and passed validation.
+The calculation shown is the <code>compute</code> method itself, read straight out of
+the module at publish time — the page cannot drift away from the code it documents.
+Each returns a <em>raw</em> score; the harness multiplies it by the expected sign, so
+after orientation a high score always means "go long".
+</p>
+<h4 class="la-group">Cross-sectional signals (42)</h4><p class="la-group-note">Scored for every stock every month. The strategy is long the top third of the oriented score and short the bottom third, rebalanced monthly.</p><details class="la-sig"><summary><code>credit_sensitivity_amplified_balance_sheet_safety</code><span class="la-tag">combo</span><span class="gist">Interaction of credit-beta sensitivity with fundamental balance-sheet safety: among stocks whose returns load…</span></summary><div class="la-sig-body"><p>Interaction of credit-beta sensitivity with fundamental balance-sheet safety: among stocks whose returns load heavily on credit-market moves, those with low leverage, high EBIT coverage, high liquidity and cash reserves are over-discounted and expected to outperform.</p><div class="la-meta"><span><b>Category</b> combo</span><span><b>Direction</b> Long the high scores</span><span><b>Data</b> price, fundamental, macro</span></div>
+<pre class="la-code">def compute(self, panel) -&gt; pd.Series:
+    debt = panel['debt']
+    assets = panel['assets']
+    ebit = panel['ebit']
+    currentratio = panel['currentratio']
+    cashneq = panel['cashneq']
+    liabilities = panel['liabilities']
+    beta_credit = panel['beta_credit_252']
+    # base validity mask: require all raw inputs present
+    base_valid = (
+        debt.notna() &amp; assets.notna() &amp; ebit.notna() &amp;
+        currentratio.notna() &amp; cashneq.notna() &amp;
+        liabilities.notna() &amp; beta_credit.notna()
+    )
+    assets_pos = assets &gt; 0
+    debt_pos = debt &gt; 0
+    lev = pd.Series(np.nan, index=panel.index)
+    lev_mask = base_valid &amp; assets_pos
+    lev.loc[lev_mask] = debt.loc[lev_mask] / assets.loc[lev_mask]
+    denom = pd.Series(np.nan, index=panel.index)
+    cov_mask = base_valid &amp; debt_pos
+    denom.loc[cov_mask] = debt.loc[cov_mask]
+    # fallback to eps-like max(debt, eps) per formula, but eps not mapped -&gt; use debt only
+    cov = pd.Series(np.nan, index=panel.index)
+    cov.loc[cov_mask] = ebit.loc[cov_mask] / denom.loc[cov_mask]
+    cov = cov.clip(-5, 5)
+    liq = currentratio.clip(upper=5)
+    liq = liq.where(base_valid)
+    cashr = pd.Series(np.nan, index=panel.index)
+    cashr.loc[lev_mask] = cashneq.loc[lev_mask] / assets.loc[lev_mask]
+    df = pd.DataFrame({
+        'lev': lev,
+        'cov': cov,
+        'liq': liq,
+        'cashr': cashr,
+        'beta_credit': beta_credit.where(base_valid),
+    }, index=panel.index)
+    def per_date(g: pd.DataFrame) -&gt; pd.Series:
+        valid_rows = g[['lev', 'cov', 'liq', 'cashr', 'beta_credit']].notna().all(axis=1)
+        g_valid = g.loc[valid_rows]
+        out = pd.Series(np.nan, index=g.index)
+        if g_valid.empty:
+            return out
+        z_lev = self._zscore(g_valid['lev'])
+        z_cov = self._zscore(g_valid['cov'])
+        z_liq = self._zscore(g_valid['liq'])
+        z_cashr = self._zscore(g_valid['cashr'])
+        safety = -z_lev + 0.5 * z_cov + 0.5 * z_liq + 0.5 * z_cashr
+        abs_beta = g_valid['beta_credit'].abs()
+        w = abs_beta.rank(pct=True)
+        sig = safety * (0.25 + w)
+        out.loc[g_valid.index] = sig
+        return out
+    raw_signal = df.groupby(level='date', group_keys=False).apply(per_date)
+    # macro_baa_spread past-only z-score scaling
+    baa = panel['macro_baa_spread']
+    baa_by_date = baa.groupby(level='date').first()
+    baa_by_date = baa_by_date.sort_index()
+    mean_rolling = baa_by_date.expanding(min_periods=2).mean().shift(1)
+    std_rolling = baa_by_date.expanding(min_periods=2).std().shift(1)
+    z_baa = (baa_by_date - mean_rolling) / std_rolling
+    z_baa = z_baa.replace([np.inf, -np.inf], np.nan)
+    z_baa_clipped = z_baa.clip(-1, 1)
+    multiplier = 1 + 0.5 * z_baa_clipped
+    multiplier = multiplier.fillna(1.0)
+    multiplier_full = panel.index.get_level_values('date').map(multiplier)
+    multiplier_full = pd.Series(multiplier_full, index=panel.index)
+    result = raw_signal * multiplier_full
+    result.name = self.name
+    return result</pre></div></details><details class="la-sig"><summary><code>funding_conditioned_beta_tilt</code><span class="la-tag">combo</span><span class="gist">Flips the sign of the beta tilt with the funding-liquidity cycle, measured by the joint 12-month change in…</span></summary><div class="la-sig-body"><p>Flips the sign of the beta tilt with the funding-liquidity cycle, measured by the joint 12-month change in fed funds rate and Baa credit spread. During funding easing episodes, high-beta names are favored; during tightening, low-beta names are favored.</p><div class="la-meta"><span><b>Category</b> combo</span><span><b>Direction</b> Long the high scores</span><span><b>Data</b> price, macro</span></div>
+<pre class="la-code">def compute(self, panel) -&gt; pd.Series:
+    beta = panel['beta_252']
+    fedfunds_chg = panel['macro_fedfunds_chg12m']
+    baa_chg = panel['macro_baa_spread_chg12m']
+    nobs = panel['nobs']
+    tighten = fedfunds_chg + baa_chg
+    ease = -tighten
+    score = beta * np.tanh(ease)
+    invalid = beta.isna() | fedfunds_chg.isna() | baa_chg.isna() | (nobs &lt; 200)
+    score = score.where(~invalid, np.nan)
+    return score.reindex(panel.index)</pre></div></details><details class="la-sig"><summary><code>hidden_rate_duration_mismatch</code><span class="la-tag">combo</span><span class="gist">Combines fundamental cash-flow duration (rich multiples, low FCF yield, no dividend) with a mismatch to…</span></summary><div class="la-sig-body"><p>Combines fundamental cash-flow duration (rich multiples, low FCF yield, no dividend) with a mismatch to realized rate beta to find 'hidden' rate duration risk not priced by the market, timed by the persistence of the 10y yield trend (macro_dgs10_chg12m).</p><div class="la-meta"><span><b>Category</b> combo</span><span><b>Direction</b> Long the high scores</span><span><b>Data</b> price, fundamental, macro</span></div>
+<pre class="la-code">def compute(self, panel) -&gt; pd.Series:
+    pb = panel['pb'].where(panel['pb'] &gt; 0)
+    marketcap = panel['marketcap'].where(panel['marketcap'] &gt; 0)
+    fcf = panel['fcf']
+    divyield = panel['divyield']
+    beta_rates = panel['beta_rates_252']
+    rate_trend = panel['macro_dgs10_chg12m']
+    log_pb = np.log(pb)
+    fcf_yield = (fcf / marketcap).where(marketcap &gt; 0)
+    valid = log_pb.notna() &amp; fcf_yield.notna() &amp; divyield.notna() &amp; beta_rates.notna()
+    log_pb_v = log_pb.where(valid)
+    fcf_yield_v = fcf_yield.where(valid)
+    divyield_v = divyield.where(valid)
+    beta_rates_v = beta_rates.where(valid)
+    def zscore_by_date(s):
+        grp = s.groupby(level='date')
+        mean = grp.transform('mean')
+        std = grp.transform('std')
+        return (s - mean) / std.where(std &gt; 0)
+    z_pb = zscore_by_date(log_pb_v)
+    z_fcf = zscore_by_date(fcf_yield_v)
+    z_div = zscore_by_date(divyield_v)
+    z_meas = zscore_by_date(-beta_rates_v)
+    dur = z_pb - z_fcf - z_div
+    hidden = dur - z_meas
+    score = -hidden * rate_trend
+    score = score.where(valid &amp; rate_trend.notna())
+    return score.reindex(panel.index)</pre></div></details><details class="la-sig"><summary><code>net_cash_yield_rate_change_interaction</code><span class="la-tag">combo</span><span class="gist">Interaction between net-cash-to-marketcap ratio and the signed 12-month change in the 2-year Treasury yield</span></summary><div class="la-sig-body"><p>Interaction between net-cash-to-marketcap ratio and the signed 12-month change in the 2-year Treasury yield. Cash-rich firms benefit from rising short rates via interest income while net-debt firms benefit from falling rates via cheaper refinancing; this macro-conditioned quality/leverage signal flips sign with the direction of the short-rate cycle.</p><div class="la-meta"><span><b>Category</b> combo</span><span><b>Direction</b> Long the high scores</span><span><b>Data</b> fundamental, price, macro</span></div>
+<pre class="la-code">def compute(self, panel) -&gt; pd.Series:
+    cashneq = panel['cashneq']
+    debt = panel['debt']
+    marketcap = panel['marketcap']
+    cond = panel['macro_dgs2_chg12m']
+    valid = cashneq.notna() &amp; debt.notna() &amp; marketcap.notna() &amp; (marketcap &gt; 0) &amp; cond.notna()
+    net_cash_yield = (cashneq - debt) / marketcap
+    net_cash_yield = net_cash_yield.where(valid)
+    def winsorize(s):
+        if s.notna().sum() == 0:
+            return s
+        lo = s.quantile(0.01)
+        hi = s.quantile(0.99)
+        return s.clip(lower=lo, upper=hi)
+    net_cash_yield_w = net_cash_yield.groupby(level='date').transform(winsorize)
+    signal = net_cash_yield_w * cond
+    signal = signal.where(valid)
+    return signal.reindex(panel.index)</pre></div></details><details class="la-sig"><summary><code>operating_leverage_business_cycle</code><span class="la-tag">combo</span><span class="gist">Operating leverage (opex/assets) conditioned on the trailing 12m change in industrial production and…</span></summary><div class="la-sig-body"><p>Operating leverage (opex/assets) conditioned on the trailing 12m change in industrial production and recession state: high fixed-cost intensity firms are expected to outperform when industrial activity is improving (and underperform when it is deteriorating), capturing a macro-state-dependent risk premium orthogonal to static value/quality factors.</p><div class="la-meta"><span><b>Category</b> combo</span><span><b>Direction</b> Long the high scores</span><span><b>Data</b> fundamental, macro</span></div>
+<pre class="la-code">def compute(self, panel) -&gt; pd.Series:
+    opex = panel['opex']
+    assets = panel['assets']
+    revenue = panel['revenue']
+    valid = (assets &gt; 0) &amp; (revenue &gt; 0)
+    ol = (opex / assets).where(valid)
+    ol_clipped = ol.clip(lower=0, upper=2)
+    def zscore(s):
+        mu = s.mean()
+        sd = s.std()
+        if sd is None or sd == 0 or pd.isna(sd):
+            return pd.Series(np.nan, index=s.index)
+        return (s - mu) / sd
+    ol_z = ol_clipped.groupby(level='date').transform(zscore)
+    indpro_chg = panel['macro_indpro_chg12m']
+    usrec = panel['macro_usrec']
+    cyc = np.tanh(indpro_chg / 2.0) * (1 - 0.5 * usrec)
+    cyc = cyc.where(indpro_chg.notna() &amp; usrec.notna())
+    raw = ol_z * cyc
+    return raw.reindex(panel.index)</pre></div></details><details class="la-sig"><summary><code>rollover_risk_credit_cycle_interaction</code><span class="la-tag">combo</span><span class="gist">Interaction between near-term rollover risk (net current debt / assets) and the 12-month change in the…</span></summary><div class="la-sig-body"><p>Interaction between near-term rollover risk (net current debt / assets) and the 12-month change in the Baa-Treasury credit spread. Firms with high net short-term debt suffer when credit spreads widen and benefit when spreads tighten, so the score sign-flips with the credit cycle.</p><div class="la-meta"><span><b>Category</b> combo</span><span><b>Direction</b> Long the high scores</span><span><b>Data</b> fundamental, macro, price</span></div>
+<pre class="la-code">def compute(self, panel) -&gt; pd.Series:
+    debtc = panel['debtc']
+    cashneq = panel['cashneq']
+    assets = panel['assets']
+    tighten = panel['macro_baa_spread_chg12m']
+    valid = debtc.notna() &amp; cashneq.notna() &amp; assets.notna() &amp; tighten.notna() &amp; (assets &gt; 0)
+    rollover = (debtc - cashneq) / assets.where(assets &gt; 0)
+    rollover = rollover.clip(-1, 1)
+    score = -rollover * tighten
+    score = score.where(valid, np.nan)
+    return score.reindex(panel.index)</pre></div></details><details class="la-sig"><summary><code>asset_growth</code><span class="la-tag">investment</span><span class="gist">Cooper-Gulen-Schill asset growth (YoY); low-growth firms outperform</span></summary><div class="la-sig-body"><p>Cooper-Gulen-Schill asset growth (YoY); low-growth firms outperform.</p><div class="la-meta"><span><b>Category</b> investment</span><span><b>Direction</b> Long the low scores</span></div>
+<pre class="la-code">def compute(self, panel: pd.DataFrame) -&gt; pd.Series:
+    assets = panel["assets"].where(panel["assets"] &gt; 0)
+    return _yoy(assets)</pre></div></details><details class="la-sig"><summary><code>inventory_growth_gap</code><span class="la-tag">investment</span><span class="gist">Gap between inventory growth and sales growth over trailing 12 months</span></summary><div class="la-sig-body"><p>Gap between inventory growth and sales growth over trailing 12 months. High inventory growth relative to sales growth signals over-optimistic demand forecasts, future write-downs, and margin pressure, predicting negative future abnormal returns.</p><div class="la-meta"><span><b>Category</b> investment</span><span><b>Direction</b> Long the low scores</span><span><b>Data</b> fundamental</span></div>
+<pre class="la-code">def compute(self, panel) -&gt; pd.Series:
+    inventory = panel['inventory']
+    revenue = panel['revenue']
+    assets = panel['assets']
+    inv_l12 = inventory.groupby(level='ticker').shift(12)
+    rev_l12 = revenue.groupby(level='ticker').shift(12)
+    inv_g = pd.Series(np.nan, index=panel.index)
+    valid_inv = inv_l12 &gt; 0
+    inv_g[valid_inv] = inventory[valid_inv] / inv_l12[valid_inv] - 1.0
+    sales_g = pd.Series(np.nan, index=panel.index)
+    valid_rev = rev_l12 &gt; 0
+    sales_g[valid_rev] = revenue[valid_rev] / rev_l12[valid_rev] - 1.0
+    inv_g_clipped = inv_g.clip(-1, 3)
+    sales_g_clipped = sales_g.clip(-1, 3)
+    raw = inv_g_clipped - sales_g_clipped
+    valid_mask = (
+        (assets &gt; 0)
+        &amp; (inventory &gt; 0)
+        &amp; (inv_l12 &gt; 0)
+        &amp; (revenue &gt; 0)
+        &amp; (rev_l12 &gt; 0)
+    )
+    raw = raw.where(valid_mask, np.nan)
+    return raw</pre></div></details><details class="la-sig"><summary><code>net_share_issuance</code><span class="la-tag">investment</span><span class="gist">YoY growth in shares outstanding; net issuers underperform, repurchasers outperform</span></summary><div class="la-sig-body"><p>YoY growth in shares outstanding; net issuers underperform, repurchasers outperform.</p><div class="la-meta"><span><b>Category</b> investment</span><span><b>Direction</b> Long the low scores</span></div>
+<pre class="la-code">def compute(self, panel: pd.DataFrame) -&gt; pd.Series:
+    shares = panel["sharesbas"].where(panel["sharesbas"] &gt; 0)
+    return _yoy(shares)</pre></div></details><details class="la-sig"><summary><code>payout_funding_gap</code><span class="la-tag">investment</span><span class="gist">Payout-versus-free-cash-flow funding gap: payout = max(-ncfdiv,0) + max(-ncfcommon,0); gap = (payout - fcf) /…</span></summary><div class="la-sig-body"><p>Payout-versus-free-cash-flow funding gap: payout = max(-ncfdiv,0) + max(-ncfcommon,0); gap = (payout - fcf) / assets, winsorized at 1/99% per date. Firms paying out far more cash than their free cash flow supports are unlikely to sustain the distribution and tend to underperform; self-funded payers (negative gap) tend to outperform.</p><div class="la-meta"><span><b>Category</b> investment</span><span><b>Direction</b> Long the low scores</span><span><b>Data</b> fundamental, price</span></div>
+<pre class="la-code">def compute(self, panel) -&gt; pd.Series:
+    ncfdiv = panel['ncfdiv']
+    ncfcommon = panel['ncfcommon']
+    fcf = panel['fcf']
+    assets = panel['assets']
+    valid = ncfdiv.notna() &amp; ncfcommon.notna() &amp; fcf.notna() &amp; assets.notna() &amp; (assets &gt; 0)
+    payout = (-ncfdiv).clip(lower=0) + (-ncfcommon).clip(lower=0)
+    gap = (payout - fcf) / assets
+    gap = gap.where(valid, np.nan)
+    def _winsorize(s: pd.Series) -&gt; pd.Series:
+        if s.notna().sum() == 0:
+            return s
+        lo = s.quantile(0.01)
+        hi = s.quantile(0.99)
+        return s.clip(lower=lo, upper=hi)
+    gap = gap.groupby(level='date').transform(_winsorize)
+    return gap.reindex(panel.index)</pre></div></details><details class="la-sig"><summary><code>credit_beta_defensive</code><span class="la-tag">low_risk</span><span class="gist">Cross-asset correlation factor: prefer defensive stocks least hurt by credit-spread widening (higher corr to…</span></summary><div class="la-sig-body"><p>Cross-asset correlation factor: prefer defensive stocks least hurt by credit-spread widening (higher corr to spread changes).</p><div class="la-meta"><span><b>Category</b> low_risk</span><span><b>Direction</b> Long the high scores</span><span><b>Data</b> price, macro</span></div>
+<pre class="la-code">def compute(self, panel: pd.DataFrame) -&gt; pd.Series:
+    return panel["corr_credit_252"]</pre></div></details><details class="la-sig"><summary><code>low_volatility</code><span class="la-tag">low_risk</span><span class="gist">Low-volatility anomaly: trailing 1y realized vol of daily returns (low = long)</span></summary><div class="la-sig-body"><p>Low-volatility anomaly: trailing 1y realized vol of daily returns (low = long).</p><div class="la-meta"><span><b>Category</b> low_risk</span><span><b>Direction</b> Long the low scores</span></div>
+<pre class="la-code">def compute(self, panel: pd.DataFrame) -&gt; pd.Series:
+    return panel["vol_252"]</pre></div></details><details class="la-sig"><summary><code>macro_beta_instability</code><span class="la-tag">low_risk</span><span class="gist">Measures 12-month churn in a stock's macro factor loadings (rates, credit, oil, USD, VIX betas)</span></summary><div class="la-sig-body"><p>Measures 12-month churn in a stock's macro factor loadings (rates, credit, oil, USD, VIX betas). Large swings indicate unstable macro exposure and estimation uncertainty, which tends to be systematically overpaid for, leading to lower subsequent returns.</p><div class="la-meta"><span><b>Category</b> low_risk</span><span><b>Direction</b> Long the low scores</span><span><b>Data</b> price, macro</span></div>
+<pre class="la-code">def compute(self, panel) -&gt; pd.Series:
+    factors = [
+        "beta_oil_252",
+        "beta_usd_252",
+        "beta_rates_252",
+        "beta_credit_252",
+        "beta_vix_252",
+    ]
+    rank_cols = []
+    for f in factors:
+        if f not in panel.columns:
+            continue
+        cur = panel[f]
+        lagged = cur.groupby(level='ticker').shift(12)
+        d = (cur - lagged).abs()
+        rank = d.groupby(level='date').rank(pct=True, na_option='keep')
+        rank_cols.append(rank)
+    if not rank_cols:
+        return pd.Series(np.nan, index=panel.index)
+    ranks_df = pd.concat(rank_cols, axis=1)
+    count_valid = ranks_df.notna().sum(axis=1)
+    score = ranks_df.mean(axis=1, skipna=True)
+    score = score.where(count_valid &gt;= 3, np.nan)
+    return score</pre></div></details><details class="la-sig"><summary><code>macro_systematic_variance_share</code><span class="la-tag">low_risk</span><span class="gist">Systematic variance share: sum of squared trailing 252d correlations of a stock's returns to five macro…</span></summary><div class="la-sig-body"><p>Systematic variance share: sum of squared trailing 252d correlations of a stock's returns to five macro factors (credit, rates, oil, usd, vix), clipped to [0,1]. Low share indicates idiosyncratic, opaque, lottery-like names that historically underperform (Ang et al., Durnev/Morck).</p><div class="la-meta"><span><b>Category</b> low_risk</span><span><b>Direction</b> Long the high scores</span><span><b>Data</b> price, macro</span></div>
+<pre class="la-code">def compute(self, panel) -&gt; pd.Series:
+    cols = [
+        'corr_credit_252',
+        'corr_rates_252',
+        'corr_oil_252',
+        'corr_usd_252',
+        'corr_vix_252',
+    ]
+    valid = pd.Series(True, index=panel.index)
+    for c in cols:
+        valid &amp;= panel[c].notna()
+    nobs_ok = panel['nobs'] &gt;= 200
+    share = pd.Series(0.0, index=panel.index)
+    for c in cols:
+        share = share + panel[c].fillna(0) ** 2
+    share = share.clip(lower=0, upper=1)
+    score = share.where(valid &amp; nobs_ok)
+    return score</pre></div></details><details class="la-sig"><summary><code>vix_beta_drift</code><span class="la-tag">low_risk</span><span class="gist">Signal based on the 12-month drift in trailing VIX beta, scaled by realized volatility</span></summary><div class="la-sig-body"><p>Signal based on the 12-month drift in trailing VIX beta, scaled by realized volatility. A deteriorating (more negative) VIX beta signals quietly accumulating crash exposure not yet priced in, predicting underperformance; an improving VIX beta signals a cheap hedge, predicting outperformance. Restricted to stocks with meaningful trailing correlation to VIX (|corr_vix_252| &gt;= 0.02).</p><div class="la-meta"><span><b>Category</b> low_risk</span><span><b>Direction</b> Long the high scores</span><span><b>Data</b> price, macro</span></div>
+<pre class="la-code">def compute(self, panel) -&gt; pd.Series:
+    beta_vix = panel['beta_vix_252']
+    corr_vix = panel['corr_vix_252']
+    vol_252 = panel['vol_252']
+    beta_vix_lag12 = beta_vix.groupby(level='ticker').shift(12)
+    dbeta = beta_vix - beta_vix_lag12
+    scale = vol_252.clip(lower=0.05, upper=2.0)
+    signal = dbeta / scale
+    valid = (
+        beta_vix.notna()
+        &amp; beta_vix_lag12.notna()
+        &amp; corr_vix.notna()
+        &amp; vol_252.notna()
+        &amp; (vol_252 &gt; 0)
+        &amp; (corr_vix.abs() &gt;= 0.02)
+    )
+    signal = signal.where(valid, np.nan)
+    return signal.reindex(panel.index)</pre></div></details><details class="la-sig"><summary><code>annual_return_seasonality</code><span class="la-tag">momentum</span><span class="gist">Seasonality signal based on Heston and Sadka (2008): averages a stock's return in the same calendar month…</span></summary><div class="la-sig-body"><p>Seasonality signal based on Heston and Sadka (2008): averages a stock's return in the same calendar month over the prior 1, 2 and 3 years (lags of 11, 23 and 35 months) to predict next month's return, requiring at least 2 of the 3 lags to be non-missing.</p><div class="la-meta"><span><b>Category</b> momentum</span><span><b>Direction</b> Long the high scores</span><span><b>Data</b> price</span></div>
+<pre class="la-code">def compute(self, panel) -&gt; pd.Series:
+    g = panel['ret_1m'].groupby(level='ticker')
+    lag11 = g.shift(11)
+    lag23 = g.shift(23)
+    lag35 = g.shift(35)
+    stacked = pd.concat([lag11, lag23, lag35], axis=1)
+    valid_count = stacked.notna().sum(axis=1)
+    signal = stacked.mean(axis=1).where(valid_count &gt;= 2)
+    return signal.reindex(panel.index)</pre></div></details><details class="la-sig"><summary><code>momentum_12_1</code><span class="la-tag">momentum</span><span class="gist">Jegadeesh-Titman 12-1 month price momentum (skip most recent month)</span></summary><div class="la-sig-body"><p>Jegadeesh-Titman 12-1 month price momentum (skip most recent month).</p><div class="la-meta"><span><b>Category</b> momentum</span><span><b>Direction</b> Long the high scores</span></div>
+<pre class="la-code">def compute(self, panel: pd.DataFrame) -&gt; pd.Series:
+    return panel["ret_12_1"]</pre></div></details><details class="la-sig"><summary><code>same_month_return_seasonality</code><span class="la-tag">momentum</span><span class="gist">Same-calendar-month return seasonality (Heston-Sadka): average of a stock's ret_1m at lags of 12,24,36,48,60…</span></summary><div class="la-sig-body"><p>Same-calendar-month return seasonality (Heston-Sadka): average of a stock's ret_1m at lags of 12,24,36,48,60 months (same calendar month in prior years) predicts future same-month returns, requiring at least 3 non-NaN lagged observations.</p><div class="la-meta"><span><b>Category</b> momentum</span><span><b>Direction</b> Long the high scores</span><span><b>Data</b> price</span></div>
+<pre class="la-code">def compute(self, panel) -&gt; pd.Series:
+    ret = panel['ret_1m']
+    grouped = ret.groupby(level='ticker')
+    lags = [12, 24, 36, 48, 60]
+    shifted = [grouped.shift(k) for k in lags]
+    stacked = pd.concat(shifted, axis=1)
+    stacked.columns = [f'lag_{k}' for k in lags]
+    valid_count = stacked.notna().sum(axis=1)
+    seas = stacked.mean(axis=1, skipna=True)
+    signal = seas.where(valid_count &gt;= 3, np.nan)
+    signal = signal.reindex(panel.index)
+    return signal</pre></div></details><details class="la-sig"><summary><code>attention_spike_return_reversal</code><span class="la-tag">other</span><span class="gist">Interaction of abnormal 21d dollar volume (attention spike) with recent 1m return scaled by volatility:…</span></summary><div class="la-sig-body"><p>Interaction of abnormal 21d dollar volume (attention spike) with recent 1m return scaled by volatility: reverses momentum on high-attention runs and rewards liquidity discount on high-attention sell-offs.</p><div class="la-meta"><span><b>Category</b> other</span><span><b>Direction</b> Long the high scores</span><span><b>Data</b> price</span></div>
+<pre class="la-code">def compute(self, panel) -&gt; pd.Series:
+    dvol = panel['dvol_21']
+    ret_1m = panel['ret_1m']
+    vol_252 = panel['vol_252']
+    grp = dvol.groupby(level='ticker')
+    lagged = [grp.shift(k) for k in range(1, 13)]
+    stacked = pd.concat(lagged, axis=1)
+    valid_count = stacked.notna().sum(axis=1)
+    avg_dvol = stacked.mean(axis=1)
+    valid_avg = (valid_count &gt;= 6) &amp; (avg_dvol &gt; 0)
+    avg_dvol = avg_dvol.where(valid_avg)
+    valid_dvol = dvol &gt; 0
+    abn_vol = np.log(dvol / avg_dvol)
+    abn_vol = abn_vol.where(valid_dvol &amp; valid_avg)
+    abn_vol_clipped = abn_vol.clip(-2, 2)
+    vol_floor = vol_252.clip(lower=0.05)
+    valid_vol = vol_252 &gt; 0
+    scaled_ret = ret_1m / vol_floor
+    scaled_ret = scaled_ret.where(valid_vol)
+    scaled_ret_clipped = scaled_ret.clip(-3, 3)
+    signal = -1.0 * abn_vol_clipped * scaled_ret_clipped
+    valid = (
+        valid_avg
+        &amp; valid_dvol
+        &amp; valid_vol
+        &amp; ret_1m.notna()
+        &amp; dvol.notna()
+    )
+    signal = signal.where(valid)
+    return signal.reindex(panel.index)</pre></div></details><details class="la-sig"><summary><code>expected_earnings_announcement_month</code><span class="la-tag">other</span><span class="gist">Scores stocks by how close their expected next earnings announcement is to the upcoming month, based on the…</span></summary><div class="la-sig-body"><p>Scores stocks by how close their expected next earnings announcement is to the upcoming month, based on the gap between the current point-in-time date and the last SEC filing date. Firms whose gap since last filing is close to ~72 days (implying an announcement roughly one quarter after the prior filing) score highest, capturing the earnings-announcement attention premium.</p><div class="la-meta"><span><b>Category</b> other</span><span><b>Direction</b> Long the high scores</span><span><b>Data</b> fundamental, price</span></div>
+<pre class="la-code">def compute(self, panel) -&gt; pd.Series:
+    asof_date = pd.to_datetime(panel['asof_date'])
+    fund_datekey = pd.to_datetime(panel['fund_datekey'])
+    gap_days = (asof_date - fund_datekey).dt.days
+    score = np.exp(-((gap_days - 72.0) ** 2) / (2 * 15.0 ** 2))
+    invalid = fund_datekey.isna() | gap_days.isna() | (gap_days &gt; 200)
+    score = score.where(~invalid, np.nan)
+    score = score.reindex(panel.index)
+    score.name = self.name
+    return score</pre></div></details><details class="la-sig"><summary><code>oil_beta_trend_interaction</code><span class="la-tag">other</span><span class="gist">Interaction of trailing stock beta to oil price moves with a 12m oil price trend regime scaler</span></summary><div class="la-sig-body"><p>Interaction of trailing stock beta to oil price moves with a 12m oil price trend regime scaler. Long high-oil-beta stocks when oil has trended up over the past year, short them when oil has trended down, capturing gradual diffusion of commodity trends into cash-flow-exposed equity valuations.</p><div class="la-meta"><span><b>Category</b> other</span><span><b>Direction</b> Long the high scores</span><span><b>Data</b> price, macro</span></div>
+<pre class="la-code">def compute(self, panel) -&gt; pd.Series:
+    beta_oil = panel['beta_oil_252']
+    corr_oil = panel['corr_oil_252']
+    oil_chg12m = panel['macro_oil_chg12m']
+    oil_trend = np.tanh(oil_chg12m / 20.0)
+    exposure = beta_oil.where(corr_oil.abs() &gt; 0.05)
+    def _zscore(x):
+        std = x.std()
+        if std is None or std == 0 or pd.isna(std):
+            return pd.Series(np.nan, index=x.index)
+        return (x - x.median()) / std
+    exposure_z = exposure.groupby(level='date').transform(_zscore)
+    signal = exposure_z * oil_trend
+    signal = signal.reindex(panel.index)
+    return signal</pre></div></details><details class="la-sig"><summary><code>predicted_dividend_month_premium</code><span class="la-tag">other</span><span class="gist">Predicts dividend-clientele driven price pressure by inferring implied monthly dividend yield from the wedge…</span></summary><div class="la-sig-body"><p>Predicts dividend-clientele driven price pressure by inferring implied monthly dividend yield from the wedge between adjusted and raw close returns, then projecting it forward 12 months using sticky dividend payment calendars, with support confirmation from recent dividend history.</p><div class="la-meta"><span><b>Category</b> other</span><span><b>Direction</b> Long the high scores</span><span><b>Data</b> price</span></div>
+<pre class="la-code">def compute(self, panel) -&gt; pd.Series:
+    closeadj = panel['closeadj']
+    close = panel['close']
+    grp_adj = closeadj.groupby(level='ticker')
+    grp_close = close.groupby(level='ticker')
+    closeadj_prev = grp_adj.shift(1)
+    close_prev = grp_close.shift(1)
+    valid = (
+        closeadj.notna() &amp; closeadj_prev.notna() &amp; (closeadj_prev != 0)
+        &amp; close.notna() &amp; close_prev.notna() &amp; (close_prev != 0)
+    )
+    radj = (closeadj / closeadj_prev) - 1.0
+    rraw = (close / close_prev) - 1.0
+    diff = radj - rraw
+    impl_yld = diff.clip(lower=0.0, upper=0.05)
+    impl_yld = impl_yld.where(valid, np.nan)
+    # split artifact detection
+    split_artifact = diff.abs() &gt; 0.5
+    impl_yld = impl_yld.where(~split_artifact, np.nan)
+    # need sufficient history for shift(12): closeadj/close shifted 12 must exist
+    closeadj_12 = grp_adj.shift(12)
+    close_12 = grp_close.shift(12)
+    closeadj_13 = grp_adj.shift(13)
+    close_13 = grp_close.shift(13)
+    hist_ok = (
+        closeadj_12.notna() &amp; closeadj_13.notna()
+        &amp; close_12.notna() &amp; close_13.notna()
+    )
+    impl_yld_grp = impl_yld.groupby(level='ticker')
+    pred = impl_yld_grp.shift(12)
+    pred = pred.where(hist_ok, np.nan)
+    shift3 = impl_yld_grp.shift(3)
+    shift12 = impl_yld_grp.shift(12)
+    support_cond = (shift3 &gt; 0) | (shift12 &gt; 0)
+    support = support_cond.astype(float)
+    support = support.where(shift3.notna() | shift12.notna(), np.nan)
+    score = pred * support
+    # no dividend history in past 12m -&gt; score 0
+    # define "dividend history in past 12m" as any positive impl_yld in trailing 12 shifts (1..12)
+    pos_yld = (impl_yld &gt; 0).astype(float)
+    pos_yld_grp = pos_yld.groupby(level='ticker')
+    rolling_hist = pos_yld_grp.transform(
+        lambda s: s.shift(1).rolling(window=12, min_periods=1).max()
+    )
+    no_history = rolling_hist.fillna(0) == 0
+    score = score.where(~no_history, 0.0)
+    score = score.reindex(panel.index)
+    return score</pre></div></details><details class="la-sig"><summary><code>same_calendar_month_return_seasonality</code><span class="la-tag">other</span><span class="gist">Heston &amp; Sadka (2008) style calendar-month seasonality: average of a stock's own ret_1m in the same calendar…</span></summary><div class="la-sig-body"><p>Heston &amp; Sadka (2008) style calendar-month seasonality: average of a stock's own ret_1m in the same calendar month over the prior 1-5 years predicts its future same-month return, driven by recurring earnings/flow/tax patterns.</p><div class="la-meta"><span><b>Category</b> other</span><span><b>Direction</b> Long the high scores</span><span><b>Data</b> price</span></div>
+<pre class="la-code">from __future__ import annotations
+import pandas as pd
+import numpy as np
+from llm_alpha.signals.base import BaseSignal
+class SameCalendarMonthReturnSeasonality(BaseSignal):
+    name = "same_calendar_month_return_seasonality"
+    category = "other"
+    strategy_type = "cross_sectional"
+    expected_sign = 1
+    description = (
+        "Predicts stock returns using the same firm's average return in the same "
+        "calendar month over the prior 1-5 years (12, 24, 36, 48, 60 month lags), "
+        "capturing firm-specific calendar-month seasonality (Heston &amp; Sadka), "
+        "requiring at least 3 of 5 lags to be non-missing."
+    )
+    data_sources = ("price",)
+    def compute(self, panel) -&gt; pd.Series:
+        ret = panel["ret_1m"]
+        grouped = ret.groupby(level="ticker")
+        lags = [12, 24, 36, 48, 60]
+        lagged_returns = [grouped.shift(k) for k in lags]
+        df = pd.concat(lagged_returns, axis=1)
+        df.columns = [f"lag_{k}" for k in lags]
+        valid_count = df.notna().sum(axis=1)
+        score = df.mean(axis=1, skipna=True)
+        score = score.where(valid_count &gt;= 3, np.nan)
+        score.name = "same_calendar_month_return_seasonality"
+        return score</pre></div></details><details class="la-sig"><summary><code>same_quarter_earnings_seasonality</code><span class="la-tag">other</span><span class="gist">Seasonal earnings anticipation signal: compares net income from the same fiscal quarter one year ago (about…</span></summary><div class="la-sig-body"><p>Seasonal earnings anticipation signal: compares net income from the same fiscal quarter one year ago (about to be reported again) to the firm's trailing four-quarter average net income, scaled by assets from that period. Captures underreaction to persistent seasonal earnings patterns (Chang, Hartzmark, Solomon, Sosyura 2017) distinct from generic momentum or SUE.</p><div class="la-meta"><span><b>Category</b> other</span><span><b>Direction</b> Long the high scores</span><span><b>Data</b> fundamental, price</span></div>
+<pre class="la-code">def compute(self, panel) -&gt; pd.Series:
+    ni = panel['netinc']
+    a = panel['assets']
+    grp = ni.groupby(level='ticker')
+    seasonal_lag = grp.shift(12)
+    lags = [grp.shift(k) for k in [3, 6, 9, 12]]
+    lag_df = pd.concat(lags, axis=1)
+    lag_df.columns = ['l3', 'l6', 'l9', 'l12']
+    count_valid = lag_df.notna().sum(axis=1)
+    base = lag_df.mean(axis=1, skipna=True)
+    base = base.where(count_valid &gt;= 3, np.nan)
+    assets_lag12 = a.groupby(level='ticker').shift(12)
+    denom = assets_lag12.where(assets_lag12 &gt; 0, np.nan)
+    raw = (seasonal_lag - base) / denom
+    def winsorize(x):
+        valid = x.dropna()
+        if valid.empty:
+            return x
+        lo, hi = valid.quantile(0.01), valid.quantile(0.99)
+        return x.clip(lower=lo, upper=hi)
+    raw = raw.groupby(level='date').transform(winsorize)
+    return raw.reindex(panel.index)</pre></div></details><details class="la-sig"><summary><code>tax_loss_overhang_turn_of_year</code><span class="la-tag">other</span><span class="gist">Tax-loss selling overhang: small-cap stocks trading far below their 52-week high with poor 12m returns…</span></summary><div class="la-sig-body"><p>Tax-loss selling overhang: small-cap stocks trading far below their 52-week high with poor 12m returns experience selling pressure in Oct-Nov (negative score) that reverses into a January rebound (positive score), concentrated in smaller, more retail-held names.</p><div class="la-meta"><span><b>Category</b> other</span><span><b>Direction</b> Long the high scores</span><span><b>Data</b> price</span></div>
+<pre class="la-code">def compute(self, panel) -&gt; pd.Series:
+    high_ratio = panel['high_ratio']
+    ret_12m = panel['ret_12m']
+    marketcap = panel['marketcap']
+    valid = high_ratio.notna() &amp; ret_12m.notna() &amp; marketcap.notna()
+    median_mcap = marketcap.groupby(level='date').transform('median')
+    is_small = marketcap &lt; median_mcap
+    neg_ret = (-ret_12m).clip(lower=0)
+    overhang = (1 - high_ratio) * (1 + neg_ret)
+    month = panel.index.get_level_values('date').month
+    month = pd.Series(month, index=panel.index)
+    score = pd.Series(np.nan, index=panel.index, dtype=float)
+    sell_mask = valid &amp; is_small &amp; month.isin([10, 11])
+    score.loc[sell_mask] = -overhang.loc[sell_mask]
+    jan_mask = valid &amp; is_small &amp; (month == 12)
+    score.loc[jan_mask] = overhang.loc[jan_mask]
+    return score</pre></div></details><details class="la-sig"><summary><code>tax_loss_selling_turn_of_year_pressure</code><span class="la-tag">other</span><span class="gist">Capital-loss overhang (max(0,-ret_12m)) scaled by proximity-to-low (1 - high_ratio) and volatility, applied…</span></summary><div class="la-sig-body"><p>Capital-loss overhang (max(0,-ret_12m)) scaled by proximity-to-low (1 - high_ratio) and volatility, applied only in Nov/Dec: shorted in November while tax-loss selling pressure is ongoing, bought at end-December to capture the January rebound.</p><div class="la-meta"><span><b>Category</b> other</span><span><b>Direction</b> Long the high scores</span><span><b>Data</b> price</span></div>
+<pre class="la-code">def compute(self, panel) -&gt; pd.Series:
+    ret_12m = panel['ret_12m']
+    high_ratio = panel['high_ratio']
+    vol_252 = panel['vol_252']
+    valid = ret_12m.notna() &amp; high_ratio.notna() &amp; vol_252.notna()
+    pressure = (-ret_12m).clip(lower=0.0) * (1.0 - high_ratio) * vol_252
+    month = panel.index.get_level_values('date').month
+    month = pd.Series(month, index=panel.index)
+    signal = pd.Series(np.nan, index=panel.index, dtype=float)
+    dec_mask = valid &amp; (month == 12)
+    nov_mask = valid &amp; (month == 11)
+    signal[dec_mask] = pressure[dec_mask]
+    signal[nov_mask] = -pressure[nov_mask]
+    return signal</pre></div></details><details class="la-sig"><summary><code>tax_loss_selling_turn_of_year_reversal</code><span class="la-tag">other</span><span class="gist">Tax-loss-selling turn-of-year reversal: stocks far below their 52-week high with poor 12-1 momentum…</span></summary><div class="la-sig-body"><p>Tax-loss-selling turn-of-year reversal: stocks far below their 52-week high with poor 12-1 momentum experience selling pressure from taxable investors harvesting losses in Nov-Dec, which reverses in January. Signal is positive in January, negative in Nov/Dec, and zero otherwise, scaled by an embedded capital-loss proxy normalized by log market cap.</p><div class="la-meta"><span><b>Category</b> other</span><span><b>Direction</b> Long the high scores</span><span><b>Data</b> price</span></div>
+<pre class="la-code">def compute(self, panel) -&gt; pd.Series:
+    high_ratio = panel['high_ratio']
+    ret_12_1 = panel['ret_12_1']
+    marketcap = panel['marketcap']
+    valid = (
+        high_ratio.notna() &amp; ret_12_1.notna() &amp; marketcap.notna()
+        &amp; (marketcap &gt; 1)
+        &amp; (high_ratio &gt; 0) &amp; (high_ratio &lt;= 1)
+    )
+    log_mc = np.log(marketcap.where(valid))
+    neg_ret = (-ret_12_1).clip(lower=0.0)
+    embedded_loss = (1 - high_ratio) * (1 + neg_ret) / log_mc
+    embedded_loss = embedded_loss.where(valid)
+    dates = panel.index.get_level_values('date')
+    month = pd.Series(dates, index=panel.index).dt.month
+    mult = pd.Series(0.0, index=panel.index)
+    mult[month == 1] = 1.0
+    mult[month.isin([11, 12])] = -1.0
+    raw = mult * embedded_loss
+    raw = raw.where(valid)
+    return raw</pre></div></details><details class="la-sig"><summary><code>abnormal_reporting_lag</code><span class="la-tag">quality</span><span class="gist">Filing delay (fund_datekey - fund_calendardate) abnormally long relative to the firm's own history 12 months…</span></summary><div class="la-sig-body"><p>Filing delay (fund_datekey - fund_calendardate) abnormally long relative to the firm's own history 12 months ago, combined with staleness of the current filing (asof_date - fund_datekey), predicts underperformance due to market underreaction to soft disclosure-timing signals of bad news.</p><div class="la-meta"><span><b>Category</b> quality</span><span><b>Direction</b> Long the low scores</span><span><b>Data</b> fundamental, price</span></div>
+<pre class="la-code">def compute(self, panel) -&gt; pd.Series:
+    datekey = pd.to_datetime(panel['fund_datekey'])
+    calendardate = pd.to_datetime(panel['fund_calendardate'])
+    asof = pd.to_datetime(panel['asof_date'])
+    valid = datekey.notna() &amp; calendardate.notna() &amp; asof.notna()
+    lag_days = (datekey - calendardate).dt.days.astype(float)
+    lag_days = lag_days.where(valid, np.nan)
+    lag_days = lag_days.clip(lower=0, upper=400)
+    stale_days = (asof - datekey).dt.days.astype(float)
+    stale_days = stale_days.where(valid, np.nan)
+    lag_shift12 = lag_days.groupby(level='ticker').shift(12)
+    ab_lag = lag_days - lag_shift12
+    ab_lag = ab_lag.where(lag_shift12.notna(), np.nan)
+    z_ab_lag = _cs_z(ab_lag)
+    z_stale = _cs_z(stale_days)
+    score = 0.7 * z_ab_lag + 0.3 * z_stale
+    score = score.where(valid &amp; lag_shift12.notna(), np.nan)
+    return score.reindex(panel.index)</pre></div></details><details class="la-sig"><summary><code>accruals</code><span class="la-tag">quality</span><span class="gist">Sloan accruals = (net income - operating cash flow) / assets; high accruals underperform</span></summary><div class="la-sig-body"><p>Sloan accruals = (net income - operating cash flow) / assets; high accruals underperform.</p><div class="la-meta"><span><b>Category</b> quality</span><span><b>Direction</b> Long the low scores</span></div>
+<pre class="la-code">def compute(self, panel: pd.DataFrame) -&gt; pd.Series:
+    assets = panel["assets"]
+    return ((panel["netinc"] - panel["ncfo"]) / assets).where(assets &gt; 0)</pre></div></details><details class="la-sig"><summary><code>book_tax_gap_earnings_quality</code><span class="la-tag">quality</span><span class="gist">Book-tax gap earnings quality: firms with effective tax rates near peer median (i.e., not unusually low) and…</span></summary><div class="la-sig-body"><p>Book-tax gap earnings quality: firms with effective tax rates near peer median (i.e., not unusually low) and with book income confirmed by taxable income (high netinc/ebt conformity) exhibit more persistent earnings and higher future abnormal returns.</p><div class="la-meta"><span><b>Category</b> quality</span><span><b>Direction</b> Long the high scores</span><span><b>Data</b> fundamental</span></div>
+<pre class="la-code">def compute(self, panel) -&gt; pd.Series:
+    taxexp = panel['taxexp']
+    ebt = panel['ebt']
+    netinc = panel['netinc']
+    revenue = panel['revenue']
+    sector = panel['sector']
+    valid = (
+        ebt.notna() &amp; (ebt &gt; 0)
+        &amp; taxexp.notna()
+        &amp; revenue.notna() &amp; (revenue &gt; 0)
+        &amp; sector.notna()
+    )
+    etr = pd.Series(np.nan, index=panel.index)
+    etr_raw = taxexp / ebt
+    etr_raw = etr_raw.clip(lower=0, upper=0.6)
+    etr[valid] = etr_raw[valid]
+    conf = pd.Series(np.nan, index=panel.index)
+    conf_raw = netinc / ebt
+    conf[valid] = conf_raw[valid]
+    date_level = panel.index.get_level_values('date')
+    # Median etr within (date, sector), computed only over valid rows.
+    etr_valid_only = etr.where(valid)
+    group_keys = [date_level, sector]
+    sector_median = etr_valid_only.groupby(group_keys).transform('median')
+    raw = etr - sector_median
+    # Cross-sectional zscore of conf within date, computed only over valid rows.
+    conf_valid_only = conf.where(valid)
+    grp = conf_valid_only.groupby(date_level)
+    mean_c = grp.transform('mean')
+    std_c = grp.transform('std')
+    zscore_conf = (conf_valid_only - mean_c) / std_c.replace(0, np.nan)
+    signal = raw - 0.25 * zscore_conf
+    signal = signal.where(valid)
+    return signal</pre></div></details><details class="la-sig"><summary><code>cash_backed_earnings_surprise</code><span class="la-tag">quality</span><span class="gist">Standardized unexpected earnings (SUE) combined with a penalty for accrual-driven surprise: isolates the…</span></summary><div class="la-sig-body"><p>Standardized unexpected earnings (SUE) combined with a penalty for accrual-driven surprise: isolates the cash-backed portion of earnings surprises which is expected to drift more persistently, while accrual-tainted surprises mean-revert.</p><div class="la-meta"><span><b>Category</b> quality</span><span><b>Direction</b> Long the high scores</span><span><b>Data</b> fundamental, price</span></div>
+<pre class="la-code">def compute(self, panel) -&gt; pd.Series:
+    epsdil = panel['epsdil']
+    netinc = panel['netinc']
+    ncfo = panel['ncfo']
+    assets = panel['assets']
+    g = epsdil.groupby(level='ticker')
+    # SUE calculation
+    d_eps = epsdil - g.shift(12)
+    def rolling_std_24(s):
+        return s.rolling(24, min_periods=8).std()
+    d_eps_std = d_eps.groupby(level='ticker').transform(rolling_std_24)
+    d_eps_std = d_eps_std.where(d_eps_std &gt; 0)
+    sue = d_eps / d_eps_std
+    sue = sue.clip(-5, 5)
+    # Accruals calculation
+    acc = (netinc - ncfo) / assets
+    acc = acc.where(assets &gt; 0)
+    acc = acc.clip(-0.5, 0.5)
+    d_acc = acc - acc.groupby(level='ticker').shift(12)
+    d_acc = d_acc.clip(-0.5, 0.5)
+    def zscore_by_date(s):
+        def _z(x):
+            mu = x.mean()
+            sd = x.std()
+            if sd is None or sd == 0 or np.isnan(sd):
+                return pd.Series(np.nan, index=x.index)
+            return (x - mu) / sd
+        return s.groupby(level='date').transform(_z)
+    z_sue = zscore_by_date(sue)
+    z_dacc = zscore_by_date(d_acc)
+    score = z_sue - z_dacc
+    return score.reindex(panel.index)</pre></div></details><details class="la-sig"><summary><code>earnings_smoothing_vs_cashflow_volatility</code><span class="la-tag">quality</span><span class="gist">Leuz-Nanda-Wysocki style earnings-smoothing proxy: ratio of trailing 24-month rolling standard deviation of…</span></summary><div class="la-sig-body"><p>Leuz-Nanda-Wysocki style earnings-smoothing proxy: ratio of trailing 24-month rolling standard deviation of operating-cash-flow-to-assets to the rolling standard deviation of net-income-to-assets. High values indicate heavily smoothed earnings relative to underlying cash flow volatility, a marker of low earnings quality that predicts underperformance.</p><div class="la-meta"><span><b>Category</b> quality</span><span><b>Direction</b> Long the low scores</span><span><b>Data</b> fundamental</span></div>
+<pre class="la-code">def compute(self, panel) -&gt; pd.Series:
+    assets = panel['assets']
+    netinc = panel['netinc']
+    ncfo = panel['ncfo']
+    valid_assets = assets &gt; 0
+    ni_a = (netinc / assets).where(valid_assets)
+    cfo_a = (ncfo / assets).where(valid_assets)
+    df = pd.DataFrame({'ni_a': ni_a, 'cfo_a': cfo_a}, index=panel.index)
+    # Ensure strictly backward-looking rolling computation: sort by date
+    # within each ticker before applying rolling window operations.
+    df = df.sort_index(level=['ticker', 'date'])
+    def _roll_std(x: pd.Series) -&gt; pd.Series:
+        return x.rolling(window=24, min_periods=12).std()
+    s_ni = df.groupby(level='ticker')['ni_a'].apply(_roll_std)
+    s_cfo = df.groupby(level='ticker')['cfo_a'].apply(_roll_std)
+    # groupby.apply with a Series-returning function may produce an extra
+    # level in the index; align back to df's index safely.
+    s_ni.index = df.index
+    s_cfo.index = df.index
+    signal = (s_cfo / s_ni).where(s_ni &gt; 0)
+    # Reindex to the original panel order.
+    signal = signal.reindex(panel.index)
+    return signal</pre></div></details><details class="la-sig"><summary><code>excess_speculative_volatility</code><span class="la-tag">quality</span><span class="gist">Compares price return volatility to earnings (ROA) volatility</span></summary><div class="la-sig-body"><p>Compares price return volatility to earnings (ROA) volatility. Stocks whose return volatility greatly exceeds their fundamental (earnings) volatility are driven by speculative/noise trading rather than fundamentals and tend to underperform. Score = z_cs(log(vol_252)) - z_cs(log(earn_vol + 1e-4)).</p><div class="la-meta"><span><b>Category</b> quality</span><span><b>Direction</b> Long the low scores</span><span><b>Data</b> price, fundamental</span></div>
+<pre class="la-code">def compute(self, panel) -&gt; pd.Series:
+    assets = panel['assets']
+    netinc = panel['netinc']
+    roa_q = pd.Series(np.nan, index=panel.index)
+    valid_assets = assets &gt; 0
+    roa_q[valid_assets] = netinc[valid_assets] / assets[valid_assets]
+    lags = [0, 3, 6, 9, 12, 15, 18, 21]
+    shifted_list = []
+    grouped = roa_q.groupby(level='ticker')
+    for k in lags:
+        shifted_list.append(grouped.shift(k))
+    roa_df = pd.concat(shifted_list, axis=1)
+    count_valid = roa_df.notna().sum(axis=1)
+    earn_vol = roa_df.std(axis=1, ddof=1)
+    earn_vol = earn_vol.where(count_valid &gt;= 6, np.nan)
+    vol_252 = panel['vol_252']
+    log_vol = np.log(vol_252.where(vol_252 &gt; 0))
+    log_earn_vol = np.log(earn_vol + 1e-4)
+    df = pd.DataFrame({'log_vol': log_vol, 'log_earn_vol': log_earn_vol})
+    def zscore(s):
+        mean = s.mean()
+        std = s.std(ddof=0)
+        if std is None or std == 0 or pd.isna(std):
+            return pd.Series(np.nan, index=s.index)
+        return (s - mean) / std
+    z_vol = df['log_vol'].groupby(level='date').transform(zscore)
+    z_earn_vol = df['log_earn_vol'].groupby(level='date').transform(zscore)
+    score = z_vol - z_earn_vol
+    score = score.where(log_vol.notna() &amp; log_earn_vol.notna(), np.nan)
+    return score</pre></div></details><details class="la-sig"><summary><code>gross_profitability</code><span class="la-tag">quality</span><span class="gist">Novy-Marx gross profitability = gross profit / total assets</span></summary><div class="la-sig-body"><p>Novy-Marx gross profitability = gross profit / total assets.</p><div class="la-meta"><span><b>Category</b> quality</span><span><b>Direction</b> Long the high scores</span></div>
+<pre class="la-code">def compute(self, panel: pd.DataFrame) -&gt; pd.Series:
+    assets = panel["assets"]
+    return (panel["gp"] / assets).where(assets &gt; 0)</pre></div></details><details class="la-sig"><summary><code>inflation_passthrough_margin_expansion</code><span class="la-tag">quality</span><span class="gist">Year-over-year gross margin expansion, weighted more heavily when aggregate inflation is high, capturing…</span></summary><div class="la-sig-body"><p>Year-over-year gross margin expansion, weighted more heavily when aggregate inflation is high, capturing pricing power that lets firms pass through cost shocks. High inflation regimes better reveal true pricing power, so margin gains carry more signal then.</p><div class="la-meta"><span><b>Category</b> quality</span><span><b>Direction</b> Long the high scores</span><span><b>Data</b> fundamental, macro</span></div>
+<pre class="la-code">def compute(self, panel) -&gt; pd.Series:
+    grossmargin = panel['grossmargin']
+    gp = panel['gp']
+    revenue = panel['revenue']
+    gm_primary_valid = grossmargin.notna() &amp; (grossmargin &gt; -1) &amp; (grossmargin &lt; 2)
+    gm_fallback = gp / revenue.where(revenue &gt; 0)
+    gm = grossmargin.where(gm_primary_valid, gm_fallback)
+    dgm = gm - gm.groupby(level='ticker').shift(12)
+    macro_cpi = panel['macro_cpi']
+    macro_cpi_chg12m = panel['macro_cpi_chg12m']
+    denom = macro_cpi - macro_cpi_chg12m
+    infl = macro_cpi_chg12m / denom.where(denom &gt; 0)
+    infl = infl.where(denom.notna() &amp; macro_cpi_chg12m.notna())
+    # date-level series
+    infl_by_date = infl.groupby(level='date').first()
+    infl_by_date = infl_by_date.sort_index()
+    # expanding past-only percentile rank (using only prior dates, excluding current)
+    w_t = pd.Series(index=infl_by_date.index, dtype=float)
+    vals = infl_by_date.values
+    for i in range(len(vals)):
+        if i == 0:
+            w_t.iloc[i] = np.nan
+            continue
+        past = vals[:i]
+        past_valid = past[~np.isnan(past)]
+        cur = vals[i]
+        if np.isnan(cur) or len(past_valid) == 0:
+            w_t.iloc[i] = np.nan
+        else:
+            rank = (past_valid &lt; cur).sum() / len(past_valid)
+            w_t.iloc[i] = rank
+    w_t_full = infl.index.get_level_values('date').map(w_t)
+    w_t_full = pd.Series(w_t_full, index=infl.index)
+    score = dgm * (0.25 + w_t_full)
+    valid = dgm.notna() &amp; infl.notna() &amp; w_t_full.notna()
+    score = score.where(valid)
+    return score.reindex(panel.index)</pre></div></details><details class="la-sig"><summary><code>sticky_cost_downturn_drag</code><span class="la-tag">quality</span><span class="gist">Cost stickiness signal: when revenue declines, firms that fail to cut operating costs proportionally…</span></summary><div class="la-sig-body"><p>Cost stickiness signal: when revenue declines, firms that fail to cut operating costs proportionally (opex+cor relative to revenue, log-change difference) carry hidden operating leverage and future earnings drag. Defined only for revenue-declining firms; higher stickiness predicts lower returns.</p><div class="la-meta"><span><b>Category</b> quality</span><span><b>Direction</b> Long the low scores</span><span><b>Data</b> fundamental</span></div>
+<pre class="la-code">def compute(self, panel) -&gt; pd.Series:
+    revenue = panel["revenue"]
+    opex = panel["opex"]
+    cor = panel["cor"]
+    opex_tot = opex.where(cor.isna(), opex + cor)
+    grp = opex_tot.groupby(level="ticker")
+    rev_grp = revenue.groupby(level="ticker")
+    rev_lag = rev_grp.shift(12)
+    opex_lag = grp.shift(12)
+    rev_valid = (revenue &gt; 0) &amp; (rev_lag &gt; 0)
+    opex_valid = (opex_tot &gt; 0) &amp; (opex_lag &gt; 0)
+    drev = pd.Series(np.nan, index=panel.index)
+    drev[rev_valid] = np.log(revenue[rev_valid] / rev_lag[rev_valid])
+    dcost = pd.Series(np.nan, index=panel.index)
+    dcost[opex_valid] = np.log(opex_tot[opex_valid] / opex_lag[opex_valid])
+    stickiness = dcost - drev
+    decline_mask = drev &lt; 0
+    stickiness = stickiness.where(decline_mask &amp; drev.notna() &amp; dcost.notna())
+    return stickiness</pre></div></details><details class="la-sig"><summary><code>stock_comp_earnings_dilution</code><span class="la-tag">quality</span><span class="gist">Scales share-based compensation by revenue and by absolute operating cash flow to capture stock-comp-driven…</span></summary><div class="la-sig-body"><p>Scales share-based compensation by revenue and by absolute operating cash flow to capture stock-comp-driven earnings/cash-flow dilution. High values indicate heavy reliance on SBC that inflates cash flow and adjusted earnings while diluting shareholders, a lower quality-of-earnings signal expected to underperform.</p><div class="la-meta"><span><b>Category</b> quality</span><span><b>Direction</b> Long the low scores</span><span><b>Data</b> fundamental, price</span></div>
+<pre class="la-code">def compute(self, panel) -&gt; pd.Series:
+    sbcomp = panel['sbcomp']
+    revenue = panel['revenue']
+    ncfo = panel['ncfo']
+    revenue_valid = revenue.where(revenue &gt; 0)
+    sbc_rev = sbcomp / revenue_valid
+    sbc_rev = sbc_rev.where(revenue_valid.notna() &amp; sbcomp.notna())
+    ncfo_abs = ncfo.abs()
+    ncfo_valid = ncfo_abs.where(ncfo_abs &gt; 0)
+    sbc_ocf = sbcomp / ncfo_valid
+    sbc_ocf = sbc_ocf.where(ncfo_valid.notna() &amp; sbcomp.notna())
+    r1 = sbc_rev.groupby(level='date').rank(pct=True)
+    r2 = sbc_ocf.groupby(level='date').rank(pct=True)
+    signal = (r1 + r2) / 2
+    signal = signal.where(~(r1.isna() &amp; r2.isna()))
+    return signal</pre></div></details><details class="la-sig"><summary><code>turnover_shock_price_run_reversal</code><span class="la-tag">size</span><span class="gist">Abnormal turnover (dollar volume scaled by market cap) relative to a stock's own trailing 12-month history,…</span></summary><div class="la-sig-body"><p>Abnormal turnover (dollar volume scaled by market cap) relative to a stock's own trailing 12-month history, interacted with 1-month return, proxies for attention-driven overshoot that subsequently reverses.</p><div class="la-meta"><span><b>Category</b> size</span><span><b>Direction</b> Long the low scores</span><span><b>Data</b> price</span></div>
+<pre class="la-code">def compute(self, panel) -&gt; pd.Series:
+    marketcap = panel['marketcap']
+    dvol_21 = panel['dvol_21']
+    ret_1m = panel['ret_1m']
+    valid_denom = (marketcap &gt; 0) &amp; (dvol_21 &gt; 0)
+    turn = pd.Series(np.nan, index=panel.index, dtype=float)
+    turn.loc[valid_denom] = dvol_21.loc[valid_denom] / marketcap.loc[valid_denom]
+    lturn = np.log(turn)
+    grouped = lturn.groupby(level='ticker')
+    base = grouped.shift(1).groupby(level='ticker').rolling(12, min_periods=6).mean()
+    base = base.reset_index(level=0, drop=True)
+    base = base.reindex(panel.index)
+    abn_turn = lturn - base
+    raw = abn_turn * ret_1m
+    raw = raw.where(abn_turn.notna() &amp; ret_1m.notna() &amp; base.notna())
+    return raw</pre></div></details><details class="la-sig"><summary><code>book_to_market</code><span class="la-tag">value</span><span class="gist">Fama-French HML: book-to-market = 1/pb (high = cheap = long)</span></summary><div class="la-sig-body"><p>Fama-French HML: book-to-market = 1/pb (high = cheap = long).</p><div class="la-meta"><span><b>Category</b> value</span><span><b>Direction</b> Long the high scores</span></div>
+<pre class="la-code">def compute(self, panel: pd.DataFrame) -&gt; pd.Series:
+    pb = panel["pb"]
+    return (1.0 / pb).where(pb &gt; 0)</pre></div></details><details class="la-sig"><summary><code>cash_vs_accounting_value_divergence</code><span class="la-tag">value</span><span class="gist">Spread between cross-sectional rank of cash-flow yield (FCF/marketcap) and accounting-earnings yield…</span></summary><div class="la-sig-body"><p>Spread between cross-sectional rank of cash-flow yield (FCF/marketcap) and accounting-earnings yield (netinc/marketcap), industry-neutralized within date (fallback to full cross-section median if industry missing). Captures mispricing where GAAP earnings are depressed by non-cash charges relative to cash generation.</p><div class="la-meta"><span><b>Category</b> value</span><span><b>Direction</b> Long the high scores</span><span><b>Data</b> price, fundamental</span></div>
+<pre class="la-code">def compute(self, panel) -&gt; pd.Series:
+    fcf = panel["fcf"]
+    netinc = panel["netinc"]
+    marketcap = panel["marketcap"]
+    industry = panel["industry"]
+    valid = (
+        marketcap.notna()
+        &amp; (marketcap &gt; 0)
+        &amp; fcf.notna()
+        &amp; netinc.notna()
+    )
+    cash_yield = pd.Series(np.nan, index=panel.index, dtype=float)
+    acct_yield = pd.Series(np.nan, index=panel.index, dtype=float)
+    cash_yield.loc[valid] = fcf.loc[valid] / marketcap.loc[valid]
+    acct_yield.loc[valid] = netinc.loc[valid] / marketcap.loc[valid]
+    date_level = panel.index.get_level_values("date")
+    r1 = cash_yield.groupby(date_level).rank(pct=True)
+    r2 = acct_yield.groupby(date_level).rank(pct=True)
+    div = r1 - r2
+    div = div.where(valid)
+    # Industry-date median (fallback to date-level median if industry missing)
+    has_industry = industry.notna()
+    industry_group_key = pd.Series(
+        np.where(has_industry, industry.astype(str), "__NA__"),
+        index=panel.index,
+    )
+    combined_key = pd.MultiIndex.from_arrays(
+        [date_level, industry_group_key.values], names=["__date__", "__ind__"]
+    )
+    industry_median = div.groupby(combined_key).transform("median")
+    date_median = div.groupby(date_level).transform("median")
+    baseline = pd.Series(
+        np.where(has_industry.values, industry_median.values, date_median.values),
+        index=panel.index,
+    )
+    score = div - baseline
+    score = score.where(valid)
+    return score</pre></div></details><details class="la-sig"><summary><code>earnings_yield</code><span class="la-tag">value</span><span class="gist">Earnings yield = 1/pe (high = cheap = long)</span></summary><div class="la-sig-body"><p>Earnings yield = 1/pe (high = cheap = long).</p><div class="la-meta"><span><b>Category</b> value</span><span><b>Direction</b> Long the high scores</span></div>
+<pre class="la-code">def compute(self, panel: pd.DataFrame) -&gt; pd.Series:
+    pe = panel["pe"]
+    return (1.0 / pe).where(pe &gt; 0)</pre></div></details><details class="la-sig"><summary><code>retained_vs_contributed_capital_value</code><span class="la-tag">value</span><span class="gist">Value signal splitting book equity into retained earnings (internally generated) vs contributed capital…</span></summary><div class="la-sig-body"><p>Value signal splitting book equity into retained earnings (internally generated) vs contributed capital (externally raised): (2*retearn - equity) / marketcap, winsorized at 1/99 pct cross-sectionally per date. Higher score (more retained-earnings-driven equity relative to market cap) predicts higher returns.</p><div class="la-meta"><span><b>Category</b> value</span><span><b>Direction</b> Long the high scores</span><span><b>Data</b> fundamental, price</span></div>
+<pre class="la-code">def compute(self, panel) -&gt; pd.Series:
+    equity = panel['equity']
+    retearn = panel['retearn']
+    marketcap = panel['marketcap']
+    valid = (marketcap &gt; 0) &amp; equity.notna() &amp; retearn.notna()
+    raw = (2 * retearn - equity) / marketcap
+    raw = raw.where(valid, np.nan)
+    def _winsorize(s: pd.Series) -&gt; pd.Series:
+        if s.notna().sum() == 0:
+            return s
+        lo = s.quantile(0.01)
+        hi = s.quantile(0.99)
+        return s.clip(lower=lo, upper=hi)
+    result = raw.groupby(level='date').transform(_winsorize)
+    return result</pre></div></details><h4 class="la-group">Market-timing signals (16)</h4><p class="la-group-note">Scored once per month for the market as a whole. The oriented score sets the desired equity exposure rather than picking names.</p><details class="la-sig"><summary><code>aggregate_equity_issuance_market_timing</code><span class="la-tag">investment</span><span class="gist">Aggregate equity issuance market timing signal (Baker-Wurgler style): cross-sectional sum of positive net…</span></summary><div class="la-sig-body"><p>Aggregate equity issuance market timing signal (Baker-Wurgler style): cross-sectional sum of positive net equity issuance (ncfcommon) scaled by aggregate market cap, smoothed with a 12-month rolling (past-only) mean. High aggregate issuance signals overvaluation and predicts low subsequent market returns, so exposure should be reduced (expected_sign=-1).</p><div class="la-meta"><span><b>Category</b> investment</span><span><b>Direction</b> High score → risk-off (cut exposure)</span><span><b>Data</b> fundamental, price</span></div>
+<pre class="la-code">def compute(self, panel) -&gt; pd.Series:
+    mcap = panel['marketcap']
+    ncf = panel['ncfcommon']
+    valid = mcap.notna() &amp; (mcap &gt; 0)
+    ncf_pos = ncf.where(ncf.notna() &amp; (ncf &gt; 0), 0.0)
+    ncf_pos = ncf_pos.where(valid)
+    mcap_valid = mcap.where(valid)
+    num = ncf_pos.groupby(level='date').sum(min_count=1)
+    den = mcap_valid.groupby(level='date').sum(min_count=1)
+    count = valid.groupby(level='date').sum()
+    iss = num / den.where(den &gt; 0)
+    iss = iss.where(count &gt;= 10)
+    iss = iss.sort_index()
+    smooth = iss.rolling(window=12, min_periods=6).mean()
+    return smooth</pre></div></details><details class="la-sig"><summary><code>credit_spread_timing</code><span class="la-tag">low_risk</span><span class="gist">Time the market on credit conditions: lean in when the Baa-Treasury spread is tight, out when it is wide</span></summary><div class="la-sig-body"><p>Time the market on credit conditions: lean in when the Baa-Treasury spread is tight, out when it is wide.</p><div class="la-meta"><span><b>Category</b> low_risk</span><span><b>Direction</b> High score → risk-off (cut exposure)</span><span><b>Data</b> macro</span></div>
+<pre class="la-code">def compute(self, panel: pd.DataFrame) -&gt; pd.Series:
+    return panel["macro_baa_spread"].groupby(level="date").first()</pre></div></details><details class="la-sig"><summary><code>cross_sectional_return_dispersion_timing</code><span class="la-tag">low_risk</span><span class="gist">Cross-sectional dispersion of trailing 1-month returns, scaled by its own trailing 36-month average, smoothed…</span></summary><div class="la-sig-body"><p>Cross-sectional dispersion of trailing 1-month returns, scaled by its own trailing 36-month average, smoothed over 3 months, used as a market-timing signal. High dispersion signals elevated uncertainty/regime instability and predicts weak forward market returns (expected_sign=-1).</p><div class="la-meta"><span><b>Category</b> low_risk</span><span><b>Direction</b> High score → risk-off (cut exposure)</span><span><b>Data</b> price</span></div>
+<pre class="la-code">def compute(self, panel) -&gt; pd.Series:
+    cols = ['ret_1m', 'ret_12m', 'marketcap', 'dvol_21']
+    df = panel[cols].copy()
+    # replace inf with nan and drop invalid rows
+    df = df.replace([np.inf, -np.inf], np.nan)
+    df = df.dropna(subset=cols)
+    min_n = 30
+    def winsorize(s: pd.Series) -&gt; pd.Series:
+        lo = s.quantile(0.01)
+        hi = s.quantile(0.99)
+        return s.clip(lower=lo, upper=hi)
+    def disp_for_date(g: pd.DataFrame):
+        if len(g) &lt; min_n:
+            return np.nan
+        w = winsorize(g['ret_1m'])
+        return w.std()
+    disp = df.groupby(level='date').apply(disp_for_date)
+    disp.index = disp.index.get_level_values(0) if isinstance(disp.index, pd.MultiIndex) else disp.index
+    disp = disp.sort_index()
+    # trailing 36-month rolling std of ret_1m dispersion (past-only, shifted by 1)
+    trailing_scale = disp.shift(1).rolling(window=36, min_periods=12).mean()
+    scaled_disp = disp / trailing_scale.replace(0, np.nan)
+    # rolling 3-month mean, past-only
+    signal = scaled_disp.rolling(window=3, min_periods=1).mean()
+    signal.name = "cross_sectional_return_dispersion_timing"
+    return signal</pre></div></details><details class="la-sig"><summary><code>halloween_volatility_scaled_timing</code><span class="la-tag">momentum</span><span class="gist">Halloween/'Sell in May' seasonal timer scaled by inverse VIX regime (vs expanding past median) and…</span></summary><div class="la-sig-body"><p>Halloween/'Sell in May' seasonal timer scaled by inverse VIX regime (vs expanding past median) and downweighted in NBER recessions or rising-unemployment regimes.</p><div class="la-meta"><span><b>Category</b> momentum</span><span><b>Direction</b> High score → risk-on (raise exposure)</span><span><b>Data</b> macro, price</span></div>
+<pre class="la-code">def compute(self, panel) -&gt; pd.Series:
+    vix = panel['macro_vix'].groupby(level='date').mean()
+    usrec = panel['macro_usrec'].groupby(level='date').mean()
+    unrate_chg = panel['macro_unrate_chg12m'].groupby(level='date').mean()
+    dates = vix.index.sort_values()
+    vix = vix.reindex(dates)
+    usrec = usrec.reindex(dates)
+    unrate_chg = unrate_chg.reindex(dates)
+    # forward-fill at most 1 month for sporadic gaps
+    vix = vix.ffill(limit=1)
+    usrec = usrec.ffill(limit=1)
+    unrate_chg = unrate_chg.ffill(limit=1)
+    # fill remaining NaNs in usrec/unrate_chg with 0
+    usrec = usrec.fillna(0.0)
+    unrate_chg = unrate_chg.fillna(0.0)
+    # seasonal component
+    months = pd.Series(dates.month, index=dates)
+    seas = months.apply(lambda m: 1.0 if m in {11, 12, 1, 2, 3, 4} else -0.5)
+    # expanding past-only median of vix, min 24 obs
+    vix_shifted = vix.shift(1)
+    vixmed = vix_shifted.expanding(min_periods=24).median()
+    count = vix_shifted.expanding(min_periods=1).count()
+    ratio = vix / vixmed
+    vscale = 1.0 / (1.0 + np.maximum(0.0, ratio - 1.0))
+    vscale = vscale.where(count &gt;= 24, 1.0)
+    vscale = vscale.where(vixmed.notna() | (count &lt; 24), 1.0)
+    # recession adjustment
+    unrate_clip = unrate_chg.clip(lower=0.0, upper=3.0)
+    rec_adj = 1.0 - 0.5 * usrec - 0.25 * unrate_clip
+    rec_adj = rec_adj.clip(lower=0.0, upper=1.0)
+    exposure = seas * vscale * rec_adj
+    # NaN where vix itself is fully missing after fallback
+    exposure = exposure.where(vix.notna(), np.nan)
+    exposure.name = self.name
+    return exposure</pre></div></details><details class="la-sig"><summary><code>market_breadth_high_ratio_timing</code><span class="la-tag">momentum</span><span class="gist">Market breadth signal based on the cross-sectional average and fraction of stocks trading near their 52-week…</span></summary><div class="la-sig-body"><p>Market breadth signal based on the cross-sectional average and fraction of stocks trading near their 52-week high (high_ratio). Broadening breadth predicts positive forward market returns; narrowing breadth (deterioration relative to its own trailing 12-month average) predicts weak forward returns.</p><div class="la-meta"><span><b>Category</b> momentum</span><span><b>Direction</b> High score → risk-on (raise exposure)</span><span><b>Data</b> price</span></div>
+<pre class="la-code">def compute(self, panel) -&gt; pd.Series:
+    hr = panel['high_ratio']
+    valid_count = hr.groupby(level='date').apply(lambda s: s.notna().sum())
+    brd = hr.groupby(level='date').mean()
+    pct_hi = hr.groupby(level='date').apply(lambda s: (s &gt; 0.95).sum() / max(s.notna().sum(), 1))
+    # invalidate months with insufficient valid tickers
+    insufficient = valid_count &lt; self.MIN_VALID
+    brd = brd.where(~insufficient, np.nan)
+    pct_hi = pct_hi.where(~insufficient, np.nan)
+    brd = brd.sort_index()
+    pct_hi = pct_hi.sort_index()
+    # rolling 12-month mean, past-only (shifted 1)
+    brd_roll_mean = brd.rolling(window=12, min_periods=12).mean().shift(1)
+    pct_hi_roll_mean = pct_hi.rolling(window=12, min_periods=12).mean().shift(1)
+    brd_dev = brd - brd_roll_mean
+    pct_hi_dev = pct_hi - pct_hi_roll_mean
+    def zscore_past(s: pd.Series) -&gt; pd.Series:
+        mean_past = s.expanding(min_periods=12).mean().shift(1)
+        std_past = s.expanding(min_periods=12).std().shift(1)
+        z = (s - mean_past) / std_past.replace(0, np.nan)
+        return z
+    z_brd = zscore_past(brd_dev)
+    z_pct_hi = zscore_past(pct_hi_dev)
+    raw = 0.5 * z_brd + 0.5 * z_pct_hi
+    # require at least MIN_HISTORY prior months before emitting non-NaN exposure
+    n_prior = pd.Series(np.arange(len(raw)), index=raw.index)
+    raw = raw.where(n_prior &gt;= self.MIN_HISTORY, np.nan)
+    exposure = raw.fillna(0.0)
+    return exposure</pre></div></details><details class="la-sig"><summary><code>market_trend_timing</code><span class="la-tag">momentum</span><span class="gist">Time-series trend: hold the market when its trailing 12m return is strong, lighten when weak</span></summary><div class="la-sig-body"><p>Time-series trend: hold the market when its trailing 12m return is strong, lighten when weak.</p><div class="la-meta"><span><b>Category</b> momentum</span><span><b>Direction</b> High score → risk-on (raise exposure)</span><span><b>Data</b> price</span></div>
+<pre class="la-code">def compute(self, panel: pd.DataFrame) -&gt; pd.Series:
+    # market trend proxy = cross-sectional mean of trailing 12m return, per date
+    return panel["ret_12m"].groupby(level="date").mean()</pre></div></details><details class="la-sig"><summary><code>aggregate_illiquidity_shock_timing</code><span class="la-tag">other</span><span class="gist">Market-timing signal based on Amihud-style aggregate illiquidity shocks: computes cross-sectional median of…</span></summary><div class="la-sig-body"><p>Market-timing signal based on Amihud-style aggregate illiquidity shocks: computes cross-sectional median of |ret_1m|/dvol_21 across liquid stocks, log-transforms it, and measures its deviation from a trailing 12-month average (min 6 obs). Spikes in aggregate illiquidity relative to trend signal funding/liquidity stress and precede high subsequent market returns.</p><div class="la-meta"><span><b>Category</b> other</span><span><b>Direction</b> High score → risk-on (raise exposure)</span><span><b>Data</b> price</span></div>
+<pre class="la-code">def compute(self, panel) -&gt; pd.Series:
+    df = panel[['ret_1m', 'dvol_21', 'marketcap', 'closeunadj']].copy()
+    valid = (
+        df['dvol_21'].notna() &amp; (df['dvol_21'] &gt; 0) &amp;
+        df['ret_1m'].notna() &amp;
+        df['marketcap'].notna() &amp;
+        df['closeunadj'].notna()
+    )
+    df = df[valid]
+    illiq = df['ret_1m'].abs() / df['dvol_21']
+    illiq = illiq.replace([np.inf, -np.inf], np.nan).dropna()
+    agg = illiq.groupby(level='date').median()
+    agg = np.log(agg)
+    agg = agg.sort_index()
+    trailing_mean = agg.rolling(12, min_periods=6).mean().shift(1)
+    exposure = agg - trailing_mean
+    exposure.index.name = 'date'
+    return exposure</pre></div></details><details class="la-sig"><summary><code>average_systematic_comovement_timing</code><span class="la-tag">other</span><span class="gist">Pollet and Wilson (2010)-style average comovement timer: cross-sectional mean absolute trailing correlation…</span></summary><div class="la-sig-body"><p>Pollet and Wilson (2010)-style average comovement timer: cross-sectional mean absolute trailing correlation of stocks to VIX, credit, and rates macro shocks. High average comovement signals a high quantity of undiversifiable systematic risk, which should be compensated by higher subsequent market returns.</p><div class="la-meta"><span><b>Category</b> other</span><span><b>Direction</b> High score → risk-on (raise exposure)</span><span><b>Data</b> price, macro</span></div>
+<pre class="la-code">def compute(self, panel) -&gt; pd.Series:
+    cols = ['corr_vix_252', 'corr_credit_252', 'corr_rates_252']
+    comps = []
+    for col in cols:
+        if col not in panel.columns:
+            continue
+        s = panel[col].dropna()
+        abs_s = s.abs()
+        grp = abs_s.groupby(level='date')
+        mean_c = grp.mean()
+        count_c = grp.count()
+        mean_c = mean_c.where(count_c &gt;= self.MIN_STOCKS, np.nan)
+        comps.append(mean_c)
+    if not comps:
+        dates = panel.index.get_level_values('date').unique()
+        return pd.Series(np.nan, index=dates)
+    df = pd.concat(comps, axis=1)
+    comove = df.mean(axis=1, skipna=True)
+    exposure = comove
+    return exposure</pre></div></details><details class="la-sig"><summary><code>credit_vol_complacency_divergence_timing</code><span class="la-tag">other</span><span class="gist">Cross-asset divergence between credit spread stress and equity implied volatility complacency</span></summary><div class="la-sig-body"><p>Cross-asset divergence between credit spread stress and equity implied volatility complacency. When Baa-Treasury credit spreads are historically wide relative to VIX, credit markets are pricing stress that equities have not yet discounted, predicting poor subsequent market returns; the converse signals fear-driven overreaction and a buying opportunity.</p><div class="la-meta"><span><b>Category</b> other</span><span><b>Direction</b> High score → risk-off (cut exposure)</span><span><b>Data</b> macro</span></div>
+<pre class="la-code">def compute(self, panel) -&gt; pd.Series:
+    baa = panel['macro_baa_spread'].groupby(level='date').first().sort_index()
+    vix = panel['macro_vix'].groupby(level='date').first().sort_index()
+    baa_chg = panel['macro_baa_spread_chg12m'].groupby(level='date').first().sort_index()
+    vix_chg = panel['macro_vix_chg12m'].groupby(level='date').first().sort_index()
+    z_credit = self._past_z(baa)
+    z_vix = self._past_z(vix)
+    d_credit = self._past_z(baa_chg)
+    d_vix = self._past_z(vix_chg)
+    raw = 0.5 * (z_credit - z_vix) + 0.5 * (d_credit - d_vix)
+    raw.name = self.name
+    return raw</pre></div></details><details class="la-sig"><summary><code>equity_rate_correlation_regime_timing</code><span class="la-tag">other</span><span class="gist">Times the market using the date-level average stock correlation to rate changes (corr_rates_252)</span></summary><div class="la-sig-body"><p>Times the market using the date-level average stock correlation to rate changes (corr_rates_252). Positive average correlation signals a growth-driven regime where bonds hedge equities and risk premia are earned; negative correlation signals an inflation/discount-rate regime with weaker forward equity returns. A small penalty is applied when 10y breakeven inflation expectations are elevated (past-only z-score).</p><div class="la-meta"><span><b>Category</b> other</span><span><b>Direction</b> High score → risk-on (raise exposure)</span><span><b>Data</b> price, macro</span></div>
+<pre class="la-code">def compute(self, panel) -&gt; pd.Series:
+    corr = panel['corr_rates_252'].dropna()
+    m = corr.groupby(level='date').mean()
+    # ensure full date index, forward-fill dates with no valid observations
+    all_dates = panel.index.get_level_values('date').unique().sort_values()
+    m = m.reindex(all_dates).ffill()
+    exposure = m.rolling(3, min_periods=1).mean()
+    # inflation penalty using macro_breakeven10, past-only z-score
+    if 'macro_breakeven10' in panel.columns:
+        be = panel['macro_breakeven10'].groupby(level='date').mean()
+        be = be.reindex(all_dates).ffill()
+        be_mean = be.expanding(min_periods=1).mean().shift(1)
+        be_std = be.expanding(min_periods=1).std().shift(1)
+        z = (be - be_mean) / be_std.where(be_std &gt; 0)
+        z = z.fillna(0.0)
+        exposure = exposure - 0.25 * z
+    exposure.name = self.name
+    exposure.index.name = 'date'
+    return exposure</pre></div></details><details class="la-sig"><summary><code>real_policy_stance_timing</code><span class="la-tag">other</span><span class="gist">Real policy stance timing: combines the real fed funds rate (fed funds minus trailing 12m CPI inflation) with…</span></summary><div class="la-sig-body"><p>Real policy stance timing: combines the real fed funds rate (fed funds minus trailing 12m CPI inflation) with the 12m change in fed funds to gauge monetary tightness. A high/rising real policy stance signals scarce liquidity and elevated discount rates, predicting lower forward equity returns; a deeply negative/easing stance predicts higher forward returns (expected_sign=-1).</p><div class="la-meta"><span><b>Category</b> other</span><span><b>Direction</b> High score → risk-off (cut exposure)</span><span><b>Data</b> macro</span></div>
+<pre class="la-code">def compute(self, panel) -&gt; pd.Series:
+    cpi = panel['macro_cpi'].groupby(level='date').first().sort_index()
+    fedfunds = panel['macro_fedfunds'].groupby(level='date').first().sort_index()
+    fedfunds_chg12m = panel['macro_fedfunds_chg12m'].groupby(level='date').first().sort_index()
+    cpi = cpi.ffill()
+    fedfunds = fedfunds.ffill()
+    fedfunds_chg12m = fedfunds_chg12m.ffill()
+    cpi_lag12 = cpi.shift(12)
+    infl = 100.0 * (cpi / cpi_lag12 - 1.0)
+    infl = infl.where(cpi_lag12 &gt; 0, np.nan)
+    real_rate = fedfunds - infl
+    stance = 0.6 * real_rate + 0.4 * fedfunds_chg12m
+    smooth = stance.rolling(3, min_periods=1).mean()
+    return smooth</pre></div></details><details class="la-sig"><summary><code>seasonal_risk_appetite_credit_timing</code><span class="la-tag">other</span><span class="gist">Halloween/Sell-in-May seasonal timing rule conditioned on the level of the Baa credit spread: long risk in…</span></summary><div class="la-sig-body"><p>Halloween/Sell-in-May seasonal timing rule conditioned on the level of the Baa credit spread: long risk in the winter half (Nov-Apr) and short/defensive in the summer half (May-Oct), with the winter exposure amplified when the expanding past-only z-score of the Baa credit spread is elevated (wide risk premia).</p><div class="la-meta"><span><b>Category</b> other</span><span><b>Direction</b> High score → risk-on (raise exposure)</span><span><b>Data</b> macro</span></div>
+<pre class="la-code">def compute(self, panel) -&gt; pd.Series:
+    baa = panel['macro_baa_spread'].groupby(level='date').mean()
+    baa = baa.sort_index()
+    baa = baa.ffill()
+    baa = baa.dropna()
+    dates = baa.index
+    # seasonal sign: +1 for Nov-Apr, -1 for May-Oct
+    months = pd.Series(dates.month, index=dates)
+    hall = months.apply(lambda m: 1.0 if m in (11, 12, 1, 2, 3, 4) else -1.0)
+    # expanding past-only z-score, min 36 obs, shift(1)
+    expanding_mean = baa.expanding(min_periods=36).mean().shift(1)
+    expanding_std = baa.expanding(min_periods=36).std().shift(1)
+    z = (baa - expanding_mean) / expanding_std
+    z = z.where(expanding_std &gt; 0, np.nan)
+    z = z.fillna(0.0)
+    z_clipped = z.clip(lower=0, upper=2)
+    exposure = hall * (1.0 + z_clipped)
+    exposure.index.name = 'date'
+    return exposure</pre></div></details><details class="la-sig"><summary><code>sentiment_gap_contrarian_timing</code><span class="la-tag">other</span><span class="gist">Contrarian macro timing signal using consumer sentiment deviation from its trailing 3-year mean…</span></summary><div class="la-sig-body"><p>Contrarian macro timing signal using consumer sentiment deviation from its trailing 3-year mean (countercyclical) combined with unemployment slack and rising unemployment momentum. Elevated risk aversion (low sentiment, high slack, rising unemployment) predicts higher subsequent equity risk premia.</p><div class="la-meta"><span><b>Category</b> other</span><span><b>Direction</b> High score → risk-on (raise exposure)</span><span><b>Data</b> macro</span></div>
+<pre class="la-code">def compute(self, panel) -&gt; pd.Series:
+    s = panel['macro_umcsent'].groupby(level='date').first()
+    u = panel['macro_unrate'].groupby(level='date').first()
+    du = panel['macro_unrate_chg12m'].groupby(level='date').first()
+    s_mean = s.rolling(36, min_periods=18).mean()
+    s_std = s.rolling(36, min_periods=18).std()
+    sent_gap = (s - s_mean) / s_std.where(s_std &gt; 0)
+    u_mean = u.rolling(36, min_periods=18).mean()
+    u_std = u.rolling(36, min_periods=18).std()
+    slack = (u - u_mean) / u_std.where(u_std &gt; 0)
+    exposure = (-sent_gap + 0.5 * slack + 0.5 * du.clip(lower=0)).clip(-3, 3)
+    exposure.name = self.name
+    return exposure</pre></div></details><details class="la-sig"><summary><code>variance_risk_premium_timing</code><span class="la-tag">other</span><span class="gist">Variance risk premium timing signal: gap between implied volatility (VIX) and realized equity volatility…</span></summary><div class="la-sig-body"><p>Variance risk premium timing signal: gap between implied volatility (VIX) and realized equity volatility (cross-sectional median of trailing 1y stock-level realized vol), smoothed with a 3-month rolling mean. A wide gap indicates elevated compensation for bearing variance risk, forecasting higher subsequent market excess returns.</p><div class="la-meta"><span><b>Category</b> other</span><span><b>Direction</b> High score → risk-on (raise exposure)</span><span><b>Data</b> macro, price</span></div>
+<pre class="la-code">def compute(self, panel) -&gt; pd.Series:
+    vix = panel['macro_vix'].groupby(level='date').first()
+    rv = panel['vol_252'].groupby(level='date').median() * 100.0
+    vrp = vix - rv
+    raw = vrp.rolling(3, min_periods=1).mean()
+    return raw</pre></div></details><details class="la-sig"><summary><code>aggregate_accruals_market_timing</code><span class="la-tag">quality</span><span class="gist">Aggregate accruals (netinc - ncfo)/assets, median across large liquid names, as a macro earnings-quality…</span></summary><div class="la-sig-body"><p>Aggregate accruals (netinc - ncfo)/assets, median across large liquid names, as a macro earnings-quality timing signal; high aggregate accruals predict low subsequent market returns, so exposure = -zscore of smoothed aggregate accruals.</p><div class="la-meta"><span><b>Category</b> quality</span><span><b>Direction</b> High score → risk-on (raise exposure)</span><span><b>Data</b> fundamental, price</span></div>
+<pre class="la-code">def compute(self, panel) -&gt; pd.Series:
+    df = panel[['netinc', 'ncfo', 'assets', 'marketcap']].copy()
+    valid = (
+        df['assets'].notna() &amp; (df['assets'] &gt; 0) &amp;
+        df['netinc'].notna() &amp; df['ncfo'].notna() &amp;
+        df['marketcap'].notna()
+    )
+    df = df[valid]
+    acc = (df['netinc'] - df['ncfo']) / df['assets']
+    acc = acc.clip(-0.5, 0.5)
+    df['acc'] = acc
+    # market-cap 40th percentile filter, per date
+    pct40 = df.groupby(level='date')['marketcap'].transform(
+        lambda x: x.quantile(0.40)
+    )
+    mask = df['marketcap'] &gt;= pct40
+    df = df[mask]
+    # count valid names per date
+    counts = df.groupby(level='date')['acc'].count()
+    agg_t = df.groupby(level='date')['acc'].median()
+    agg_t = agg_t.where(counts &gt;= self.MIN_NAMES, np.nan)
+    agg_t = agg_t.sort_index()
+    smooth = agg_t.rolling(3, min_periods=3).mean()
+    exp_mean = smooth.expanding(36).mean()
+    exp_std = smooth.expanding(36).std()
+    z = (smooth - exp_mean) / exp_std
+    z = z.where(exp_std &gt; 0, np.nan)
+    exposure = -z
+    exposure = exposure.clip(-2, 2)
+    exposure.name = self.name
+    return exposure</pre></div></details><details class="la-sig"><summary><code>money_illusion_real_yield_gap_timing</code><span class="la-tag">value</span><span class="gist">Modigliani-Cohn money illusion timing signal: compares aggregate market earnings yield (median of 1/pe among…</span></summary><div class="la-sig-body"><p>Modigliani-Cohn money illusion timing signal: compares aggregate market earnings yield (median of 1/pe among top-70% marketcap stocks) to the REAL 10y Treasury yield (nominal 10y minus trailing CPI inflation). A wide gap signals equities are irrationally cheap relative to real cash-flow discounting, forecasting high subsequent market returns as the illusion unwinds.</p><div class="la-meta"><span><b>Category</b> value</span><span><b>Direction</b> High score → risk-on (raise exposure)</span><span><b>Data</b> price, fundamental, macro</span></div>
+<pre class="la-code">def compute(self, panel) -&gt; pd.Series:
+    df = panel[['pe', 'marketcap', 'macro_dgs10', 'macro_cpi', 'macro_cpi_chg12m']].copy()
+    valid = (df['pe'] &gt; 0) &amp; df['marketcap'].notna() &amp; (df['marketcap'] &gt; 0)
+    df = df[valid]
+    # top 70% marketcap per date
+    def top70_mask(x):
+        thresh = x.quantile(0.30)
+        return x &gt;= thresh
+    mc = df['marketcap']
+    thresh_by_date = mc.groupby(level='date').transform(lambda x: x.quantile(0.30))
+    top_df = df[mc &gt;= thresh_by_date]
+    ey = 1.0 / top_df['pe']
+    agg_ey = ey.groupby(level='date').median()
+    macro = panel[['macro_dgs10', 'macro_cpi', 'macro_cpi_chg12m']].groupby(level='date').mean()
+    denom = macro['macro_cpi'] - macro['macro_cpi_chg12m']
+    valid_macro = macro['macro_dgs10'].notna() &amp; macro['macro_cpi'].notna() &amp; \
+        macro['macro_cpi_chg12m'].notna() &amp; (denom &gt; 0)
+    infl = 100.0 * macro['macro_cpi_chg12m'] / denom
+    real_y = macro['macro_dgs10'] - infl
+    signal = 100.0 * agg_ey - real_y
+    signal = signal.where(valid_macro)
+    signal = signal.dropna()
+    signal.index.name = 'date'
+    return signal</pre></div></details>
+</div>
+</details>
 
 
 ::: {.callout-warning appearance="simple"}
