@@ -1,6 +1,6 @@
 ---
 title: "Farming Alpha Out of a Language Model"
-description: "Three agents invent equity signals, one harness judges them all, and a statistics layer decides whether any of it is real. Sixteen farmed signals in, the answer is no — which is the interesting part."
+description: "Three agents invent equity signals, one harness judges them all, and a statistics layer decides whether any of it is real. So far nothing farmed has cleared the bar — which is the interesting part."
 date: "2026-08-22"
 categories: [finance, quant, ai-agent, llm, meta]
 image: ""
@@ -134,6 +134,70 @@ one number *per date* rather than per stock — a desired market exposure. The
 harness standardizes it using only past data, maps it to a position in [−1, 1], and
 earns that fraction of the market. Same interface, different shape.
 
+### A worked example: one month, one signal
+
+The description above is abstract enough that it is worth watching a single month
+go through the machine. Take `inventory_growth_gap`, one of the farmed signals.
+The hypothesis: if a company's warehouse is filling up faster than its sales are
+growing, it over-forecast demand, and write-downs and discounts are coming. The
+formula is a gap between two growth rates:
+
+```python
+inv_g   = inventory / inventory_12mo_ago - 1
+sales_g = revenue   / revenue_12mo_ago   - 1
+raw     = inv_g - sales_g
+```
+
+`expected_sign = -1`, because it is the *large* gap that is the bad case.
+
+Now one month-end. Twenty eligible names, which is small enough to print — the
+real cross-section runs 1,500 to 3,000 — sorted by the oriented score:
+
+| Ticker | `raw` (inv − sales growth) | oriented alpha | decile | weight |
+|---|---:|---:|---:|---:|
+| TTT | −0.55 | 0.55 | 9 | **+0.50** |
+| SSS | −0.31 | 0.31 | 9 | **+0.50** |
+| RRR | −0.24 | 0.24 | 8 | 0 |
+| QQQ | −0.19 | 0.19 | 8 | 0 |
+| … | … | … | … | 0 |
+| DDD | 0.25 | −0.25 | 1 | 0 |
+| CCC | 0.33 | −0.33 | 1 | 0 |
+| BBB | 0.41 | −0.41 | 0 | **−0.50** |
+| AAA | 0.62 | −0.62 | 0 | **−0.50** |
+
+Four things happened in that table, and they are the entire trading rule.
+
+**Orientation flipped the sign.** AAA has the worst inventory bloat — stock piling
+up 62 percentage points faster than sales — and the multiplication by
+`expected_sign = -1` sends it to the bottom of the sort. TTT, running the leanest
+inventory, goes to the top. After this step the harness never has to know what the
+signal measures; it only knows that high means long.
+
+**The sort became buckets.** Ranks are converted to deciles, using *average* ranks
+so that tied scores stay together. Ranking by first-occurrence instead would have
+broken ties by the panel's ticker order, i.e. alphabetically, which is a genuinely
+strange thing to trade on. The scores are also winsorized at 1% first — that clips
+outlier *values* so a company whose inventory tripled cannot distort anything
+downstream, while leaving its rank, and therefore its decile, untouched.
+
+**Buckets became weights.** Equal weight within each leg: two longs at +50%, two
+shorts at −50%. In the real cross-section that is roughly 200 names a side at
+±0.5% each. The book is 100% long and 100% short — dollar neutral, though nothing
+here forces the two legs to have matching market exposure. The middle eight
+deciles, 80% of the market, are simply not traded.
+
+**Weights met next month's returns.** Say the two longs return +3% and +6% and the
+two shorts return −4% and +1%. The long leg earns the average, +4.5%. The bottom
+decile's own return averages −1.5%, and since it was held short, subtracting it
+adds to the spread: **+6.0% gross** for the month. Then turnover is charged. If the
+entire book had to be rebuilt from scratch, the traded notional is 2.0 and the cost
+at 10 bps is 20 bps for that month — which is why a slow, fundamentals-driven
+signal like this one and a fast monthly-reversal signal are not remotely competing
+on equal terms.
+
+Repeat 280 times and that stream of monthly numbers is what every statistic in the
+rest of this post is computed from.
+
 ## The part that matters: point-in-time correctness
 
 Every backtest is a claim about what you *would have known* at the time. Almost all
@@ -187,8 +251,10 @@ for exactly once.
 
 **A search hurdle.** Given how dispersed the Sharpes in the library are, you can
 compute the Sharpe you'd expect from the *best* of N random strategies. That's the
-bar luck alone clears. With 17 attempts on the ledger it currently sits at **0.60**.
-Anything below it is not evidence of anything.
+bar luck alone clears. It is not a constant: it is recomputed on every run from the
+ledger's attempt count and the spread of Sharpes across the library, so it climbs as
+the search grows. Anything below it is not evidence of anything. The
+[results page](../../../llm-alpha/index.qmd) carries its current value.
 
 **Deflated Sharpe and Benjamini-Hochberg.** The deflated Sharpe is the probability a
 signal is real *given* the size of the search that found it. The BH q-value controls
@@ -205,40 +271,62 @@ finally showing up on the balance sheet.
 
 ## What it found
 
-Sixteen farmed signals in, across two campaign days:
+There is deliberately no scoreboard in this post. The campaign runs daily and the
+library grows most nights, so any count printed here would be stale within a week.
+Worse, a count is the wrong thing to fixate on: in this setup the number of attempts
+is a *cost*, not an achievement, because every trial raises the bar for everything
+already found. The [results page](../../../llm-alpha/index.qmd) regenerates itself on
+every run and carries the current figures, hurdle included.
 
-| | |
-|---|---|
-| Signals in the library | 27 (11 canonical, 16 farmed) |
-| Farming attempts on the ledger | 17 |
-| Search hurdle (Sharpe) | 0.60 |
-| Best farmed Sharpe | 0.26 |
-| Farmed signals above the hurdle | **0** |
-| Farmed signals surviving FDR | **0** |
+What is worth writing down is the shapes that keep recurring, because those have been
+stable since the first campaign day.
 
-Every one of them compiled. Every one passed the no-look-ahead validator. Every one
-had a coherent economic story attached — inventory growth gaps, stock-comp dilution,
-oil-beta interactions, turn-of-year tax-loss reversals. And not one is
-distinguishable from noise.
+**Nothing farmed has cleared the search hurdle.** Not once, not yet. The only signal
+in the library that clears it is `gross_profitability` — Novy-Marx's, published in
+2013, and sitting in the library before any agent ran. Even that one is labelled a
+*candidate* rather than a survivor, because clearing the hurdle and surviving
+multiple-testing correction with a high deflated Sharpe are two different tests, and
+it passes one of them.
 
-The only signal in the library that survives correction is `gross_profitability`,
-which is Novy-Marx's, published in 2013, and was in the library before any agent
-ran.
+**Everything else works, which is the point.** Every farmed signal compiled. Every
+one passed the no-look-ahead validator. Every one arrived with a coherent economic
+story attached — inventory growth gaps, stock-comp dilution, oil-beta interactions,
+turn-of-year tax-loss reversals. The pipeline is not failing. The hypotheses are just
+wrong, in the ordinary way that most hypotheses are wrong.
 
-I want to be precise about what that does and doesn't show. It is two days of
-farming against a fixed dataset. It is not proof that the approach can't work. But
-it is a real result, and it lines up with the thing quantitative researchers already
-know and outsiders consistently underestimate: **plausible is cheap.** The hard part
-of finding alpha was never generating hypotheses. A language model generates twelve
-excellent-sounding ones for eighty cents. The hard part is that almost all
-hypotheses are wrong, and the only way to know which is to test them in a way that
-can tell you no.
+**The strongest t-statistics point the wrong way.** This one I did not expect.
+Several farmed signals are comfortably significant under Benjamini-Hochberg — and
+negative. `attention_spike_return_reversal` posts a t-stat of −5.3 and
+`filing_staleness_information_neglect` −4.4, both with Sharpes well below zero. The
+agent found real cross-sectional structure and then declared the sign backwards. It
+is tempting to read that as a discovery in disguise: flip `expected_sign` and you
+have a strong signal. Resist it. Choosing the sign after seeing the result is just
+another trial, and it is the cheapest way there is to fool yourself. If the mechanism
+argument only works once you know the answer, it was never a mechanism argument.
 
-One entry is worth watching. `market_breadth_high_ratio_timing` posts a Sharpe of
-just 0.12 — nothing — but an alpha t-stat of **2.64**. Real explanatory power the
-factor model misses, wrapped in a construction too weak to trade. That is the
-shape a genuine discovery would first appear in, and it is exactly the shape a
-Sharpe-sorted leaderboard would throw away.
+**The search keeps rediscovering itself.** Left alone, the idea agent converges. The
+library holds a cluster of same-month seasonality variants that are recognisably one
+anomaly wearing different names, and pairs like `rate_duration_mispricing` and
+`hidden_rate_duration_mismatch` whose return streams are nearly identical — a novelty
+score of 0.02 between them. This is worse than wasted spend. Near-duplicates
+manufacture trials, trials raise the hurdle, and the library ends up penalising its
+own genuine entries for the sin of being asked the same question twice.
+Deduplication is not housekeeping here; it is part of the statistics.
+
+I want to be precise about what this does and doesn't show. It is a fixed dataset, a
+fixed universe, and one family of ideas. It is not proof that the approach can't
+work. But it is a real result, and it lines up with the thing quantitative
+researchers already know and outsiders consistently underestimate: **plausible is
+cheap.** The hard part of finding alpha was never generating hypotheses. A language
+model generates a dozen excellent-sounding ones for under a dollar. The hard part is
+that almost all hypotheses are wrong, and the only way to know which is to test them
+in a way that can tell you no.
+
+One entry is still worth watching. `market_breadth_high_ratio_timing` posts a Sharpe
+of just 0.12 — nothing — but an alpha t-stat of **2.64**. Real explanatory power the
+factor model misses, wrapped in a construction too weak to trade. That is the shape a
+genuine discovery would first appear in, and it is exactly the shape a Sharpe-sorted
+leaderboard would throw away.
 
 ## How you'd implement a signal
 
@@ -310,15 +398,36 @@ before the hypotheses, precisely so it couldn't be.
 
 ## What I'd do next
 
-The bottleneck is not the pipeline, and after sixteen signals it is fairly clearly
-not the model's imagination either. It is the **hypothesis space**, which is bounded
-by what the panel contains — prices, fundamentals, a handful of macro series.
+The bottleneck is not the pipeline, and it is fairly clearly not the model's
+imagination either. It is the **hypothesis space**, which is bounded by what the
+panel contains — prices, fundamentals, a handful of macro series.
 
 Running the same agent against the same columns another thousand times mostly
 manufactures trials, and every trial raises the bar for everything already found.
 Adding a genuinely new data source — short interest and borrow cost, 13F ownership
 churn, analyst revisions and dispersion, options-implied skew — multiplies the space
-instead of re-searching it.
+instead of re-searching it. The other half of the same problem is the duplicate
+clusters above: a correlation gate that refuses a proposal too close to something
+already on the ledger would buy back hurdle for free, without needing a single new
+idea.
+
+There is a second direction, and it is about the harness rather than the ideas.
+The decile long/short construction in the worked example above is deliberately
+crude: every name in the top decile gets the same weight regardless of how strongly
+the signal likes it, and every name outside the two extreme deciles gets nothing.
+That is the right default for *judging* a signal — it is transparent, it is the
+standard academic construction, and it cannot be tuned into looking good — but it
+is not how anyone would actually hold the thing.
+
+So two variants are on the list. **Position sizing**: weight by signal strength or
+by inverse volatility instead of equally, so that conviction and risk both show up
+in the book rather than being flattened away. And a **long-only version**, because
+the short leg is where the borrow costs, the crowding and the delisting
+assumptions do their real damage, and because most of the capital that would ever
+run something like this cannot short at all. Both change the answer, and neither
+is guaranteed to change it upwards — a signal whose spread lives entirely in the
+short leg looks very different once you take the short leg away. That is precisely
+what makes it worth measuring.
 
 That's the next move: fewer, better-fed guesses rather than more of the same. The
 campaign keeps running daily, and [the results page](../../../llm-alpha/index.qmd)
