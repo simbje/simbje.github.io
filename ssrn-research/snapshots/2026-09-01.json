@@ -1,0 +1,365 @@
+{
+  "run_date": "2026-09-01",
+  "candidates_count": 75,
+  "sources_used": ["arxiv:cs.LG", "arxiv:stat.ME", "arxiv:stat.ML", "arxiv:q-fin.MF", "arxiv:q-fin.TR", "arxiv:q-fin.PM", "arxiv:q-fin.ST", "arxiv:q-fin.GN", "arxiv:q-fin.CP", "arxiv:q-fin.RM", "arxiv:econ.EM", "arxiv:econ.GN", "arxiv:econ.TH", "arxiv:stat.AP"],
+  "bucket_counts": {
+    "data_science": 26,
+    "finance": 25,
+    "social_sciences": 25
+  },
+  "top_papers": {
+    "data_science": [
+      {
+        "id": "arxiv:2608.30597",
+        "rank": 1,
+        "title": "PLC-DPO: Posterior Label Correction in Noisy and Ambiguous Preference Optimization",
+        "authors": "Boryeong Cho",
+        "url": "https://arxiv.org/abs/2608.30597",
+        "source": "arxiv",
+        "why_trending": "Direct preference optimization (DPO) is a core methodology for aligning LLMs; handling noisy/ambiguous labels is a critical practical challenge as real-world preference data is often unreliable.",
+        "topics": [
+          "LLM alignment and preference learning",
+          "Robustness in machine learning"
+        ]
+      },
+      {
+        "id": "arxiv:2608.30632",
+        "rank": 2,
+        "title": "GMTS: Gradient Magnitude-based Token Selection Improves RLVR Training for LLM Reasoning",
+        "authors": "Outongyi Lv",
+        "url": "https://arxiv.org/abs/2608.30632",
+        "source": "arxiv",
+        "why_trending": "RL with verifiable rewards is emerging as a key paradigm for LLM reasoning; understanding token importance illuminates why certain training signals yield strong performance gains.",
+        "topics": [
+          "Reinforcement learning for reasoning",
+          "Token-level analysis in transformers"
+        ]
+      },
+      {
+        "id": "arxiv:2608.30703",
+        "rank": 3,
+        "title": "SingProbe Technical Report",
+        "authors": " Sing Team",
+        "url": "https://arxiv.org/abs/2608.30703",
+        "source": "arxiv",
+        "why_trending": "Runtime safety for LLM deployment is increasingly critical; intrinsic guardrails that reuse hidden states offer a practical, efficient alternative to external safety models.",
+        "topics": [
+          "LLM safety and deployment",
+          "Interpretability and monitoring"
+        ]
+      },
+      {
+        "id": "arxiv:2608.30674",
+        "rank": 4,
+        "title": "CoMPASS: Collaborative Molecular Property Prediction via Adaptive Small-Large Model Synergy",
+        "authors": "Wentao Li",
+        "url": "https://arxiv.org/abs/2608.30674",
+        "source": "arxiv",
+        "why_trending": "Combining calibrated statistical models with LLM reasoning for molecular property prediction addresses a key challenge: knowing when LLM evidence should influence quantitative predictions.",
+        "topics": [
+          "Hybrid AI systems",
+          "Molecular and materials discovery"
+        ]
+      },
+      {
+        "id": "arxiv:2608.30646",
+        "rank": 5,
+        "title": "BiG-SURE - Bipartite Graph for Semantic Uncertainty and Reliability Estimation of LLMs",
+        "authors": "Debarpan Bhattacharya",
+        "url": "https://arxiv.org/abs/2608.30646",
+        "source": "arxiv",
+        "why_trending": "Reliable uncertainty estimation is essential for safely deploying black-box LLMs/VLMs in safety-critical settings; cross-temperature semantic agreement offers a novel black-box approach.",
+        "topics": [
+          "LLM safety and deployment",
+          "Uncertainty quantification"
+        ]
+      }
+    ],
+    "finance": [
+      {
+        "id": "arxiv:2608.31041",
+        "rank": 1,
+        "title": "Agentic Quantitative Trading: A Survey of Workflows, Systems, and Evaluation",
+        "authors": "Fengrui Hua",
+        "url": "https://arxiv.org/abs/2608.31041",
+        "source": "arxiv",
+        "why_trending": "Agentic workflows combining reasoning, tool use, and memory are becoming the dominant paradigm in quantitative trading; this survey captures a major industry shift from isolated models to integrated systems.",
+        "topics": [
+          "AI agents in finance",
+          "Quantitative trading systems"
+        ]
+      },
+      {
+        "id": "arxiv:2608.29025",
+        "rank": 2,
+        "title": "Deep Hedging Under Realistic Market Frictions: A Regime-Conditional Empirical Study of Dynamic Option Hedging on Bitcoin Options",
+        "authors": "Sheryan Kumar",
+        "url": "https://arxiv.org/abs/2608.29025",
+        "source": "arxiv",
+        "why_trending": "Deep hedging shows promise in live Bitcoin options markets, but comparisons to classical methods on realistic data (not simulations) reveal nuanced practical advantages and limitations.",
+        "topics": [
+          "Neural network derivatives pricing",
+          "Market microstructure and frictions"
+        ]
+      },
+      {
+        "id": "arxiv:2608.30321",
+        "rank": 3,
+        "title": "Optimal Block Time for AMM Liquidity Providers under Jump-Diffusion Prices",
+        "authors": "Nils Bundi",
+        "url": "https://arxiv.org/abs/2608.30321",
+        "source": "arxiv",
+        "why_trending": "Jump-diffusion models for AMM liquidity provision address a key limitation of GBM assumptions; understanding how jumps interact with block times is crucial for DeFi protocol design.",
+        "topics": [
+          "Decentralized finance and AMMs",
+          "Stochastic models for price dynamics"
+        ]
+      },
+      {
+        "id": "arxiv:2608.27076",
+        "rank": 4,
+        "title": "Tabular Deep Learning for Algorithmic Trading: Cross-Regime Bayesian Optimisation for Equity Signal Generation",
+        "authors": "Joshua Le Grice",
+        "url": "https://arxiv.org/abs/2608.27076",
+        "source": "arxiv",
+        "why_trending": "Regime-robust hyperparameter selection for equity signal generation demonstrates that targeting robustness across market regimes yields meaningful out-of-sample gains.",
+        "topics": [
+          "Quantitative trading systems",
+          "Regime-switching and robust optimization"
+        ]
+      },
+      {
+        "id": "arxiv:2608.29669",
+        "rank": 5,
+        "title": "Wasserstein-Barycentric Interaction Fields for Spatial Factor Models: Evidence from Language-Model Representations",
+        "authors": "Marcus Gawronsky",
+        "url": "https://arxiv.org/abs/2608.29669",
+        "source": "arxiv",
+        "why_trending": "Using language-model embeddings to construct spatial factor models offers a novel data source for understanding cross-asset relationships without requiring direct return covariances.",
+        "topics": [
+          "Factor models and asset pricing",
+          "Language models for finance"
+        ]
+      }
+    ],
+    "social_sciences": [
+      {
+        "id": "arxiv:2608.31059",
+        "rank": 1,
+        "title": "When Can We Work in Embedding Space? What Text Embeddings Preserve",
+        "authors": "Simon Freyaldenhoven",
+        "url": "https://arxiv.org/abs/2608.31059",
+        "source": "arxiv",
+        "why_trending": "Provides theoretical and empirical clarity on when text embeddings preserve information sufficient for downstream analysis; essential for validating embedding-based empirical work.",
+        "topics": [
+          "Text embeddings and NLP methods",
+          "Econometric methodology"
+        ]
+      },
+      {
+        "id": "arxiv:2608.30522",
+        "rank": 2,
+        "title": "Tariff Threats, Macroeconomic Expectations, and Policy Communication Strategies: Experiments Based on a Multi-Agent System",
+        "authors": "Jianhao Lin",
+        "url": "https://arxiv.org/abs/2608.30522",
+        "source": "arxiv",
+        "why_trending": "Uses multi-agent LLM simulation to study how policy communication moves household expectations; innovative method for studying macroeconomic belief formation at scale.",
+        "topics": [
+          "Macroeconomic expectations",
+          "AI-augmented empirical methods"
+        ]
+      },
+      {
+        "id": "arxiv:2608.29430",
+        "rank": 3,
+        "title": "Content Exploration Beyond the Feed: Creator Supply and the Shared Corpus",
+        "authors": "Yuanyuan Shen",
+        "url": "https://arxiv.org/abs/2608.29430",
+        "source": "arxiv",
+        "why_trending": "Decomposes platform recommendation effects from audience selection; shows production exploration raises creator supply by 8.5%, revealing feedback between exploration budgets and supply.",
+        "topics": [
+          "Platform economics and recommendations",
+          "Content creation incentives"
+        ]
+      },
+      {
+        "id": "arxiv:2608.29818",
+        "rank": 4,
+        "title": "Decarbonising price formation: unit-level evidence on battery storage and the imbalance price in the GB Balancing Mechanism",
+        "authors": "Robert Dalton",
+        "url": "https://arxiv.org/abs/2608.29818",
+        "source": "arxiv",
+        "why_trending": "Documents battery storage's rise in GB Balancing Mechanism from 0.8% to 4.4% of marginal units; timely analysis of how storage reshapes electricity price formation.",
+        "topics": [
+          "Energy markets and decarbonization",
+          "Technology adoption in markets"
+        ]
+      },
+      {
+        "id": "arxiv:2608.27980",
+        "rank": 5,
+        "title": "The Race for Elite Destinations: Education Competition and Low Fertility in Korea",
+        "authors": "Dongwoo Kim",
+        "url": "https://arxiv.org/abs/2608.27980",
+        "source": "arxiv",
+        "why_trending": "Links intense education competition to South Korea's record-low fertility through quantified assignment externality; proposes lottery-based assignment increases fertility by 0.24 children per couple.",
+        "topics": [
+          "Education and labor markets",
+          "Policy evaluation and mechanism design"
+        ]
+      }
+    ]
+  },
+  "topics": [
+    {
+      "name": "LLM alignment, safety, and deployment",
+      "paper_ids": [
+        "arxiv:2608.30597",
+        "arxiv:2608.30703",
+        "arxiv:2608.30646",
+        "arxiv:2608.30750"
+      ],
+      "summary": "Papers addressing reliable preference optimization, runtime safety guardrails, uncertainty estimation, and neuron-level safety mechanisms to enable safe deployment of LLMs and vision-language models in production."
+    },
+    {
+      "name": "Reinforcement learning for reasoning and decision-making",
+      "paper_ids": [
+        "arxiv:2608.30632",
+        "arxiv:2608.30640",
+        "arxiv:2608.30702"
+      ],
+      "summary": "Research on RL with verifiable rewards for LLM reasoning, contrastive RL with action-chunking, and agentic retrobiosynthesis search policies."
+    },
+    {
+      "name": "Hybrid AI systems and model collaboration",
+      "paper_ids": [
+        "arxiv:2608.30674",
+        "arxiv:2608.30682",
+        "arxiv:2608.31041"
+      ],
+      "summary": "Frameworks combining small and large models, semi-supervised learning with pseudo-labels, and agentic workflows integrating reasoning, tools, and memory."
+    },
+    {
+      "name": "Neural network architectures for sequential and spatial data",
+      "paper_ids": [
+        "arxiv:2608.30593",
+        "arxiv:2608.30654",
+        "arxiv:2608.30695",
+        "arxiv:2608.30633"
+      ],
+      "summary": "Innovations in CNN-RNN hybrids, transformer-based seasonal modeling for time series, liquid gated attention for continuous-time dynamics, and quantum-inspired token mixing for computer vision."
+    },
+    {
+      "name": "Molecular and materials discovery via machine learning",
+      "paper_ids": [
+        "arxiv:2608.30636",
+        "arxiv:2608.30682"
+      ],
+      "summary": "Graph neural networks with chemically grounded attributions for ADME properties and semi-supervised learning from scarce crystal data."
+    },
+    {
+      "name": "Deep learning for financial derivatives and hedging",
+      "paper_ids": [
+        "arxiv:2608.29025",
+        "arxiv:2608.30867",
+        "arxiv:2608.28399"
+      ],
+      "summary": "Neural network approaches to option hedging under realistic frictions, calibration of pricing trees, and structured trading agents."
+    },
+    {
+      "name": "Market microstructure, decentralized finance, and price dynamics",
+      "paper_ids": [
+        "arxiv:2608.30321",
+        "arxiv:2608.30999",
+        "arxiv:2608.27156"
+      ],
+      "summary": "Jump-diffusion analysis of AMM liquidity provision, metaorder modeling from public data, market design under jump-risk, and traveling waves in equity markets."
+    },
+    {
+      "name": "Quantitative trading, signal generation, and factor models",
+      "paper_ids": [
+        "arxiv:2608.27076",
+        "arxiv:2608.29669",
+        "arxiv:2608.29692",
+        "arxiv:2608.28399"
+      ],
+      "summary": "Regime-robust hyperparameter tuning, Wasserstein-barycentric spatial factors from language models, and portfolio risk bounds without covariances."
+    },
+    {
+      "name": "Credit risk, portfolio optimization, and financial risk management",
+      "paper_ids": [
+        "arxiv:2608.26473",
+        "arxiv:2608.26837",
+        "arxiv:2608.29786",
+        "arxiv:2608.27229",
+        "arxiv:2608.27295"
+      ],
+      "summary": "Disentangled VAE for credit risk, interpretable hybrid scoring, latent-state credit models, amortized posterior approximation via conditional Wasserstein GANs, and temporal GNNs for systemic risk."
+    },
+    {
+      "name": "Econometric methods, embeddings, and causal inference",
+      "paper_ids": [
+        "arxiv:2608.31059",
+        "arxiv:2608.31085",
+        "arxiv:2608.26522",
+        "arxiv:2608.26584",
+        "arxiv:2608.26606",
+        "arxiv:2608.28115"
+      ],
+      "summary": "Text embeddings for empirical analysis, moments of random coefficients in panels, high-dimensional network inference, decomposing audience preference from creative effect, and causal non-causal state-space models."
+    },
+    {
+      "name": "Platform economics, content, and recommendation systems",
+      "paper_ids": [
+        "arxiv:2608.29430",
+        "arxiv:2608.27903",
+        "arxiv:2608.27364"
+      ],
+      "summary": "Creator supply responses to exploration budgets, strategic disclosure in curation, and sophistication variation in GenAI use across organizational functions."
+    },
+    {
+      "name": "Macroeconomic expectations and policy analysis",
+      "paper_ids": [
+        "arxiv:2608.30522",
+        "arxiv:2608.29488",
+        "arxiv:2608.29843",
+        "arxiv:2608.28087"
+      ],
+      "summary": "Multi-agent LLM simulation of tariff expectations, concave consumption under conditional impatience, quality-adjusted AI price indices, and Bayesian forecasting software for fat-tailed data."
+    },
+    {
+      "name": "Mechanism design and economic theory",
+      "paper_ids": [
+        "arxiv:2608.29597",
+        "arxiv:2608.29506",
+        "arxiv:2608.28722",
+        "arxiv:2608.28866",
+        "arxiv:2608.27261",
+        "arxiv:2608.27536"
+      ],
+      "summary": "Credibility in school choice mechanisms, domain-specific risk aversion, collusion-proof dynamic project tendering, scrutiny-driven conservatism, strategy-proof random assignment, and deposits for cooperation in finitely repeated games."
+    },
+    {
+      "name": "Labor markets and education policy",
+      "paper_ids": [
+        "arxiv:2608.27980",
+        "arxiv:2608.26924"
+      ],
+      "summary": "Education competition's link to fertility in Korea and tracking occupation requirements from job ads to measure labor market shifts."
+    },
+    {
+      "name": "Energy markets and decarbonization",
+      "paper_ids": [
+        "arxiv:2608.29818"
+      ],
+      "summary": "Unit-level evidence on battery storage reshaping price formation in the GB Balancing Mechanism."
+    },
+    {
+      "name": "Computational complexity and bounded rationality",
+      "paper_ids": [
+        "arxiv:2608.29840"
+      ],
+      "summary": "Framework for Bayesian decision-making showing that optimal choice can be computationally intractable even with small state/action spaces."
+    }
+  ]
+}
