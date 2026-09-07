@@ -1,92 +1,12 @@
-## 2026-08-25
-
-**Data unavailable:** SSB tables 09429, 06988, 14700 returned no data or API error
-**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-## 2026-08-25
-
-**Data unavailable:** SSB tables 09170, 05110, 10634 returned no data or API error
-**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-## 2026-08-25
-
-**Data unavailable:** SSB tables 09189, 13760, 08800 returned no data or API error
-**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
-
-
-
-
-
-
-
-
-
-
-
-
-
-## 2026-08-25
-
-**Data unavailable:** SSB tables 06083, 09363, 05803 returned no data or API error
-**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
-
-
-
-
-
-
-
-
-
-
-
-
-## 2026-08-25
-
-**Error:** `Error in `mutate()`:`
-**Fixes applied:** non-numeric argument to binary operator in mutate(gap = high_val - low_val) due to character columns from pivot_wider; missing print() statements for ridgeline and dumbbell plots
-
-
-
-
-
-
-
-
-
-
-
 ## 2026-08-28
 
 **Data unavailable:** SSB tables 10947 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
+
+
+
 
 
 
@@ -110,10 +30,20 @@
 
 
 
+
+
+
+
+
 ## 2026-08-28
 
 **Data unavailable:** SSB tables 09186, 08668, 09481 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
+
+
+
 
 
 
@@ -133,10 +63,20 @@
 
 
 
+
+
+
+
+
 ## 2026-09-01
 
 **Data unavailable:** SSB tables 13863, 07880, 09171 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
+
+
+
 
 
 
@@ -152,10 +92,20 @@
 
 
 
+
+
+
+
+
 ## 2026-09-04
 
 **Data unavailable:** SSB tables 03013 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
+
+
+
 
 
 
@@ -167,14 +117,64 @@
 
 
 
+
+
+
+
+
 ## 2026-09-04
 
 **Data unavailable:** SSB tables 09695, 08484, 06921 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
 
 
+
+
+
+
+
 ## 2026-09-04
 
 **Error:** `Error in `filter()`:`
 **Fixes applied:** Column name mismatch in df1 filter ('pengemengden' should be 'pengetype' or check actual column), missing print() statements in plot chunks, null-guard conditions need explicit exists() + !is.null() + nrow() checks
+
+
+
+
+
+
+## 2026-09-07
+
+**Data unavailable:** SSB tables 14365, 11596, 12349 returned no data or API error
+**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
+
+
+
+## 2026-09-07
+
+**Data unavailable:** SSB tables 07855, 11653, 06265 returned no data or API error
+**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
+
+
+## 2026-09-07
+
+**Data unavailable:** SSB tables 07221, 10634, 07201 returned no data or API error
+**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
+
+## 2026-09-07
+
+**Data unavailable:** SSB tables 14700, 09170, 05196 returned no data or API error
+**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
+## 2026-09-07
+
+**Data unavailable:** SSB tables 03778, 09189, 13835 returned no data or API error
+**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
 
