@@ -1,61 +1,10 @@
-## 2026-08-28
-
-**Data unavailable:** SSB tables 10947 returned no data or API error
-**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-## 2026-08-28
-
-**Data unavailable:** SSB tables 08307 returned no data or API error
-**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-## 2026-08-28
-
-**Data unavailable:** SSB tables 09186, 08668, 09481 returned no data or API error
-**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
-
-
-
-
-
-
-
-
-
-
-
-
-
 ## 2026-08-29
 
 **Error:** `Error in `mutate()`:`
 **Fixes applied:** object '.' not found in mutate() for df1_slope_wide (column reference syntax), missing print() statement in plot-lollipop-change chunk
+
+
+
 
 
 
@@ -83,10 +32,16 @@
 
 
 
+
+
+
 ## 2026-09-01
 
 **Error:** `Error in `mutate()`:`
 **Fixes applied:** Error 1 — 'list' object cannot be coerced to type 'double' in mutate(); Missing figure: plot-area-consumption — plot built but never printed; Missing figure: plot-slope-gastypes — plot built but never printed
+
+
+
 
 
 
@@ -110,10 +65,16 @@
 
 
 
+
+
+
 ## 2026-09-04
 
 **Data unavailable:** SSB tables 11386 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
+
 
 
 
@@ -133,10 +94,16 @@
 
 
 
+
+
+
 ## 2026-09-04
 
 **Error:** `Error in `filter()`:`
 **Fixes applied:** Column name mismatch in df1 filter ('pengemengden' should be 'pengetype' or check actual column), missing print() statements in plot chunks, null-guard conditions need explicit exists() + !is.null() + nrow() checks
+
+
+
 
 
 
@@ -152,10 +119,16 @@
 
 
 
+
+
+
 ## 2026-09-07
 
 **Data unavailable:** SSB tables 07855, 11653, 06265 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
+
 
 
 
@@ -167,14 +140,41 @@
 
 
 
+
+
+
 ## 2026-09-07
 
 **Data unavailable:** SSB tables 14700, 09170, 05196 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
 
 
+
+
+
 ## 2026-09-07
 
 **Data unavailable:** SSB tables 03778, 09189, 13835 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
+
+
+## 2026-09-08
+
+**Data unavailable:** SSB tables 08268, 05803 returned no data or API error
+**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
+
+## 2026-09-08
+
+**Data unavailable:** SSB tables 08771, 11327, 09363 returned no data or API error
+**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
+## 2026-09-08
+
+**Error:** `Error in `loadNamespace()`:`
+**Fixes applied:** removed janitor dependency (janitor::clean_names() call), initialized df2_lollipop properly to avoid undefined variable error
 
