@@ -1,0 +1,353 @@
+---
+title: "Friday Special: Norway's 2026 Monetary Squeeze — Forecasting the Money Supply"
+description: "A probabilistic forecast of Norwegian monetary aggregates using ETS, ARIMA, and an ensemble, with honest out-of-sample validation."
+date: "2026-09-11"
+categories: [SSB, Friday Special, forecasting, machine learning]
+---
+
+Money supply is one of the quiet dials of a national economy: it measures how much liquid purchasing power sits in the hands of households and firms. When it contracts, it can signal tightening credit conditions and thinning household buffers. This week we ask a forecasting question rather than a descriptive one — where is Norway's money supply likely to head over the coming year, and how confident can we honestly be?
+
+To answer it, we fit real statistical models to Statistics Norway table 10949 and generate genuine forecasts with prediction intervals, then subject those models to an out-of-sample backtest so the uncertainty is earned rather than assumed.
+
+## The data
+
+```{r setup}
+#| label: setup
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = TRUE)
+
+library(tidyverse)
+library(lubridate)
+library(PxWebApiData)
+library(scales)
+library(tsibble)
+library(fable)
+library(feasts)
+library(fabletools)
+library(zoo)
+library(MetBrewer)
+library(gt)
+
+df <- NULL
+tryCatch({
+  raw <- ApiData(
+    "https://data.ssb.no/api/v0/no/table/10949",
+    Eiersektor = TRUE,
+    Pengemengden = TRUE,
+    ContentsCode = TRUE,
+    Tid = list(filter = "top", values = 400)
+  )
+  tmp          <- raw[[1]]
+  time_col     <- "måned"
+  value_col    <- "value"
+  series_col   <- "pengemengden M1/M2/M3"
+  measure_col  <- "statistikkvariabel"
+  df <- tmp |>
+    mutate(
+      value    = as.numeric(.data[[value_col]]),
+      time_str = .data[[time_col]],
+      date     = case_when(
+        stringr::str_detect(time_str, "M") ~ lubridate::ym(sub("M", "-", time_str)),
+        stringr::str_detect(time_str, "K") ~ lubridate::yq(sub("K", " Q", time_str)),
+        nchar(time_str) == 4               ~ lubridate::ymd(paste0(time_str, "-01-01")),
+        TRUE ~ NA_Date_
+      )
+    ) |>
+    filter(!is.na(value), !is.na(date))
+}, error = function(e) message("Fetch failed: ", e$message))
+if (is.null(df) || nrow(df) == 0) df <- NULL
+```
+
+```{r forecast-pipeline}
+#| label: forecast-pipeline
+# ---- Modern probabilistic forecasting pipeline (tidyverts: fable/feasts) ----
+ts_tsibble      <- NULL
+fc_fit          <- NULL
+fc_future       <- NULL
+fc_backtest_acc <- NULL
+stl_components  <- NULL
+fc_freq         <- NA_character_
+fc_h            <- NA_integer_
+fc_series_label <- NA_character_
+
+if (!is.null(df) && nrow(df) > 0) {
+  # Reduce to ONE clean univariate series before modelling.
+  ts_base <- df
+  # (a) if a measure/unit dimension exists, keep its single most common level
+  if (exists("measure_col") && !is.null(measure_col) && measure_col %in% names(ts_base)) {
+    keep_measure <- ts_base |> dplyr::count(.data[[measure_col]], sort = TRUE) |>
+      dplyr::slice(1) |> dplyr::pull(1)
+    ts_base <- ts_base |> dplyr::filter(.data[[measure_col]] == keep_measure)
+  }
+  # (b) keep the single series_col entity with the LONGEST history
+  if (exists("series_col") && !is.null(series_col) && series_col %in% names(ts_base) &&
+      dplyr::n_distinct(ts_base[[series_col]]) > 1) {
+    keep_series <- ts_base |> dplyr::group_by(.data[[series_col]]) |>
+      dplyr::summarise(np = dplyr::n_distinct(time_str), .groups = "drop") |>
+      dplyr::slice_max(np, n = 1, with_ties = FALSE) |> dplyr::pull(1)
+    ts_base <- ts_base |> dplyr::filter(.data[[series_col]] == keep_series)
+  }
+  if (exists("series_col") && !is.null(series_col) && series_col %in% names(ts_base))
+    fc_series_label <- as.character(ts_base[[series_col]][1])
+  ts_total <- ts_base |>
+    dplyr::group_by(date, time_str) |>
+    dplyr::summarise(value = sum(value, na.rm = TRUE), .groups = "drop") |>
+    dplyr::arrange(date) |>
+    dplyr::filter(!is.na(value))
+
+  fc_freq <- dplyr::case_when(
+    any(stringr::str_detect(ts_total$time_str, "M[0-9]{2}"), na.rm = TRUE) ~ "month",
+    any(stringr::str_detect(ts_total$time_str, "K[1-4]"),   na.rm = TRUE) ~ "quarter",
+    TRUE ~ "year"
+  )
+  fc_h <- switch(fc_freq, month = 12L, quarter = 8L, 5L)
+
+  ts_tsibble <- tryCatch({
+    tt <- if (fc_freq == "month") {
+      ts_total |> dplyr::mutate(idx = tsibble::yearmonth(date))
+    } else if (fc_freq == "quarter") {
+      ts_total |> dplyr::mutate(idx = tsibble::yearquarter(date))
+    } else {
+      ts_total |> dplyr::mutate(idx = as.integer(lubridate::year(date)))
+    }
+    tt |>
+      dplyr::distinct(idx, .keep_all = TRUE) |>
+      dplyr::arrange(idx) |>
+      tsibble::as_tsibble(index = idx) |>
+      tsibble::fill_gaps()
+  }, error = function(e) { message("tsibble build failed: ", e$message); NULL })
+
+  if (!is.null(ts_tsibble) && sum(!is.na(ts_tsibble$value)) >= 16L) {
+    # Impute any gaps created by fill_gaps() so ETS/ARIMA get a complete series
+    ts_tsibble$value <- zoo::na.approx(ts_tsibble$value, na.rm = FALSE)
+    ts_tsibble$value <- zoo::na.locf(ts_tsibble$value, na.rm = FALSE)
+    ts_tsibble$value <- zoo::na.locf(ts_tsibble$value, fromLast = TRUE, na.rm = FALSE)
+
+    n_obs  <- nrow(ts_tsibble)
+    n_test <- max(2L, round(n_obs * 0.2))
+    train  <- ts_tsibble |> dplyr::slice_head(n = n_obs - n_test)
+
+    # Out-of-sample backtest: fit on train, score on the held-out tail
+    fc_backtest_acc <- tryCatch({
+      bt_fit <- train |>
+        fabletools::model(ETS = fable::ETS(value), ARIMA = fable::ARIMA(value)) |>
+        dplyr::mutate(Ensemble = (ETS + ARIMA) / 2)
+      bt_fc <- bt_fit |> fabletools::forecast(h = n_test)
+      fabletools::accuracy(bt_fc, ts_tsibble) |>
+        dplyr::select(.model, RMSE, MAE, MAPE) |>
+        dplyr::arrange(RMSE)
+    }, error = function(e) { message("backtest failed: ", e$message); NULL })
+
+    # Refit on the full series, forecast the future with prediction intervals
+    fc_res <- tryCatch({
+      fit <- ts_tsibble |>
+        fabletools::model(ETS = fable::ETS(value), ARIMA = fable::ARIMA(value)) |>
+        dplyr::mutate(Ensemble = (ETS + ARIMA) / 2)
+      list(fit = fit, fc = fit |> fabletools::forecast(h = fc_h))
+    }, error = function(e) { message("forecast failed: ", e$message); NULL })
+    if (!is.null(fc_res)) { fc_fit <- fc_res$fit; fc_future <- fc_res$fc }
+
+    # STL decomposition (trend / seasonal / remainder) — needs seasonality
+    stl_components <- tryCatch({
+      if (fc_freq == "year") NULL else
+        ts_tsibble |> fabletools::model(feasts::STL(value)) |> fabletools::components()
+    }, error = function(e) { message("STL failed: ", e$message); NULL })
+  }
+}
+```
+
+The chart below shows the cleaned monthly series that the models actually see. The pipeline reduces the raw table to a single univariate series — the money-supply aggregate with the longest continuous history — so that everything downstream is honest about being one time series.
+
+```{r plot-history}
+#| label: plot-history
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+if (exists("ts_tsibble") && !is.null(ts_tsibble) && nrow(ts_tsibble) > 0) {
+  ttl <- if (!is.na(fc_series_label)) fc_series_label else "Money supply"
+  p <- ts_tsibble |>
+    ggplot(aes(x = idx, y = value)) +
+    geom_line(colour = MetBrewer::met.brewer("Hokusai1", 1), linewidth = 0.7) +
+    scale_y_continuous(labels = scales::comma) +
+    labs(
+      title = paste0("Historical series modelled: ", ttl),
+      subtitle = "Statistics Norway table 10949 — monetary aggregate (NOK million)",
+      x = NULL, y = "NOK million"
+    ) +
+    theme_minimal()
+  print(p)
+
+  first_v <- ts_tsibble$value[which(!is.na(ts_tsibble$value))[1]]
+  last_v  <- tail(ts_tsibble$value[!is.na(ts_tsibble$value)], 1)
+  first_i <- as.character(ts_tsibble$idx[which(!is.na(ts_tsibble$value))[1]])
+  last_i  <- as.character(tail(ts_tsibble$idx, 1))
+  chg     <- (last_v - first_v) / first_v * 100
+  cat(sprintf(
+    "\nThe modelled series runs from %s to %s. Over that span the level moved from %s to %s NOK million, a change of %+.1f%%.\n\n",
+    first_i, last_i, scales::comma(round(first_v)), scales::comma(round(last_v)), chg))
+} else {
+  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+}
+```
+
+## The approach
+
+This edition is authored by Claude Opus 4.8. Rather than eyeballing a trend, we lean on the tidyverts forecasting stack (tsibble, fable, feasts) and let well-established statistical methods do the work. Here is what each piece does, in plain language.
+
+**STL decomposition** splits a series into three additive parts: a slow-moving *trend*, a repeating *seasonal* pattern (the regular within-year rhythm), and a *remainder* — whatever is left over. It is a diagnostic lens: it tells us how much of the movement is structural versus calendar-driven versus noise. STL is only meaningful for monthly or quarterly data, so it is skipped for annual series.
+
+**ETS (exponential smoothing)** is a state-space model that describes a series in terms of its error, trend and seasonal components, giving more weight to recent observations. It is excellent at tracking smooth, evolving levels and stable seasonality.
+
+**ARIMA** takes a different route: it models a series through its own past values and past forecast errors, differencing away trends until the series is stationary. The `ARIMA()` function here searches automatically for the best combination of terms. Where ETS thinks in components, ARIMA thinks in correlations across time.
+
+**The ensemble** simply averages the ETS and ARIMA forecasts. Averaging competing models is one of the most reliable tricks in forecasting: when two reasonable methods disagree, the middle ground often beats either alone, because their errors partly cancel.
+
+**Prediction intervals** are the honesty mechanism. The forecast is not a single line but a distribution — an 80% and a 95% band showing the range within which future values should plausibly fall. Wider bands mean more uncertainty.
+
+**The backtest** is where claims get earned. We hide the most recent ~20% of the data, fit the models on the rest, and ask them to predict the hidden tail. Comparing predictions to what actually happened yields RMSE, MAE and MAPE — concrete measures of how wrong the models tend to be.
+
+A candid caveat up front: these models learn only from the series' own past. They cannot foresee policy shifts, interest-rate decisions, financial shocks or structural breaks. A monetary contraction driven by a sudden regime change would blindside them, and the intervals below assume the future behaves broadly like the past.
+
+## Validation
+
+```{r tbl-backtest}
+#| label: tbl-backtest
+if (exists("fc_backtest_acc") && !is.null(fc_backtest_acc) && nrow(fc_backtest_acc) > 0) {
+  tab <- fc_backtest_acc |>
+    gt() |>
+    fmt_number(columns = c(RMSE, MAE), decimals = 1) |>
+    fmt_number(columns = MAPE, decimals = 2) |>
+    cols_label(.model = "Model") |>
+    tab_header(
+      title = "Out-of-sample backtest accuracy",
+      subtitle = "Lower is better — models fit on training data, scored on the held-out tail"
+    ) |>
+    tab_options(table.font.size = px(13))
+  print(tab)
+
+  best   <- fc_backtest_acc |> dplyr::slice(1)
+  second <- if (nrow(fc_backtest_acc) > 1) fc_backtest_acc |> dplyr::slice(2) else NULL
+  if (!is.null(second)) {
+    gap <- (second$RMSE - best$RMSE) / second$RMSE * 100
+    cat(sprintf(
+      "\nOn the held-out data the **%s** model had the lowest RMSE (%s), beating the next-best (%s) by %.1f%%. Its MAPE was %.2f%%.\n\n",
+      best$.model, scales::comma(round(best$RMSE, 1)), second$.model, gap, best$MAPE))
+  } else {
+    cat(sprintf("\nThe **%s** model had the lowest backtest RMSE (%s), with a MAPE of %.2f%%.\n\n",
+                best$.model, scales::comma(round(best$RMSE, 1)), best$MAPE))
+  }
+} else {
+  cat("\n*Backtest table omitted — the validation step produced no results for this series.*\n\n")
+}
+```
+
+A word of interpretation: the model that wins the backtest is the one whose errors on genuinely unseen data were smallest. That is a much stronger endorsement than a good in-sample fit, which any flexible model can achieve.
+
+## The forecast
+
+```{r plot-forecast}
+#| label: plot-forecast
+#| fig-height: 5
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+if (exists("fc_future") && !is.null(fc_future) && exists("ts_tsibble") && !is.null(ts_tsibble) && nrow(ts_tsibble) > 0) {
+  p <- fc_future |>
+    dplyr::filter(.model == "Ensemble") |>
+    autoplot(ts_tsibble, level = c(80, 95)) +
+    scale_y_continuous(labels = scales::comma) +
+    labs(
+      title = "Ensemble forecast with 80% and 95% prediction intervals",
+      subtitle = paste0("Money supply (NOK million) — horizon: ", fc_h, " ", fc_freq, "s"),
+      x = NULL, y = "NOK million"
+    ) +
+    theme_minimal()
+  print(p)
+
+  ens  <- fc_future |> dplyr::filter(.model == "Ensemble") |> dplyr::slice_tail(n = 1)
+  pit  <- ens |> fabletools::hilo(95)
+  last_obs <- tail(ts_tsibble$value[!is.na(ts_tsibble$value)], 1)
+  # fixed: guard against NA in ens$.mean before comparison
+  dir <- if (!is.na(ens$.mean) && ens$.mean > last_obs) "an increase" else if (!is.na(ens$.mean) && ens$.mean < last_obs) "a contraction" else "little change"
+  cat(sprintf(
+    "\nThe ensemble projects %s by %s (95%% interval %s to %s). Relative to the last observed level of %s, that is %s in the money supply.\n\n",
+    scales::comma(round(ens$.mean)), as.character(ens$idx),
+    scales::comma(round(pit[["95%"]]$lower)), scales::comma(round(pit[["95%"]]$upper)),
+    scales::comma(round(last_obs)), dir))
+} else {
+  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+}
+```
+
+The shaded bands matter more than the central line. If the 95% interval is wide relative to the level, the honest message is that the direction is uncertain — the data alone cannot pin down whether the "squeeze" narrative will harden or ease.
+
+## Seasonal decomposition
+
+```{r fig-stl}
+#| label: fig-stl
+#| fig-height: 6
+#| fig-width: 9
+#| fig-show: asis
+#| dev: "png"
+if (exists("stl_components") && !is.null(stl_components) && nrow(stl_components) > 0) {
+  p <- stl_components |>
+    autoplot() +
+    labs(
+      title = "STL decomposition: trend, seasonal, and remainder",
+      subtitle = "Money supply series decomposed into structural components"
+    ) +
+    theme_minimal()
+  print(p)
+
+  var_season <- var(stl_components$season_year, na.rm = TRUE)
+  var_rem    <- var(stl_components$remainder, na.rm = TRUE)
+  share <- var_season / (var_season + var_rem) * 100
+  cat(sprintf(
+    "\nOf the variation not captured by the trend, roughly %.0f%% is attributable to the repeating seasonal pattern, with the remainder being irregular noise. A dominant trend with modest seasonality is typical of a slowly evolving monetary aggregate.\n\n",
+    share))
+} else {
+  cat("\n*Seasonal decomposition is shown only for monthly or quarterly series.*\n\n")
+}
+```
+
+## Key findings
+
+```{r note-findings}
+#| label: note-findings
+if (exists("fc_future") && !is.null(fc_future) &&
+    exists("ts_tsibble") && !is.null(ts_tsibble) && nrow(ts_tsibble) > 0) {
+
+  ens_last <- fc_future |> dplyr::filter(.model == "Ensemble") |> dplyr::slice_tail(n = 1)
+  pit      <- ens_last |> fabletools::hilo(95)
+  last_obs <- tail(ts_tsibble$value[!is.na(ts_tsibble$value)], 1)
+  # fixed: guard ens_last$.mean against NA before division
+  pct_ch   <- if (!is.na(ens_last$.mean)) (ens_last$.mean - last_obs) / last_obs * 100 else NA_real_
+  width    <- if (!is.na(ens_last$.mean)) (pit[["95%"]]$upper - pit[["95%"]]$lower) / ens_last$.mean * 100 else NA_real_
+  ttl      <- if (!is.na(fc_series_label)) fc_series_label else "the modelled aggregate"
+
+  cat("**What the data and models say:**\n\n")
+  cat(sprintf("- The forecast target is **%s** (SSB table 10949), modelled at %s frequency over a %s-step horizon.\n",
+              ttl, fc_freq, fc_h))
+  if (!is.na(pct_ch)) {
+    cat(sprintf("- The ensemble's central path implies a %+.1f%% change from the last observed level by %s.\n",
+                pct_ch, as.character(ens_last$idx)))
+  }
+  cat(sprintf("- The 95%% prediction interval spans %s to %s NOK million — a width of about %.0f%% of the point forecast.\n",
+              scales::comma(round(pit[["95%"]]$lower)),
+              scales::comma(round(pit[["95%"]]$upper)), if (!is.na(width)) width else 0))
+  if (exists("fc_backtest_acc") && !is.null(fc_backtest_acc) && nrow(fc_backtest_acc) > 0) {
+    bw <- fc_backtest_acc |> dplyr::slice(1)
+    cat(sprintf("- In out-of-sample validation the **%s** model was most accurate (RMSE %s, MAPE %.2f%%).\n",
+                bw$.model, scales::comma(round(bw$RMSE, 1)), bw$MAPE))
+  }
+  cat("\n")
+} else {
+  cat("\n*Findings omitted — the forecasting pipeline produced no usable output for this series.*\n\n")
+}
+```
+
+## Limitations and closing
+
+A few honest caveats. First, these are univariate models: they extrapolate the series' own history and know nothing about interest rates, credit conditions, or central-bank decisions that ultimately drive monetary aggregates. Second, the prediction intervals assume the future's variability resembles the past's — a structural break, a policy shock, or a financial crisis would sit outside them. Third, the further out we forecast, the wider the honest uncertainty becomes, which is exactly why the fan chart flares rather than staying a thin line.
+
+Read against the "monetary squeeze" framing, the disciplined conclusion is that the numbers printed above — the direction, the interval, and the winning model — are the story, not any headline written in advance. If the interval is wide, the data are telling us to hold our narrative loosely. That restraint is the point of a forecast built to be validated rather than merely asserted.
