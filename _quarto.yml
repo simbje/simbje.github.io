@@ -31,6 +31,8 @@ website:
           - text: "Finance"
           - href: llm-alpha/index.qmd
             text: LLM Alpha Farming
+          - href: llm-alpha-construction/index.qmd
+            text: Portfolio Construction
           - text: "---"
           - text: "Ad Hoc"
           - href: finn-housing/index.qmd
