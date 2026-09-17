@@ -1,44 +1,9 @@
 ## 2026-09-04
 
-**Data unavailable:** SSB tables 03013 returned no data or API error
-**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-## 2026-09-04
-
-**Data unavailable:** SSB tables 11386 returned no data or API error
-**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-## 2026-09-04
-
 **Data unavailable:** SSB tables 09695, 08484, 06921 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
 
 
 
@@ -68,10 +33,14 @@
 
 
 
+
+
 ## 2026-09-07
 
 **Data unavailable:** SSB tables 14365, 11596, 12349 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
 
 
 
@@ -97,10 +66,14 @@
 
 
 
+
+
 ## 2026-09-07
 
 **Data unavailable:** SSB tables 07221, 10634, 07201 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
 
 
 
@@ -122,10 +95,14 @@
 
 
 
+
+
 ## 2026-09-07
 
 **Data unavailable:** SSB tables 03778, 09189, 13835 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
 
 
 
@@ -143,10 +120,14 @@
 
 
 
+
+
 ## 2026-09-08
 
 **Data unavailable:** SSB tables 08771, 11327, 09363 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
 
 
 
@@ -160,10 +141,14 @@
 
 
 
+
+
 ## 2026-09-11
 
 **Error:** `Error in `if (ens$.mean > last_obs) ...`:`
 **Fixes applied:** missing value in if-condition due to NA in ens$.mean, null-guard logic incomplete
+
+
 
 
 
@@ -173,8 +158,23 @@
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
 
 
+
+
 ## 2026-09-14
 
 **Error:** `Error in `rename()`:`
 **Fixes applied:** Column name mismatch in df2 pivot_wider (Råolje og naturgass, eksport doesn't exist after filtering), sprintf format string error (%d for numeric oil_share), missing print() statements for plots
+
+
+
+## 2026-09-17
+
+**Data unavailable:** SSB tables 06988, 14472, 09429 returned no data or API error
+**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
+## 2026-09-17
+
+**Error:** `Error in parse(text = input): <text>:14:3: unexpected 'if'`
+**Fixes applied:** Parse error in plot-migration-slope chunk (malformed if_else statement with unclosed parenthesis); Missing print(p2) statement in plot-migration-slope chunk causing no figure output
 
