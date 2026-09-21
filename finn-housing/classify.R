@@ -34,7 +34,27 @@ API_BATCH  <- 10L    # listings per Claude API call (batching = fewer, faster ca
 MODEL      <- "claude-haiku-4-5-20251001"  # cheap + fast; good enough for classification
 
 ANTHROPIC_API_KEY <- Sys.getenv("ANTHROPIC_API_KEY")
-if (nchar(ANTHROPIC_API_KEY) == 0) stop("ANTHROPIC_API_KEY not set")
+
+# A missing key used to abort the script, which also skipped geocoding and the
+# CSV export — so the dashboard got nothing at all. Degrade instead: skip the
+# two classification passes and carry on with everything that needs no key.
+HAVE_API_KEY <- nchar(ANTHROPIC_API_KEY) > 0
+if (!HAVE_API_KEY) {
+  cat("::warning::ANTHROPIC_API_KEY mangler - hopper over klassifisering, men eksporterer dataene.\n")
+  message("ANTHROPIC_API_KEY er ikke satt — hopper over klassifiseringen. ",
+          "Geokoding og CSV-eksport kjører som normalt.")
+}
+
+# How many API batches may fail in a row before we give up on a pass. Without
+# this a dead API means hundreds of pointless retries; whatever was classified
+# before the outage is already committed and still gets exported.
+MAX_CONSECUTIVE_BATCH_FAILURES <- 5L
+
+# Force a value into something SQLite can bind: exactly length 1, never NULL.
+# Claude sometimes omits a key (e.g. "confidence"), which arrives here as NULL;
+# binding that raises "Parameter N does not have length 1" and used to kill the
+# run, discarding every classification that had not yet been exported.
+db_val <- function(x) if (length(x) != 1L) NA else x
 
 # ── Retry helper (same pattern as ssb-daily/generate_post.R) ─────────────────
 with_retry <- function(fn, max_attempts = 3L, base_wait = 2) {
@@ -142,8 +162,56 @@ Respond with ONLY valid JSON (no markdown, no explanation outside JSON):
 '
 
 # ── Connect to DB ─────────────────────────────────────────────────────────────
-if (!file.exists(DB_PATH)) stop("Database not found: ", DB_PATH, ". Run scraper.R first.")
+# No DB means the very first scrape never got off the ground. There is nothing
+# to classify and nothing to save, so leave quietly rather than failing the run.
+if (!file.exists(DB_PATH)) {
+  cat("::warning::Ingen database funnet - scraper.R har ikke produsert data enna.\n")
+  message("Database ikke funnet: ", DB_PATH, " — ingenting å klassifisere. Avslutter pent.")
+  quit(save = "no", status = 0)
+}
 con <- dbConnect(SQLite(), DB_PATH)
+
+# ── CSV snapshot export + crash safety net ────────────────────────────────────
+# Same contract as scraper.R: the classifications already written to the DB must
+# reach the dashboard even if a later pass blows up. The column list must match
+# scraper.R's — dropping floor/has_balcony here silently cost the dashboard's
+# hedonic regression two predictors.
+EXPORT_COLS <- c(
+  "finn_id", "title", "price", "size_sqm", "rooms", "address", "neighborhood",
+  "property_type", "year_built", "broker", "url", "scraped_at", "lat", "lon",
+  "category", "category_confidence", "category_reasoning", "classified_at",
+  "standard", "standard_confidence", "standard_reasoning", "standard_classified_at",
+  "floor", "has_balcony"
+)
+
+# Only scraper.R runs the ALTER TABLE migrations, so classify.R can meet a DB
+# that predates a column (the committed one has no floor/has_balcony yet).
+# Select what exists and pad the rest with NA: the CSV keeps the same columns
+# whatever the DB vintage, which is what the dashboard reads against.
+export_snapshot <- function() {
+  have <- dbListFields(con, "listings")
+  sel  <- intersect(EXPORT_COLS, have)
+  all_listings <- dbGetQuery(con, paste0(
+    "SELECT ", paste(sel, collapse = ", "),
+    " FROM listings ORDER BY scraped_at DESC"
+  ))
+  for (nm in setdiff(EXPORT_COLS, sel)) all_listings[[nm]] <- rep(NA, nrow(all_listings))
+  all_listings <- all_listings[, EXPORT_COLS, drop = FALSE]
+
+  dir.create(dirname(CSV_PATH), recursive = TRUE, showWarnings = FALSE)
+  write.csv(all_listings, CSV_PATH, row.names = FALSE, fileEncoding = "UTF-8")
+  message("CSV skrevet: ", nrow(all_listings), " totale annonser, ",
+          sum(!is.na(all_listings$category)), " klassifisert.")
+  invisible(nrow(all_listings))
+}
+
+options(error = function() {
+  cat("::warning::Klassifiseringen stoppet uventet - lagrer det vi har og fortsetter.\n")
+  message("\n!! Uventet feil — eksporterer det databasen har og avslutter pent.")
+  try(export_snapshot(), silent = TRUE)
+  try(dbDisconnect(con), silent = TRUE)
+  quit(save = "no", status = 0)
+})
 
 unclassified <- dbGetQuery(con, paste0(
   "SELECT finn_id, title, price, size_sqm, rooms, address, neighborhood,
@@ -160,9 +228,12 @@ valid_cats <- c("Luxury", "Family home", "Starter / budget", "Investment",
                 "Renovation", "Central urban", "Suburban",
                 "Waterfront / premium location")
 
-if (nrow(unclassified) == 0) {
+if (!HAVE_API_KEY) {
+  message("Hopper over kategoriklassifisering — ingen API-nøkkel.")
+} else if (nrow(unclassified) == 0) {
   message("Ingenting å klassifisere.")
 } else {
+  consecutive_batch_failures <- 0L
   for (batch_start in seq(1, nrow(unclassified), by = API_BATCH)) {
     idx   <- batch_start:min(batch_start + API_BATCH - 1L, nrow(unclassified))
     batch <- unclassified[idx, ]
@@ -192,7 +263,19 @@ if (nrow(unclassified) == 0) {
       call_claude_batch(SYSTEM_PROMPT, prompts),
       error = function(e) { message("    Batch mislyktes: ", e$message); NULL }
     )
-    if (is.null(results)) { Sys.sleep(2); next }
+    if (is.null(results)) {
+      consecutive_batch_failures <- consecutive_batch_failures + 1L
+      if (consecutive_batch_failures >= MAX_CONSECUTIVE_BATCH_FAILURES) {
+        message("    ", consecutive_batch_failures, " batcher mislyktes på rad — ",
+                "API-en er trolig nede. Avbryter kategoriklassifiseringen og ",
+                "beholder det som allerede er klassifisert.")
+        cat("::warning::Claude-API-en svarte ikke - kategoriklassifiseringen ble avbrutt, resten av analysen fortsetter.\n")
+        break
+      }
+      Sys.sleep(2)
+      next
+    }
+    consecutive_batch_failures <- 0L
 
     classified_at <- format(Sys.time(), "%Y-%m-%dT%H:%M:%S")
 
@@ -212,12 +295,16 @@ if (nrow(unclassified) == 0) {
         message("    Fuzzy-matchet '", item$category, "' → '", cat_val, "'")
       }
 
-      dbExecute(con, "
+      tryCatch(dbExecute(con, "
         UPDATE listings
         SET category = ?, category_confidence = ?, category_reasoning = ?, classified_at = ?
         WHERE finn_id = ?",
-        params = list(cat_val, conf_val, reas_val, classified_at, batch$finn_id[j])
-      )
+        params = list(db_val(cat_val), db_val(conf_val), db_val(reas_val),
+                      classified_at, batch$finn_id[j])
+      ), error = function(e) {
+        message("    Kunne ikke lagre kategori for ", batch$finn_id[j], " — ",
+                conditionMessage(e))
+      })
     }
     Sys.sleep(0.5)
   }
@@ -260,7 +347,10 @@ needs_standard <- dbGetQuery(con, paste0(
 
 message("\nAnnonser som trenger standardklassifisering: ", nrow(needs_standard))
 
-if (nrow(needs_standard) > 0) {
+if (!HAVE_API_KEY) {
+  message("Hopper over standardklassifisering — ingen API-nøkkel.")
+} else if (nrow(needs_standard) > 0) {
+  consecutive_batch_failures <- 0L
   for (batch_start in seq(1, nrow(needs_standard), by = API_BATCH)) {
     idx   <- batch_start:min(batch_start + API_BATCH - 1L, nrow(needs_standard))
     batch <- needs_standard[idx, ]
@@ -289,7 +379,18 @@ if (nrow(needs_standard) > 0) {
       call_claude_batch(STANDARD_PROMPT, prompts, max_tokens_each = 160L),
       error = function(e) { message("    Batch mislyktes: ", e$message); NULL }
     )
-    if (is.null(results)) { Sys.sleep(2); next }
+    if (is.null(results)) {
+      consecutive_batch_failures <- consecutive_batch_failures + 1L
+      if (consecutive_batch_failures >= MAX_CONSECUTIVE_BATCH_FAILURES) {
+        message("    ", consecutive_batch_failures, " batcher mislyktes på rad — ",
+                "avbryter standardklassifiseringen og beholder det vi har.")
+        cat("::warning::Claude-API-en svarte ikke - standardklassifiseringen ble avbrutt, resten av analysen fortsetter.\n")
+        break
+      }
+      Sys.sleep(2)
+      next
+    }
+    consecutive_batch_failures <- 0L
 
     standard_classified_at <- format(Sys.time(), "%Y-%m-%dT%H:%M:%S")
 
@@ -309,13 +410,17 @@ if (nrow(needs_standard) > 0) {
         message("    Fuzzy-matchet '", item$standard, "' → '", std_val, "'")
       }
 
-      dbExecute(con, "
+      tryCatch(dbExecute(con, "
         UPDATE listings
         SET standard = ?, standard_confidence = ?, standard_reasoning = ?,
             standard_classified_at = ?
         WHERE finn_id = ?",
-        params = list(std_val, conf_val, reas_val, standard_classified_at, batch$finn_id[j])
-      )
+        params = list(db_val(std_val), db_val(conf_val), db_val(reas_val),
+                      standard_classified_at, batch$finn_id[j])
+      ), error = function(e) {
+        message("    Kunne ikke lagre standard for ", batch$finn_id[j], " — ",
+                conditionMessage(e))
+      })
     }
     Sys.sleep(0.5)
   }
@@ -352,13 +457,20 @@ if (nrow(ungeocoded) > 0) {
   geocoded_n <- 0L
   for (i in seq_len(nrow(ungeocoded))) {
     row <- ungeocoded[i, ]
-    coords <- geocode_osm(row$address)
+    coords <- tryCatch(geocode_osm(row$address), error = function(e) c(NA_real_, NA_real_))
     if (!is.na(coords[1])) {
-      dbExecute(con,
-        "UPDATE listings SET lat = ?, lon = ? WHERE finn_id = ?",
-        params = list(coords[1], coords[2], row$finn_id)
-      )
-      geocoded_n <- geocoded_n + 1L
+      ok <- tryCatch({
+        dbExecute(con,
+          "UPDATE listings SET lat = ?, lon = ? WHERE finn_id = ?",
+          params = list(db_val(coords[1]), db_val(coords[2]), row$finn_id)
+        )
+        TRUE
+      }, error = function(e) {
+        message("    Kunne ikke lagre koordinater for ", row$finn_id, " — ",
+                conditionMessage(e))
+        FALSE
+      })
+      if (ok) geocoded_n <- geocoded_n + 1L
     }
     Sys.sleep(1.1)  # Nominatim rate limit: max 1 req/sec
   }
@@ -367,21 +479,6 @@ if (nrow(ungeocoded) > 0) {
 
 # ── Export CSV snapshot for Quarto rendering ──────────────────────────────────
 message("\nEksporterer CSV-øyeblikksbilde til: ", CSV_PATH)
-
-all_listings <- dbGetQuery(con, "
-  SELECT finn_id, title, price, size_sqm, rooms, address, neighborhood,
-         property_type, year_built, broker, url, scraped_at, lat, lon,
-         category, category_confidence, category_reasoning, classified_at,
-         standard, standard_confidence, standard_reasoning
-  FROM listings
-  ORDER BY scraped_at DESC
-")
-
-dir.create(dirname(CSV_PATH), recursive = TRUE, showWarnings = FALSE)
-write.csv(all_listings, CSV_PATH, row.names = FALSE, fileEncoding = "UTF-8")
-
-total       <- nrow(all_listings)
-classified  <- sum(!is.na(all_listings$category))
-message("CSV skrevet: ", total, " totale annonser, ", classified, " klassifisert.")
+export_snapshot()
 
 dbDisconnect(con)

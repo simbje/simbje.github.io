@@ -59,10 +59,23 @@ jobs:
             }
           "
 
+      # The scraper saves whatever it collected and exits 0 even when finn.no
+      # blocks it mid-run. continue-on-error is the backstop for the case it
+      # cannot handle itself (OOM, killed step): classification, the export and
+      # the commit below must still run on the data already in the DB.
       - name: 🕷️ Scrape finn.no listings
+        id: scrape
+        continue-on-error: true
         run: Rscript finn-housing/scraper.R
 
+      - name: ⚠️ Note a failed scrape
+        if: steps.scrape.outcome == 'failure'
+        run: echo "::warning::Skrapesteget feilet - fortsetter med dataene som allerede ligger i databasen."
+
       - name: 🏷️ Classify listings via Claude API
+        if: always()
+        id: classify
+        continue-on-error: true
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
@@ -79,14 +92,33 @@ jobs:
           fi
           Rscript finn-housing/classify.R
 
+      # Always commit: a partial scrape is still progress, and the point of the
+      # guards above is that whatever survived reaches the dashboard.
       - name: 💾 Commit updated data
+        if: always()
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git stash --include-untracked
+          # Only stash when there is something to stash, so the conflict branch
+          # below cannot fire on an empty "No local changes to save".
+          STASHED=false
+          if [ -n "$(git status --porcelain)" ]; then
+            git stash --include-untracked && STASHED=true
+          fi
           git pull --rebase origin main
-          git stash pop || true
+          if [ "$STASHED" = "true" ] && ! git stash pop; then
+            echo "::warning::stash pop conflicted — keeping this run's freshly scraped data"
+            # The stashed side ('theirs') is what this run produced; a conflicted
+            # merge of a SQLite file or CSV would otherwise commit garbage.
+            git checkout --theirs -- finn-housing/data/ 2>/dev/null || true
+            git add finn-housing/data/
+          fi
           git add finn-housing/data/finn_housing.db finn-housing/data/listings_export.csv
+          # Safety net: never commit a CSV with unresolved conflict markers
+          if git grep --cached -nE '^(<<<<<<<|>>>>>>>)' -- finn-housing/data/listings_export.csv; then
+            echo "::error::conflict markers in listings_export.csv — aborting the commit"
+            exit 1
+          fi
           if git diff --staged --quiet; then
             echo "Nothing to commit — no new listings or classifications."
           else

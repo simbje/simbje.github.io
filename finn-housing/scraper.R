@@ -32,6 +32,11 @@ MAX_PAGES <- 10      # max search-result pages to scrape per run
 PAGE_SLEEP <- 1.5    # seconds between search-result page fetches
 DETAIL_SLEEP <- 1.2  # seconds between individual listing fetches
 
+# How many useless fetches in a row before we conclude finn.no is blocking us
+# (or has changed its HTML) and stop scraping. Keeps a blocked run from burning
+# 10+ CI minutes on requests that will all fail, while keeping what we have.
+MAX_CONSECUTIVE_FAILURES <- 10L
+
 BASE_SEARCH_URL <- paste0(
   "https://www.finn.no/realestate/homes/search.html",
   "?location=0.20061",   # Oslo / Akershus region
@@ -105,6 +110,55 @@ tryCatch(dbExecute(con, "ALTER TABLE listings ADD COLUMN has_balcony            
 
 existing_ids <- dbGetQuery(con, "SELECT finn_id FROM listings")$finn_id
 message("Eksisterende annonser i DB: ", length(existing_ids))
+
+# ── CSV snapshot export ───────────────────────────────────────────────────────
+# Defined up front because this is also the crash-recovery path: whatever the
+# DB already holds must reach the dashboard even if a scrape dies half-way.
+# Category columns stay NA until classify.R runs — the dashboard handles that.
+CSV_PATH <- file.path(.script_dir, "data", "listings_export.csv")
+
+# Keep this list identical to classify.R's — it is the contract the dashboard
+# reads. Columns absent from an older DB are padded with NA rather than failing
+# the export, so a schema that predates a column can never cost us the run.
+EXPORT_COLS <- c(
+  "finn_id", "title", "price", "size_sqm", "rooms", "address", "neighborhood",
+  "property_type", "year_built", "broker", "url", "scraped_at", "lat", "lon",
+  "category", "category_confidence", "category_reasoning", "classified_at",
+  "standard", "standard_confidence", "standard_reasoning", "standard_classified_at",
+  "floor", "has_balcony"
+)
+
+export_snapshot <- function() {
+  have <- dbListFields(con, "listings")
+  sel  <- intersect(EXPORT_COLS, have)
+  snap <- dbGetQuery(con, paste0(
+    "SELECT ", paste(sel, collapse = ", "),
+    " FROM listings ORDER BY scraped_at DESC"
+  ))
+  for (nm in setdiff(EXPORT_COLS, sel)) snap[[nm]] <- rep(NA, nrow(snap))
+  snap <- snap[, EXPORT_COLS, drop = FALSE]
+
+  write.csv(snap, CSV_PATH, row.names = FALSE, fileEncoding = "UTF-8")
+  message("CSV-øyeblikksbilde skrevet: ", nrow(snap), " annonser → ", CSV_PATH)
+  invisible(nrow(snap))
+}
+
+# ── Crash safety net ──────────────────────────────────────────────────────────
+# finn.no breaks in a new way every few months. An abort here used to take the
+# whole pipeline with it: the CSV was never written, and because the step failed,
+# classify.R and the commit step never ran — so an entire scrape was discarded.
+# Instead: keep what the DB has, flag the run as degraded, and exit 0 so the
+# analysis downstream still runs on the data that did survive. The phases below
+# are individually guarded too; this is the net for the bug we have not hit yet.
+scrape_degraded <- FALSE
+
+options(error = function() {
+  cat("::warning::finn.no-skrapingen stoppet uventet - lagrer delvise resultater og fortsetter.\n")
+  message("\n!! Uventet feil — eksporterer det databasen har og avslutter pent.")
+  try(export_snapshot(), silent = TRUE)
+  try(dbDisconnect(con), silent = TRUE)
+  quit(save = "no", status = 0)
+})
 
 # ── HTML fetch helper ─────────────────────────────────────────────────────────
 fetch_html <- function(url) {
@@ -243,6 +297,37 @@ BROKER_DOMAINS <- c(
   "estate"         = "Estate Eiendomsmegling"
 )
 
+# ── The shape of a detail record ──────────────────────────────────────────────
+# Every field scrape_listing_detail() can return must be listed here. A field
+# missing from the returned list arrives at dbExecute() as NULL, and SQLite
+# rejects that with "Parameter N does not have length 1" — which is exactly how
+# a blocked fetch used to abort the whole run: the old failure path omitted
+# floor and has_balcony, so the first insert after a block killed the script.
+empty_detail <- function() {
+  list(title = NA_character_, price = NA_integer_,
+       size_sqm = NA_real_, rooms = NA_integer_,
+       address = NA_character_, neighborhood = NA_character_,
+       property_type = NA_character_, year_built = NA_integer_,
+       description = NA_character_, broker = NA_character_,
+       floor = NA_integer_, has_balcony = NA_integer_)
+}
+
+# Force a value into something SQLite can bind: exactly length 1, never NULL.
+db_val <- function(x) if (length(x) != 1L) NA else x
+
+# Fill in anything the parser did not produce, so every record stays bindable.
+complete_detail <- function(d) {
+  base <- empty_detail()
+  for (nm in names(base)) base[[nm]] <- db_val(d[[nm]])
+  base
+}
+
+# TRUE when a detail page yielded nothing usable — i.e. the fetch was blocked or
+# the HTML changed, as opposed to a listing that is genuinely sparse.
+detail_is_empty <- function(d) {
+  all(is.na(c(d$title, d$price, d$size_sqm, d$address)))
+}
+
 # ── Scrape individual listing page for extra details ──────────────────────────
 scrape_listing_detail <- function(finn_id) {
   url <- paste0("https://www.finn.no/realestate/homes/ad.html?finnkode=", finn_id)
@@ -251,13 +336,7 @@ scrape_listing_detail <- function(finn_id) {
     message("    Detaljhenting mislyktes for ", finn_id, ": ", e$message)
     NULL
   })
-  if (is.null(doc)) {
-    return(list(title = NA_character_, price = NA_integer_,
-                size_sqm = NA_real_, rooms = NA_integer_,
-                address = NA_character_, neighborhood = NA_character_,
-                property_type = NA_character_, year_built = NA_integer_,
-                description = NA_character_, broker = NA_character_))
-  }
+  if (is.null(doc)) return(empty_detail())
 
   # ── Key facts table (dl/dt/dd pattern on finn.no detail pages) ───────────
   dts <- trimws(html_text(html_elements(doc, "dt")))
@@ -465,11 +544,13 @@ scrape_listing_detail <- function(finn_id) {
     as.integer(grepl("^ja", tolower(trimws(balcony_raw))))
   } else NA_integer_
 
-  list(title = title, price = price, size_sqm = size_sqm, rooms = rooms,
-       address = address, neighborhood = neighborhood,
-       property_type = property_type, year_built = year_built,
-       description = description, broker = broker,
-       floor = floor, has_balcony = has_balcony)
+  complete_detail(
+    list(title = title, price = price, size_sqm = size_sqm, rooms = rooms,
+         address = address, neighborhood = neighborhood,
+         property_type = property_type, year_built = year_built,
+         description = description, broker = broker,
+         floor = floor, has_balcony = has_balcony)
+  )
 }
 
 # ── Main scrape loop ───────────────────────────────────────────────────────────
@@ -484,6 +565,13 @@ for (pg in seq_len(MAX_PAGES)) {
   page_df <- scrape_search_page(pg)
   if (is.null(page_df) || nrow(page_df) == 0) {
     message("  Ingen resultater på side ", pg, " — stopper.")
+    # Nothing at all on the very first page means finn.no blocked us or changed
+    # its HTML — not that Oslo ran out of flats for sale. Flag it, but carry on:
+    # the backfill and the export below still have work to do on existing rows.
+    if (pg == 1L) {
+      scrape_degraded <- TRUE
+      cat("::warning::Ingen annonser pa forste sokeside - finn.no kan ha endret HTML eller blokkert oss.\n")
+    }
     break
   }
 
@@ -507,36 +595,83 @@ if (length(new_rows) > 0) {
 
   scraped_at <- format(Sys.time(), "%Y-%m-%dT%H:%M:%S")
 
+  # Each listing is isolated: one unparseable page, one dropped connection or
+  # one rejected insert must not cost us the listings already stored. Too many
+  # useless fetches in a row means we are blocked, so we stop early and let the
+  # export below save what we got instead of grinding through the rest.
+  consecutive_failures <- 0L
+  n_saved <- 0L
+  n_empty <- 0L
+  n_error <- 0L
+
   for (i in seq_len(nrow(search_results))) {
-  row <- search_results[i, ]
-  message("  [", i, "/", nrow(search_results), "] finn_id=", row$finn_id)
+    row <- search_results[i, ]
+    message("  [", i, "/", nrow(search_results), "] finn_id=", row$finn_id)
 
-  detail <- scrape_listing_detail(row$finn_id)
-  Sys.sleep(DETAIL_SLEEP)
+    status <- tryCatch({
+      detail <- scrape_listing_detail(row$finn_id)
 
-  # Prefer search-result values when available; fall back to detail-page values.
-  # (Search results page is often JS-rendered, so most fields arrive as NA.)
-  final_title   <- if (!is.na(row$title))    row$title    else detail$title
-  final_price   <- if (!is.na(row$price))    row$price    else detail$price
-  final_size    <- if (!is.na(row$size_sqm)) row$size_sqm else detail$size_sqm
-  final_rooms   <- if (!is.na(row$rooms))    row$rooms    else detail$rooms
-  final_address <- if (!is.na(row$address) && nchar(row$address) > 0)
-                     row$address else detail$address
+      # Prefer search-result values when available; fall back to detail-page values.
+      # (Search results page is often JS-rendered, so most fields arrive as NA.)
+      final_title   <- if (!is.na(row$title))    row$title    else detail$title
+      final_price   <- if (!is.na(row$price))    row$price    else detail$price
+      final_size    <- if (!is.na(row$size_sqm)) row$size_sqm else detail$size_sqm
+      final_rooms   <- if (!is.na(row$rooms))    row$rooms    else detail$rooms
+      final_address <- if (!is.na(row$address) && nchar(row$address) > 0)
+                         row$address else detail$address
 
-  dbExecute(con, "
-    INSERT OR IGNORE INTO listings
-      (finn_id, title, price, size_sqm, rooms, address,
-       neighborhood, property_type, year_built, description,
-       broker, url, scraped_at, floor, has_balcony)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-    params = list(
-      row$finn_id, final_title, final_price, final_size, final_rooms, final_address,
-      detail$neighborhood, detail$property_type, detail$year_built, detail$description,
-      detail$broker, row$url, scraped_at,
-      detail$floor, detail$has_balcony
-    )
-  )
+      dbExecute(con, "
+        INSERT OR IGNORE INTO listings
+          (finn_id, title, price, size_sqm, rooms, address,
+           neighborhood, property_type, year_built, description,
+           broker, url, scraped_at, floor, has_balcony)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        params = list(
+          db_val(row$finn_id), db_val(final_title), db_val(final_price),
+          db_val(final_size), db_val(final_rooms), db_val(final_address),
+          db_val(detail$neighborhood), db_val(detail$property_type),
+          db_val(detail$year_built), db_val(detail$description),
+          db_val(detail$broker), db_val(row$url), scraped_at,
+          db_val(detail$floor), db_val(detail$has_balcony)
+        )
+      )
+
+      # The row is stored either way — a blank one can be completed by the
+      # backfill pass later — but a blank detail page still counts as a failed
+      # fetch for the purpose of noticing that we are being blocked.
+      if (detail_is_empty(detail)) "empty" else "ok"
+    }, error = function(e) {
+      message("    Hopper over finn_id=", row$finn_id, " — ", conditionMessage(e))
+      "error"
+    })
+
+    if (identical(status, "ok")) {
+      n_saved <- n_saved + 1L
+      consecutive_failures <- 0L
+    } else {
+      if (identical(status, "empty")) n_empty <- n_empty + 1L else n_error <- n_error + 1L
+      consecutive_failures <- consecutive_failures + 1L
+    }
+
+    Sys.sleep(DETAIL_SLEEP)
+
+    if (consecutive_failures >= MAX_CONSECUTIVE_FAILURES) {
+      message("  ", consecutive_failures, " mislykkede henting på rad — finn.no blokkerer oss",
+              " trolig. Stopper detaljhentingen og beholder det vi har.")
+      cat("::warning::finn.no sluttet a svare etter ", i, " av ", nrow(search_results),
+          " annonser - beholder de innsamlede dataene og fortsetter.\n", sep = "")
+      scrape_degraded <- TRUE
+      break
+    }
   }  # end new-listings loop
+
+  message("  Detaljhenting ferdig: ", n_saved, " med data, ", n_empty,
+          " tomme, ", n_error, " feilet.")
+
+  # Individual failures are routine — ads get pulled while we are paginating.
+  # Only call the run degraded when a real share of it failed.
+  n_attempted <- n_saved + n_empty + n_error
+  if (n_attempted > 0 && (n_empty + n_error) > n_attempted / 3) scrape_degraded <- TRUE
 } else {
   message("Ingen nye annonser funnet.")
 }
@@ -561,13 +696,26 @@ needs_backfill <- dbGetQuery(con, paste0(
 if (nrow(needs_backfill) > 0) {
   message("\nEtterlyser ", nrow(needs_backfill),
           " eksisterende annonser som mangler pris/størrelse...")
+  consecutive_failures <- 0L
   for (i in seq_len(nrow(needs_backfill))) {
     fid <- needs_backfill$finn_id[i]
     message("  [", i, "/", nrow(needs_backfill), "] etterlys finn_id=", fid)
     d <- tryCatch(scrape_listing_detail(fid), error = function(e) NULL)
-    if (is.null(d)) { Sys.sleep(DETAIL_SLEEP); next }
 
-    dbExecute(con, "
+    if (is.null(d) || detail_is_empty(d)) {
+      consecutive_failures <- consecutive_failures + 1L
+      if (consecutive_failures >= MAX_CONSECUTIVE_FAILURES) {
+        message("  ", consecutive_failures, " tomme svar på rad — avbryter etterlysingen",
+                " etter ", i, " av ", nrow(needs_backfill), ".")
+        scrape_degraded <- TRUE
+        break
+      }
+      Sys.sleep(DETAIL_SLEEP)
+      next
+    }
+    consecutive_failures <- 0L
+
+    tryCatch(dbExecute(con, "
       UPDATE listings SET
         title         = COALESCE(title,         ?),
         price         = COALESCE(price,         ?),
@@ -583,12 +731,15 @@ if (nrow(needs_backfill) > 0) {
         has_balcony   = COALESCE(has_balcony,   ?)
       WHERE finn_id = ?",
       params = list(
-        d$title, d$price, d$size_sqm, d$rooms, d$address,
-        d$neighborhood, d$property_type, d$year_built, d$description, d$broker,
-        d$floor, d$has_balcony,
+        db_val(d$title), db_val(d$price), db_val(d$size_sqm), db_val(d$rooms),
+        db_val(d$address), db_val(d$neighborhood), db_val(d$property_type),
+        db_val(d$year_built), db_val(d$description), db_val(d$broker),
+        db_val(d$floor), db_val(d$has_balcony),
         fid
       )
-    )
+    ), error = function(e) {
+      message("    Kunne ikke oppdatere ", fid, " — ", conditionMessage(e))
+    })
     Sys.sleep(DETAIL_SLEEP)
   }
   message("  Etterlysing ferdig.")
@@ -607,15 +758,32 @@ needs_floor <- dbGetQuery(con, paste0(
 
 if (nrow(needs_floor) > 0) {
   message("\nEtterlyser etasje/balkong for ", nrow(needs_floor), " annonser...")
+  consecutive_failures <- 0L
   for (i in seq_len(nrow(needs_floor))) {
     fid <- needs_floor$finn_id[i]
     message("  [", i, "/", nrow(needs_floor), "] etterlys finn_id=", fid)
     d <- tryCatch(scrape_listing_detail(fid), error = function(e) NULL)
-    if (!is.null(d) && (!is.na(d$floor) || !is.na(d$has_balcony))) {
-      dbExecute(con,
+
+    if (is.null(d) || detail_is_empty(d)) {
+      consecutive_failures <- consecutive_failures + 1L
+      if (consecutive_failures >= MAX_CONSECUTIVE_FAILURES) {
+        message("  ", consecutive_failures, " tomme svar på rad — avbryter etterlysingen",
+                " etter ", i, " av ", nrow(needs_floor), ".")
+        scrape_degraded <- TRUE
+        break
+      }
+      Sys.sleep(DETAIL_SLEEP)
+      next
+    }
+    consecutive_failures <- 0L
+
+    if (!is.na(d$floor) || !is.na(d$has_balcony)) {
+      tryCatch(dbExecute(con,
         "UPDATE listings SET floor = ?, has_balcony = ? WHERE finn_id = ?",
-        params = list(d$floor, d$has_balcony, fid)
-      )
+        params = list(db_val(d$floor), db_val(d$has_balcony), fid)
+      ), error = function(e) {
+        message("    Kunne ikke oppdatere etasje/balkong for ", fid, " — ", conditionMessage(e))
+      })
     }
     Sys.sleep(DETAIL_SLEEP)
   }
@@ -623,17 +791,14 @@ if (nrow(needs_floor) > 0) {
 }
 
 # ── Export CSV snapshot so the Quarto page can render even before classify.R ──
-# Category columns will be NA until classify.R runs — the dashboard handles this.
-CSV_PATH <- file.path(.script_dir, "data", "listings_export.csv")
-snap <- dbGetQuery(con, "
-  SELECT finn_id, title, price, size_sqm, rooms, address, neighborhood,
-         property_type, year_built, broker, url, scraped_at, lat, lon,
-         category, category_confidence, category_reasoning, classified_at,
-         standard, standard_confidence, standard_reasoning, standard_classified_at,
-         floor, has_balcony
-  FROM listings ORDER BY scraped_at DESC
-")
-write.csv(snap, CSV_PATH, row.names = FALSE, fileEncoding = "UTF-8")
-message("CSV-øyeblikksbilde skrevet: ", CSV_PATH)
+n_exported <- export_snapshot()
+
+if (scrape_degraded) {
+  message("\nStatus: DELVIS — noe av skrapingen mislyktes, men alt vi fikk er lagret.")
+  cat("::warning::Skrapingen var delvis - ", n_exported,
+      " annonser lagret. Analysen fortsetter med det vi har.\n", sep = "")
+} else {
+  message("\nStatus: OK — ", n_exported, " annonser lagret.")
+}
 
 dbDisconnect(con)
