@@ -208,6 +208,7 @@ One of the most quietly alarming findings in Norwegian social statistics is how 
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_avg") && !is.null(df1_avg) && nrow(df1_avg) > 0) {
   palette_area <- met.brewer("Hiroshige", n = length(unique(df1_avg[["mening og mestring"]])),
@@ -242,7 +243,7 @@ if (exists("df1_avg") && !is.null(df1_avg) && nrow(df1_avg) > 0) {
 
   print(p)
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -251,6 +252,7 @@ if (exists("df1_avg") && !is.null(df1_avg) && nrow(df1_avg) > 0) {
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_dumbbell") && !is.null(df1_dumbbell) && nrow(df1_dumbbell) > 0) {
   df1_dumbbell_plot <- df1_dumbbell |>
@@ -290,7 +292,7 @@ if (exists("df1_dumbbell") && !is.null(df1_dumbbell) && nrow(df1_dumbbell) > 0) 
 
   print(p)  # fixed: explicit print() for missing dumbbell figure
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -305,6 +307,7 @@ Travel data offers a surprisingly reliable proxy for economic stratification. Ai
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df2_mode_trend") && !is.null(df2_mode_trend) && nrow(df2_mode_trend) > 0) {
   n_modes <- length(unique(df2_mode_trend[["transportmåte"]]))
@@ -354,7 +357,7 @@ if (exists("df2_mode_trend") && !is.null(df2_mode_trend) && nrow(df2_mode_trend)
 
   print(p)  # fixed: explicit print() for missing travel-modes figure
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -363,6 +366,7 @@ if (exists("df2_mode_trend") && !is.null(df2_mode_trend) && nrow(df2_mode_trend)
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df2_quarter") && !is.null(df2_quarter) && nrow(df2_quarter) > 0) {
   df2_quarter_plot <- df2_quarter |>
@@ -404,7 +408,7 @@ if (exists("df2_quarter") && !is.null(df2_quarter) && nrow(df2_quarter) > 0) {
 
   print(p)
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -419,6 +423,7 @@ The richest insight from combining these two datasets is structural rather than 
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_shares") && !is.null(df1_shares) && nrow(df1_shares) > 0) {
   df1_ridge <- df1_shares |>
@@ -462,7 +467,7 @@ if (exists("df1_shares") && !is.null(df1_shares) && nrow(df1_shares) > 0) {
 
   print(p)
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 

@@ -305,6 +305,7 @@ When supply of new homes is limited, price signals in the resale market become o
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_unadj") && !is.null(df1_unadj) && nrow(df1_unadj) > 0) {
 
@@ -347,13 +348,13 @@ if (exists("df1_unadj") && !is.null(df1_unadj) && nrow(df1_unadj) > 0) {
     bottom_val    <- min(latest_vals$value, na.rm = TRUE)
     spread        <- round(top_val - bottom_val, 1)
     cat(sprintf(
-      "\nIn the most recent quarter (%s), %s recorded the highest price index at %.1f, while %s stood at %.1f — a gap of %.1f index points between the strongest and weakest regional markets.\n\n",
+      "\n\nIn the most recent quarter (%s), %s recorded the highest price index at %.1f, while %s stood at %.1f — a gap of %.1f index points between the strongest and weakest regional markets.\n\n",
       format(latest_date, "%Y Q%q"), top_region, top_val, bottom_region, bottom_val, spread
     ))
   }
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -366,6 +367,7 @@ House prices do not rise in a vacuum. The supply side of the housing market is s
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df2_started") && !is.null(df2_started) && nrow(df2_started) > 0) {
 
@@ -423,14 +425,14 @@ if (exists("df2_started") && !is.null(df2_started) && nrow(df2_started) > 0) {
     total_n   <- sum(latest_2$value, na.rm = TRUE)
     pct_top   <- round(100 * top_n / total_n, 1)
     cat(sprintf(
-      "\nIn %s, %s accounted for %s dwellings started — roughly %.1f%% of the %s total across all shown building types.\n\n",
+      "\n\nIn %s, %s accounted for %s dwellings started — roughly %.1f%% of the %s total across all shown building types.\n\n",
       format(latest_yr2, "%Y"), top_type,
       comma(top_n), pct_top, comma(total_n)
     ))
   }
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -443,6 +445,7 @@ A strained housing market and sluggish construction sector inevitably interact w
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df3_status_trend") && !is.null(df3_status_trend) && nrow(df3_status_trend) > 0) {
 
@@ -481,13 +484,13 @@ if (exists("df3_status_trend") && !is.null(df3_status_trend) && nrow(df3_status_
   out_val  <- lq |> filter(status_en == "Outside labour force") |> pull(value) |> sum()
 
   cat(sprintf(
-    "\nIn the most recent quarter (%s): employed persons totalled %s thousand, unemployed %s thousand, and those outside the labour force %s thousand.\n\n",
+    "\n\nIn the most recent quarter (%s): employed persons totalled %s thousand, unemployed %s thousand, and those outside the labour force %s thousand.\n\n",
     format(latest_q, "%Y Q%q"),
     comma(round(emp_val)), comma(round(unemp_val)), comma(round(out_val))
   ))
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -500,6 +503,7 @@ Beyond the time trend, the most recent quarter's snapshot shows how dramatically
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_latest") && !is.null(df1_latest) && nrow(df1_latest) > 0) {
 
@@ -542,12 +546,12 @@ if (exists("df1_latest") && !is.null(df1_latest) && nrow(df1_latest) > 0) {
   bot_v   <- min(df1_lollipop$value)
   ratio   <- round(top_v / bot_v, 2)
   cat(sprintf(
-    "\n%s has the highest current index at %.1f, compared to %.1f in %s — a ratio of %.2fx between the most and least expensive regions tracked.\n\n",
+    "\n\n%s has the highest current index at %.1f, compared to %.1f in %s — a ratio of %.2fx between the most and least expensive regions tracked.\n\n",
     top_r, top_v, bot_v, bot_r, ratio
   ))
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -560,6 +564,7 @@ The final leg of the trilemma is external trade. Norway's goods trade balance ha
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df4_flows") && !is.null(df4_flows) && nrow(df4_flows) > 0) {
 
@@ -614,7 +619,7 @@ if (exists("df4_flows") && !is.null(df4_flows) && nrow(df4_flows) > 0) {
     ml_pct <- if (!is.na(ml_bn) && exp_bn != 0) round(100 * ml_bn / exp_bn, 1) else NA_real_
 
     cat(sprintf(
-      "\nIn %s, Norway's goods trade balance stood at NOK %.1f billion. Total exports were NOK %.1f billion against imports of NOK %.1f billion.",
+      "\n\nIn %s, Norway's goods trade balance stood at NOK %.1f billion. Total exports were NOK %.1f billion against imports of NOK %.1f billion.",
       format(latest_yr4, "%Y"), bal_bn, exp_bn, imp_bn
     ))
     if (!is.na(ml_pct)) {
@@ -628,7 +633,7 @@ if (exists("df4_flows") && !is.null(df4_flows) && nrow(df4_flows) > 0) {
   }
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -636,6 +641,7 @@ if (exists("df4_flows") && !is.null(df4_flows) && nrow(df4_flows) > 0) {
 
 ```{r key-findings}
 #| echo: true
+#| results: asis
 
 findings <- character(0)
 

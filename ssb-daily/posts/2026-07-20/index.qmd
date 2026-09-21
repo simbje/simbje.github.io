@@ -227,6 +227,7 @@ Few economic stories are as persistent as Norway's commitment to its continental
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_total") && !is.null(df1_total) && nrow(df1_total) > 0) {
   pal <- met.brewer("Hokusai2", n = 5)
@@ -252,7 +253,7 @@ if (exists("df1_total") && !is.null(df1_total) && nrow(df1_total) > 0) {
     )
   print(p1)
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -261,6 +262,7 @@ if (exists("df1_total") && !is.null(df1_total) && nrow(df1_total) > 0) {
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_lollipop") && !is.null(df1_lollipop) && nrow(df1_lollipop) > 0) {
   pal <- met.brewer("Hokusai2", n = 5)
@@ -298,7 +300,7 @@ if (exists("df1_lollipop") && !is.null(df1_lollipop) && nrow(df1_lollipop) > 0) 
     )
   print(p2) # fixed: added print() to render the plot
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -313,6 +315,7 @@ Norway is not a large consumer of base metals in global terms, but its aluminium
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df2_slope") && !is.null(df2_slope) && nrow(df2_slope) > 0) {
   pal <- met.brewer("Hokusai2", n = 7)
@@ -370,7 +373,7 @@ if (exists("df2_slope") && !is.null(df2_slope) && nrow(df2_slope) > 0) {
     )
   print(p3)
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -385,6 +388,7 @@ The fuel-consumption data from SSB's petroleum products sales statistics offer a
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df3_ridge") && !is.null(df3_ridge) && nrow(df3_ridge) > 0) {
   pal <- met.brewer("Hokusai2", n = 6)
@@ -417,7 +421,7 @@ if (exists("df3_ridge") && !is.null(df3_ridge) && nrow(df3_ridge) > 0) {
     )
   print(p4)
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -426,6 +430,7 @@ if (exists("df3_ridge") && !is.null(df3_ridge) && nrow(df3_ridge) > 0) {
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df3_total") && !is.null(df3_total) && nrow(df3_total) > 0) {
   pal <- met.brewer("Hokusai2", n = 5)
@@ -465,10 +470,10 @@ if (exists("df3_total") && !is.null(df3_total) && nrow(df3_total) > 0) {
       )
     print(p5)
   } else {
-    cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+    cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
   }
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 

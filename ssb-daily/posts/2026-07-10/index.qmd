@@ -240,6 +240,7 @@ Since Statistics Norway rebased its housing price index to 2015, the index has r
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_index") && !is.null(df1_index) && nrow(df1_index) > 0) {
 
@@ -292,7 +293,7 @@ if (exists("df1_index") && !is.null(df1_index) && nrow(df1_index) > 0) {
   print(p)
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -301,6 +302,7 @@ if (exists("df1_index") && !is.null(df1_index) && nrow(df1_index) > 0) {
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_yoy") && !is.null(df1_yoy) && nrow(df1_yoy) > 0) {
 
@@ -345,7 +347,7 @@ if (exists("df1_yoy") && !is.null(df1_yoy) && nrow(df1_yoy) > 0) {
   print(p)
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -360,6 +362,7 @@ While housing costs climb, the supply of vocationally trained workers is failing
 #| fig-width: 10
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df2_age_trend") && !is.null(df2_age_trend) && nrow(df2_age_trend) > 0) {
 
@@ -403,7 +406,7 @@ if (exists("df2_age_trend") && !is.null(df2_age_trend) && nrow(df2_age_trend) > 
   print(p)
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -412,6 +415,7 @@ if (exists("df2_age_trend") && !is.null(df2_age_trend) && nrow(df2_age_trend) > 
 #| fig-width: 8
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df2_gender") && !is.null(df2_gender) && nrow(df2_gender) > 0) {
 
@@ -464,11 +468,11 @@ if (exists("df2_gender") && !is.null(df2_gender) && nrow(df2_gender) > 0) {
     print(p)
 
   } else {
-    cat("\n*Figure omitted — insufficient data for slope chart.*\n\n")
+    cat("\n\n*Figure omitted — insufficient data for slope chart.*\n\n")
   }
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -481,6 +485,7 @@ The most revealing framing is to place both series in the same temporal context.
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_all_index") && !is.null(df1_all_index) && nrow(df1_all_index) > 0 &&
     exists("df2_total")     && !is.null(df2_total)     && nrow(df2_total)     > 0) {
@@ -584,15 +589,15 @@ if (exists("df1_all_index") && !is.null(df1_all_index) && nrow(df1_all_index) > 
       print(p) # fixed: added explicit print() to render dumbbell plot
 
     } else {
-      cat("\n*Figure omitted — column mismatch in dumbbell pivot.*\n\n")
+      cat("\n\n*Figure omitted — column mismatch in dumbbell pivot.*\n\n")
     }
 
   } else {
-    cat("\n*Figure omitted — insufficient overlapping years for dumbbell chart.*\n\n")
+    cat("\n\n*Figure omitted — insufficient overlapping years for dumbbell chart.*\n\n")
   }
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 

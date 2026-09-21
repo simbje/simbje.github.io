@@ -231,6 +231,7 @@ Norway's push for electrification and energy efficiency has not affected all res
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_total") && !is.null(df1_total) && nrow(df1_total) > 0) {
   palette_e <- met.brewer("Hokusai2", n = length(unique(df1_total$bygningstype)), type = "discrete")
@@ -257,7 +258,7 @@ if (exists("df1_total") && !is.null(df1_total) && nrow(df1_total) > 0) {
     )
   print(p1)
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -266,6 +267,7 @@ if (exists("df1_total") && !is.null(df1_total) && nrow(df1_total) > 0) {
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_heatmap") && !is.null(df1_heatmap) && nrow(df1_heatmap) > 0) {
   # Normalise within building type for relative comparison
@@ -298,7 +300,7 @@ if (exists("df1_heatmap") && !is.null(df1_heatmap) && nrow(df1_heatmap) > 0) {
     )
   print(p2)
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -313,6 +315,7 @@ Domestic road haulage is a reliable proxy for real economic activity. When goods
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df2_annual") && !is.null(df2_annual) && nrow(df2_annual) > 0) {
   # Latest two comparable years for lollipop comparison
@@ -340,7 +343,7 @@ if (exists("df2_annual") && !is.null(df2_annual) && nrow(df2_annual) > 0) {
     )
 
   if (nrow(df2_lollipop) == 0) {
-    cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+    cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
   } else {
     clrs <- c("Increase" = "#3d7e9a", "Decline" = "#c0392b")
 
@@ -373,7 +376,7 @@ if (exists("df2_annual") && !is.null(df2_annual) && nrow(df2_annual) > 0) {
     print(p3)
   }
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -388,6 +391,7 @@ Perhaps the most consequential finding sits in the producer price indices for fi
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df3_ridge") && !is.null(df3_ridge) && nrow(df3_ridge) > 0) {
   n_categories <- length(unique(df3_ridge$varegruppe))
@@ -425,7 +429,7 @@ if (exists("df3_ridge") && !is.null(df3_ridge) && nrow(df3_ridge) > 0) {
     )
   print(p4) # fixed: added explicit print()
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -434,6 +438,7 @@ if (exists("df3_ridge") && !is.null(df3_ridge) && nrow(df3_ridge) > 0) {
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df3_index") && !is.null(df3_index) && nrow(df3_index) > 0) {
   n_categories <- length(unique(df3_index$varegruppe))
@@ -480,7 +485,7 @@ if (exists("df3_index") && !is.null(df3_index) && nrow(df3_index) > 0) {
     )
   print(p5) # fixed: added explicit print()
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 

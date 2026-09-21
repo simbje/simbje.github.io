@@ -251,6 +251,7 @@ Norway's total export figures have long been dominated by petroleum. But the mai
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_trade") && !is.null(df1_trade) && nrow(df1_trade) > 0) {
 
@@ -286,13 +287,13 @@ if (exists("df1_trade") && !is.null(df1_trade) && nrow(df1_trade) > 0) {
   if (nrow(mainland) > 0 && nrow(total_exp) > 0) {
     share <- mainland$value / total_exp$value * 100
     cat(sprintf(
-      "\nIn %d, mainland exports accounted for %.1f%% of total exports (%.2f trillion NOK out of %.2f trillion NOK).\n\n",
+      "\n\nIn %d, mainland exports accounted for %.1f%% of total exports (%.2f trillion NOK out of %.2f trillion NOK).\n\n",
       latest_yr, share, mainland$value / 1e6, total_exp$value / 1e6
     ))
   }
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -301,6 +302,7 @@ if (exists("df1_trade") && !is.null(df1_trade) && nrow(df1_trade) > 0) {
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_waterfall") && !is.null(df1_waterfall) && nrow(df1_waterfall) > 0) {
 
@@ -336,13 +338,13 @@ if (exists("df1_waterfall") && !is.null(df1_waterfall) && nrow(df1_waterfall) > 
   worst_yr <- df1_waterfall[which.min(df1_waterfall$change), ]
   best_yr  <- df1_waterfall[which.max(df1_waterfall$change), ]
   cat(sprintf(
-    "\nThe sharpest single-year deterioration in the trade balance occurred in %d (%.2f trillion NOK change), while the strongest improvement came in %d (+%.2f trillion NOK).\n\n",
+    "\n\nThe sharpest single-year deterioration in the trade balance occurred in %d (%.2f trillion NOK change), while the strongest improvement came in %d (+%.2f trillion NOK).\n\n",
     worst_yr$year, worst_yr$change / 1e6,
     best_yr$year, best_yr$change / 1e6
   ))
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -355,6 +357,7 @@ Norway has reduced smoking substantially over recent decades, but the pace of de
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df2_age") && !is.null(df2_age) && nrow(df2_age) > 0) {
 
@@ -393,7 +396,7 @@ if (exists("df2_age") && !is.null(df2_age) && nrow(df2_age) > 0) {
       slice_max(mean_val, n = 1)
 
     cat(sprintf(
-      "\nAmong the age groups tracked, '%s' recorded the highest average daily smoking prevalence (%.1f%% on average across years).\n\n",
+      "\n\nAmong the age groups tracked, '%s' recorded the highest average daily smoking prevalence (%.1f%% on average across years).\n\n",
       highest_age$age_group, highest_age$mean_val
     ))
 
@@ -428,7 +431,7 @@ if (exists("df2_age") && !is.null(df2_age) && nrow(df2_age) > 0) {
 
       top_age <- df2_age_latest[which.max(df2_age_latest$value), ]
       cat(sprintf(
-        "\nIn %d, the age group '%s' had the highest daily smoking rate at %.1f%%.\n\n",
+        "\n\nIn %d, the age group '%s' had the highest daily smoking rate at %.1f%%.\n\n",
         latest_smoke_yr, top_age$age_group, top_age$value
       ))
     }
@@ -462,13 +465,13 @@ if (exists("df2_age") && !is.null(df2_age) && nrow(df2_age) > 0) {
     latest_s <- df2_trend |> filter(year == max(year))
     earliest_s <- df2_trend |> filter(year == min(year))
     cat(sprintf(
-      "\nThe aggregate daily smoking rate moved from %.1f%% in %d to %.1f%% in %d.\n\n",
+      "\n\nThe aggregate daily smoking rate moved from %.1f%% in %d to %.1f%% in %d.\n\n",
       earliest_s$value, earliest_s$year, latest_s$value, latest_s$year
     ))
   }
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -477,6 +480,7 @@ if (exists("df2_age") && !is.null(df2_age) && nrow(df2_age) > 0) {
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df2_daily") && !is.null(df2_daily) && nrow(df2_daily) > 0) {
 
@@ -542,22 +546,22 @@ if (exists("df2_daily") && !is.null(df2_daily) && nrow(df2_daily) > 0) {
         early_row <- df2_db_wide |> filter(yr == min(yr))
         late_row  <- df2_db_wide |> filter(yr == max(yr))
         cat(sprintf(
-          "\nBetween %d and %d, %s smoking prevalence moved from %.1f%% to %.1f%%, and %s from %.1f%% to %.1f%%.\n\n",
+          "\n\nBetween %d and %d, %s smoking prevalence moved from %.1f%% to %.1f%%, and %s from %.1f%% to %.1f%%.\n\n",
           min(df2_db_wide$yr), max(df2_db_wide$yr),
           g1, early_row[[g1]], late_row[[g1]],
           g2, early_row[[g2]], late_row[[g2]]
         ))
       } else {
-        cat("\n*Figure omitted — gender categories not in expected format.*\n\n")
+        cat("\n\n*Figure omitted — gender categories not in expected format.*\n\n")
       }
     } else {
-      cat("\n*Figure omitted — insufficient gender-year combinations for dumbbell chart.*\n\n")
+      cat("\n\n*Figure omitted — insufficient gender-year combinations for dumbbell chart.*\n\n")
     }
   } else {
-    cat("\n*Figure omitted — gender column not found in smoking data.*\n\n")
+    cat("\n\n*Figure omitted — gender column not found in smoking data.*\n\n")
   }
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -570,6 +574,7 @@ As Norway's own fertility rate has declined, the resident population has increas
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df3_citizens") && !is.null(df3_citizens) && nrow(df3_citizens) > 0) {
 
@@ -618,22 +623,23 @@ if (exists("df3_citizens") && !is.null(df3_citizens) && nrow(df3_citizens) > 0) 
       slice_min(growth, n = 1)
 
     cat(sprintf(
-      "\nAmong the nationalities shown, '%s' recorded the largest proportional increase over the period (+%.1f index points), while '%s' showed the smallest change (%.1f index points).\n\n",
+      "\n\nAmong the nationalities shown, '%s' recorded the largest proportional increase over the period (+%.1f index points), while '%s' showed the smallest change (%.1f index points).\n\n",
       fastest$statsborgerskap, fastest$growth,
       slowest$statsborgerskap, slowest$growth
     ))
   } else {
-    cat("\n*Figure omitted — no indexed citizenship data available.*\n\n")
+    cat("\n\n*Figure omitted — no indexed citizenship data available.*\n\n")
   }
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
 ## Key Findings
 
 ```{r key-findings}
+#| results: asis
 cat("## Key findings from the data\n\n")
 
 if (!is.null(df1_trade) && nrow(df1_trade) > 0) {

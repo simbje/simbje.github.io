@@ -253,6 +253,7 @@ Norway's refugee population is not monolithic. Over the decade captured in SSB t
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_regions") && !is.null(df1_regions) && nrow(df1_regions) > 0) {
 
@@ -294,7 +295,7 @@ if (exists("df1_regions") && !is.null(df1_regions) && nrow(df1_regions) > 0) {
   print(p)
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -303,6 +304,7 @@ if (exists("df1_regions") && !is.null(df1_regions) && nrow(df1_regions) > 0) {
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_dumbbell") && !is.null(df1_dumbbell) && nrow(df1_dumbbell) > 0) {
 
@@ -355,7 +357,7 @@ if (exists("df1_dumbbell") && !is.null(df1_dumbbell) && nrow(df1_dumbbell) > 0) 
   print(p)
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -368,6 +370,7 @@ The conviction data from SSB table 10634 covers 2011 to 2020 and offers a granul
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df2_heatmap") && !is.null(df2_heatmap) && nrow(df2_heatmap) > 0) {
 
@@ -408,7 +411,7 @@ if (exists("df2_heatmap") && !is.null(df2_heatmap) && nrow(df2_heatmap) > 0) {
   print(p)
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -421,6 +424,7 @@ The ridgeline below disaggregates the conviction distributions across three broa
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df2_age_trend") && !is.null(df2_age_trend) && nrow(df2_age_trend) > 0) {
 
@@ -455,7 +459,7 @@ if (exists("df2_age_trend") && !is.null(df2_age_trend) && nrow(df2_age_trend) > 
   print(p)
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -466,6 +470,7 @@ if (exists("df2_age_trend") && !is.null(df2_age_trend) && nrow(df2_age_trend) > 
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df2_age_total") && !is.null(df2_age_total) && nrow(df2_age_total) > 0) {
 
@@ -529,7 +534,7 @@ if (exists("df2_lollipop") && !is.null(df2_lollipop) && nrow(df2_lollipop) > 0) 
   print(p)
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 

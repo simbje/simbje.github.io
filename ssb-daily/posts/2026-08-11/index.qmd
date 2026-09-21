@@ -222,6 +222,7 @@ Not all categories of household spending face the same inflationary pressure. En
 #| fig-width: 11
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_heatmap") && !is.null(df1_heatmap) && nrow(df1_heatmap) > 0) {
 
@@ -281,7 +282,7 @@ if (exists("df1_heatmap") && !is.null(df1_heatmap) && nrow(df1_heatmap) > 0) {
     coldest     <- latest_hm |> slice_min(value, n = 1)
     latest_label <- format(max(df1_hm_plot$date), "%B %Y")
     cat(sprintf(
-      "\nIn %s, **%s** recorded the highest 12-month price increase at %.1f%%, while **%s** showed the lowest at %.1f%%.\n\n",
+      "\n\nIn %s, **%s** recorded the highest 12-month price increase at %.1f%%, while **%s** showed the lowest at %.1f%%.\n\n",
       latest_label,
       hottest$group_short[1], hottest$value[1],
       coldest$group_short[1], coldest$value[1]
@@ -289,7 +290,7 @@ if (exists("df1_heatmap") && !is.null(df1_heatmap) && nrow(df1_heatmap) > 0) {
   }
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -298,6 +299,7 @@ if (exists("df1_heatmap") && !is.null(df1_heatmap) && nrow(df1_heatmap) > 0) {
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_latest_lollipop") && !is.null(df1_latest_lollipop) && nrow(df1_latest_lollipop) > 0) {
 
@@ -345,12 +347,12 @@ if (exists("df1_latest_lollipop") && !is.null(df1_latest_lollipop) && nrow(df1_l
   n_above <- sum(df1_lol$value > 0, na.rm = TRUE)
   n_below <- sum(df1_lol$value <= 0, na.rm = TRUE)
   cat(sprintf(
-    "\nIn the most recent month, %d of the %d major spending categories showed positive 12-month price growth, while %d recorded flat or falling prices.\n\n",
+    "\n\nIn the most recent month, %d of the %d major spending categories showed positive 12-month price growth, while %d recorded flat or falling prices.\n\n",
     n_above, nrow(df1_lol), n_below
   ))
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -363,6 +365,7 @@ The raw inflation rate only tells part of the story. Looking at the level of the
 #| fig-width: 11
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_index") && !is.null(df1_index) && nrow(df1_index) > 0) {
 
@@ -408,7 +411,7 @@ if (exists("df1_index") && !is.null(df1_index) && nrow(df1_index) > 0) {
     bot_idx  <- latest_idx |> slice_min(value, n = 1)
     lbl_date <- format(max(df1_index_plot$date), "%B %Y")
     cat(sprintf(
-      "\nBy %s, **%s** had the highest cumulative price level since 2015 (index: %.1f), while **%s** stood at the lowest index level of %.1f among these groups.\n\n",
+      "\n\nBy %s, **%s** had the highest cumulative price level since 2015 (index: %.1f), while **%s** stood at the lowest index level of %.1f among these groups.\n\n",
       lbl_date,
       top_idx$group_short[1], top_idx$value[1],
       bot_idx$group_short[1], bot_idx$value[1]
@@ -416,7 +419,7 @@ if (exists("df1_index") && !is.null(df1_index) && nrow(df1_index) > 0) {
   }
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -429,6 +432,7 @@ Price levels are one side of the equation; what households actually buy in real 
 #| fig-width: 11
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df2_vol_change") && !is.null(df2_vol_change) && nrow(df2_vol_change) > 0) {
 
@@ -486,7 +490,7 @@ if (exists("df2_vol_change") && !is.null(df2_vol_change) && nrow(df2_vol_change)
     bot_vol  <- latest_vol |> slice_min(value, n = 1)
     lbl_year <- lubridate::year(max(df2_vol_plot$date, na.rm = TRUE))
     cat(sprintf(
-      "\nIn the most recent year (%d), **%s** recorded the strongest volume growth at %.1f%%, while **%s** had the weakest at %.1f%%.\n\n",
+      "\n\nIn the most recent year (%d), **%s** recorded the strongest volume growth at %.1f%%, while **%s** had the weakest at %.1f%%.\n\n",
       lbl_year,
       top_vol$series_short[1], top_vol$value[1],
       bot_vol$series_short[1], bot_vol$value[1]
@@ -494,7 +498,7 @@ if (exists("df2_vol_change") && !is.null(df2_vol_change) && nrow(df2_vol_change)
   }
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -507,6 +511,7 @@ Perhaps the clearest way to see the mismatch between inflation and real spending
 #| fig-width: 10
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df2_slope") && !is.null(df2_slope) && nrow(df2_slope) > 0) {
 
@@ -553,20 +558,21 @@ if (exists("df2_slope") && !is.null(df2_slope) && nrow(df2_slope) > 0) {
   if (nrow(df2_spread) > 0) {
     max_squeeze <- df2_spread |> slice_max(spread, n = 1)
     cat(sprintf(
-      "\nThe largest recorded gap between price growth and volume growth occurred in **%d**, when prices rose %.1f percentage points faster than real volumes — the most acute point of household purchasing power compression in the series.\n\n",
+      "\n\nThe largest recorded gap between price growth and volume growth occurred in **%d**, when prices rose %.1f percentage points faster than real volumes — the most acute point of household purchasing power compression in the series.\n\n",
       max_squeeze$year[1],
       max_squeeze$spread[1]
     ))
   }
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
 ```{r key-findings}
 #| echo: true
 #| fig-show: asis
+#| results: asis
 
 cat("## Key Findings\n\n")
 

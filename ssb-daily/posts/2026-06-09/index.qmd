@@ -242,6 +242,7 @@ The quarterly migration data from table 11327 offers an unusually granular windo
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_area") && !is.null(df1_area) && nrow(df1_area) > 0) {
 
@@ -277,7 +278,7 @@ if (exists("df1_area") && !is.null(df1_area) && nrow(df1_area) > 0) {
   print(p)
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -286,6 +287,7 @@ if (exists("df1_area") && !is.null(df1_area) && nrow(df1_area) > 0) {
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_net_all") && !is.null(df1_net_all) && nrow(df1_net_all) > 0) {
 
@@ -323,7 +325,7 @@ if (exists("df1_net_all") && !is.null(df1_net_all) && nrow(df1_net_all) > 0) {
   print(p)
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -338,6 +340,7 @@ While immigration numbers climb, a second set of figures tells a more troubling 
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df2_dumbbell") && !is.null(df2_dumbbell) && nrow(df2_dumbbell) > 0) {
 
@@ -381,7 +384,7 @@ if (exists("df2_dumbbell") && !is.null(df2_dumbbell) && nrow(df2_dumbbell) > 0) 
   print(p) # fixed: added explicit print() to render the plot
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -390,6 +393,7 @@ if (exists("df2_dumbbell") && !is.null(df2_dumbbell) && nrow(df2_dumbbell) > 0) 
 #| fig-width: 10
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df2_heatmap") && !is.null(df2_heatmap) && nrow(df2_heatmap) > 0) {
 
@@ -424,7 +428,7 @@ if (exists("df2_heatmap") && !is.null(df2_heatmap) && nrow(df2_heatmap) > 0) {
   print(p)
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -439,6 +443,7 @@ The third dataset — table 08382 — tracks people with refugee background livi
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df3_ridgeline") && !is.null(df3_ridgeline) && nrow(df3_ridgeline) > 0) {
 
@@ -480,7 +485,7 @@ if (exists("df3_ridgeline") && !is.null(df3_ridgeline) && nrow(df3_ridgeline) > 
   print(p)
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 

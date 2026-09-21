@@ -240,6 +240,7 @@ Norway's employment figures have remained remarkably stable across the 2016–20
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_trend") && !is.null(df1_trend) && nrow(df1_trend) > 0) {
 
@@ -275,7 +276,7 @@ if (exists("df1_trend") && !is.null(df1_trend) && nrow(df1_trend) > 0) {
     )
   print(p)
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -284,6 +285,7 @@ if (exists("df1_trend") && !is.null(df1_trend) && nrow(df1_trend) > 0) {
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_sector_wide") && !is.null(df1_sector_wide) && nrow(df1_sector_wide) > 0) {
 
@@ -335,10 +337,10 @@ if (exists("df1_sector_wide") && !is.null(df1_sector_wide) && nrow(df1_sector_wi
       )
     print(p2)
   } else {
-    cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+    cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
   }
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -353,6 +355,7 @@ While national employment holds, the geography of trade and service activity in 
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df2_heatmap") && !is.null(df2_heatmap) && nrow(df2_heatmap) > 0) {
 
@@ -392,7 +395,7 @@ if (exists("df2_heatmap") && !is.null(df2_heatmap) && nrow(df2_heatmap) > 0) {
     )
   print(p3)  # fixed: added explicit print() to display plot
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -401,6 +404,7 @@ if (exists("df2_heatmap") && !is.null(df2_heatmap) && nrow(df2_heatmap) > 0) {
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df2_top_region") && !is.null(df2_top_region) && nrow(df2_top_region) > 0) {
 
@@ -437,7 +441,7 @@ if (exists("df2_top_region") && !is.null(df2_top_region) && nrow(df2_top_region)
     )
   print(p4)  # fixed: added explicit print() to display plot
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -452,6 +456,7 @@ No analysis of Norwegian employment can ignore immigration. Norway has relied on
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df3_net") && !is.null(df3_net) && nrow(df3_net) > 0) {
 
@@ -490,7 +495,7 @@ if (exists("df3_net") && !is.null(df3_net) && nrow(df3_net) > 0) {
     )
   print(p5)  # fixed: added explicit print() to display plot
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 

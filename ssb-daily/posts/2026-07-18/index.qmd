@@ -220,6 +220,7 @@ Norway's volunteering culture is not equally distributed. The data from SSB tabl
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_pct") && !is.null(df1_pct) && nrow(df1_pct) > 0) {
 
@@ -257,10 +258,10 @@ if (exists("df1_pct") && !is.null(df1_pct) && nrow(df1_pct) > 0) {
       )
     print(p1)
   } else {
-    cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+    cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
   }
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -269,6 +270,7 @@ if (exists("df1_pct") && !is.null(df1_pct) && nrow(df1_pct) > 0) {
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_activity") && !is.null(df1_activity) && nrow(df1_activity) > 0) {
 
@@ -302,7 +304,7 @@ if (exists("df1_activity") && !is.null(df1_activity) && nrow(df1_activity) > 0) 
     guides(fill = guide_legend(nrow = 2))
   print(p2)
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -311,6 +313,7 @@ if (exists("df1_activity") && !is.null(df1_activity) && nrow(df1_activity) > 0) 
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_heatmap") && !is.null(df1_heatmap) && nrow(df1_heatmap) > 0) {
 
@@ -362,7 +365,7 @@ if (exists("df1_heatmap") && !is.null(df1_heatmap) && nrow(df1_heatmap) > 0) {
   }
   print(p3)
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -375,6 +378,7 @@ The second story is commercial rather than civic, but it intersects with the sam
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df2_lollipop") && !is.null(df2_lollipop) && nrow(df2_lollipop) > 0) {
 
@@ -404,7 +408,7 @@ if (exists("df2_lollipop") && !is.null(df2_lollipop) && nrow(df2_lollipop) > 0) 
     )
   print(p4)
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -413,6 +417,7 @@ if (exists("df2_lollipop") && !is.null(df2_lollipop) && nrow(df2_lollipop) > 0) 
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df2_dumbbell") && !is.null(df2_dumbbell) && nrow(df2_dumbbell) > 0) {
 
@@ -453,7 +458,7 @@ if (exists("df2_dumbbell") && !is.null(df2_dumbbell) && nrow(df2_dumbbell) > 0) 
   print(p5)
   # fixed: added explicit print() to ensure figure renders
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 

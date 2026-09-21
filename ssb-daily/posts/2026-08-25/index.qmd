@@ -259,6 +259,7 @@ Housing supply shapes access for everyone, but particularly for lower-income hou
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 pal_housing <- met.brewer("Hokusai2", n = 4)
 
@@ -290,14 +291,14 @@ if (exists("df1_recent") && !is.null(df1_recent) && nrow(df1_recent) > 0) {
   top_type <- df1_type_total[1, ]
 
   cat(sprintf(
-    "\nAcross the period shown, peak annual dwelling starts reached %s in %s. The most recent year recorded %s starts. The building type accounting for the largest cumulative share of new supply is %s.\n\n",
+    "\n\nAcross the period shown, peak annual dwelling starts reached %s in %s. The most recent year recorded %s starts. The building type accounting for the largest cumulative share of new supply is %s.\n\n",
     comma(peak_year$total),
     format(peak_year$date, "%Y"),
     comma(latest_year_val$total),
     top_type$bygningstype
   ))
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -306,6 +307,7 @@ if (exists("df1_recent") && !is.null(df1_recent) && nrow(df1_recent) > 0) {
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_type_total") && !is.null(df1_type_total) && nrow(df1_type_total) > 0) {
   df1_type_plot <- df1_type_total |>
@@ -335,12 +337,12 @@ if (exists("df1_type_total") && !is.null(df1_type_total) && nrow(df1_type_total)
 
   top2 <- df1_type_total |> slice(1:2)
   cat(sprintf(
-    "\nOver the full series, %s accounts for the most cumulative new dwellings (%s), followed by %s (%s).\n\n",
+    "\n\nOver the full series, %s accounts for the most cumulative new dwellings (%s), followed by %s (%s).\n\n",
     top2$bygningstype[1], comma(top2$total[1]),
     top2$bygningstype[2], comma(top2$total[2])
   ))
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -353,6 +355,7 @@ Even a prosperous society carries pockets of genuine hardship. Statistics Norway
 #| fig-width: 11
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 pal_dep <- met.brewer("Redon", n = 5)
 
@@ -399,7 +402,7 @@ if (exists("df2_trend") && !is.null(df2_trend) && nrow(df2_trend) > 0) {
   lowest_dep <- latest_dep[nrow(latest_dep), ]
 
   cat(sprintf(
-    "\nIn the most recent year of available data (%s), the most prevalent form of material hardship was '%s', affecting %s%% of the population. The least prevalent was '%s' at %s%%.\n\n",
+    "\n\nIn the most recent year of available data (%s), the most prevalent form of material hardship was '%s', affecting %s%% of the population. The least prevalent was '%s' at %s%%.\n\n",
     format(max(df2_trend$date), "%Y"),
     top_dep$deprivation,
     round(top_dep$value, 1),
@@ -407,7 +410,7 @@ if (exists("df2_trend") && !is.null(df2_trend) && nrow(df2_trend) > 0) {
     round(lowest_dep$value, 1)
   ))
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -420,6 +423,7 @@ The final thread connects economic circumstance to subjective well-being. Norway
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df3_all_wide") && !is.null(df3_all_wide) && nrow(df3_all_wide) > 0) {
 
@@ -454,13 +458,13 @@ if (exists("df3_all_wide") && !is.null(df3_all_wide) && nrow(df3_all_wide) > 0) 
   gap_val  <- top_inc$mean_sat - low_inc$mean_sat
 
   cat(sprintf(
-    "\nAcross all satisfaction domains in the latest year, the income group '%s' records the highest mean score (%.1f), while '%s' records the lowest (%.1f) — a gap of %.1f points.\n\n",
+    "\n\nAcross all satisfaction domains in the latest year, the income group '%s' records the highest mean score (%.1f), while '%s' records the lowest (%.1f) — a gap of %.1f points.\n\n",
     top_inc$income, top_inc$mean_sat,
     low_inc$income, low_inc$mean_sat,
     gap_val
   ))
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -469,6 +473,7 @@ if (exists("df3_all_wide") && !is.null(df3_all_wide) && nrow(df3_all_wide) > 0) 
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df3_dumbbell") && !is.null(df3_dumbbell) && nrow(df3_dumbbell) > 0) {
 
@@ -511,18 +516,19 @@ if (exists("df3_dumbbell") && !is.null(df3_dumbbell) && nrow(df3_dumbbell) > 0) 
 
   widest <- df3_db_plot[which.max(df3_db_plot$gap), ]
   cat(sprintf(
-    "\nThe largest satisfaction gap between income groups appears in the domain of '%s', where the two groups differ by %.1f points. This suggests that economic circumstances have a particularly pronounced effect on this dimension of well-being.\n\n",
+    "\n\nThe largest satisfaction gap between income groups appears in the domain of '%s', where the two groups differ by %.1f points. This suggests that economic circumstances have a particularly pronounced effect on this dimension of well-being.\n\n",
     widest$tilfredshet,
     widest$gap
   ))
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
 ## Key Findings
 
 ```{r key-findings}
+#| results: asis
 findings <- character(0)
 
 if (exists("df1_recent") && !is.null(df1_recent) && nrow(df1_recent) > 0) {

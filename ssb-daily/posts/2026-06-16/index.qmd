@@ -247,6 +247,7 @@ Norway's welfare state is built on the premise that citizens trust its instituti
 #| fig-width: 10
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_heatmap") && !is.null(df1_heatmap) && nrow(df1_heatmap) > 0) {
 
@@ -289,7 +290,7 @@ if (exists("df1_heatmap") && !is.null(df1_heatmap) && nrow(df1_heatmap) > 0) {
   print(p)
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -298,6 +299,7 @@ if (exists("df1_heatmap") && !is.null(df1_heatmap) && nrow(df1_heatmap) > 0) {
 #| fig-width: 10
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_high") && !is.null(df1_high) && nrow(df1_high) > 0) {
 
@@ -350,11 +352,11 @@ if (exists("df1_high") && !is.null(df1_high) && nrow(df1_high) > 0) {
     print(p)  # fixed: added explicit print to ensure figure renders
 
   } else {
-    cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+    cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
   }
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -369,6 +371,7 @@ Loneliness is one of the least visible public health crises. Statistics Norway's
 #| fig-width: 10
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df2_total") && !is.null(df2_total) && nrow(df2_total) > 0) {
 
@@ -403,7 +406,7 @@ if (exists("df2_total") && !is.null(df2_total) && nrow(df2_total) > 0) {
   print(p)
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -412,6 +415,7 @@ if (exists("df2_total") && !is.null(df2_total) && nrow(df2_total) > 0) {
 #| fig-width: 10
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df2_dumbbell") && !is.null(df2_dumbbell) && nrow(df2_dumbbell) > 0) {
 
@@ -467,11 +471,11 @@ if (exists("df2_dumbbell") && !is.null(df2_dumbbell) && nrow(df2_dumbbell) > 0) 
     print(p)  # fixed: added explicit print to ensure figure renders
 
   } else {
-    cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+    cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
   }
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -486,6 +490,7 @@ Economic stress does not distribute evenly across Norway's geography. Statistics
 #| fig-width: 10
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df3_trend") && !is.null(df3_trend) && nrow(df3_trend) > 0) {
 
@@ -539,11 +544,11 @@ if (exists("df3_trend") && !is.null(df3_trend) && nrow(df3_trend) > 0) {
     print(p)  # fixed: added explicit print to ensure figure renders
 
   } else {
-    cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+    cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
   }
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -552,6 +557,7 @@ if (exists("df3_trend") && !is.null(df3_trend) && nrow(df3_trend) > 0) {
 #| fig-width: 11
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df3_trend") && !is.null(df3_trend) && nrow(df3_trend) > 0) {
 
@@ -615,11 +621,11 @@ if (exists("df3_trend") && !is.null(df3_trend) && nrow(df3_trend) > 0) {
     print(p)  # fixed: added explicit print to ensure figure renders
 
   } else {
-    cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+    cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
   }
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 

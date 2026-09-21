@@ -215,6 +215,7 @@ Norway's digital transformation over the past two decades is visible in raw perc
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_devices") && !is.null(df1_devices) && nrow(df1_devices) > 0) {
   pal <- met.brewer("Hiroshige", n = 4)
@@ -244,7 +245,7 @@ if (exists("df1_devices") && !is.null(df1_devices) && nrow(df1_devices) > 0) {
 
   print(p1)
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -253,6 +254,7 @@ if (exists("df1_devices") && !is.null(df1_devices) && nrow(df1_devices) > 0) {
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_dumbbell") && !is.null(df1_dumbbell) && nrow(df1_dumbbell) > 0) {
   pal2 <- met.brewer("Hiroshige", n = 4)
@@ -303,7 +305,7 @@ if (exists("df1_dumbbell") && !is.null(df1_dumbbell) && nrow(df1_dumbbell) > 0) 
 
   print(p2)
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -316,6 +318,7 @@ Norway has long positioned itself as a public health leader, with plain packagin
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df2_combined") && !is.null(df2_combined) && nrow(df2_combined) > 0) {
   pal3 <- met.brewer("Redon", n = 2)
@@ -356,7 +359,7 @@ if (exists("df2_combined") && !is.null(df2_combined) && nrow(df2_combined) > 0) 
 
   print(p3)
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -369,6 +372,7 @@ The consumer price index data from table 14705 reveals how different categories 
 #| fig-width: 10
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df3_heatmap") && !is.null(df3_heatmap) && nrow(df3_heatmap) > 0) {
 
@@ -416,7 +420,7 @@ if (exists("df3_heatmap") && !is.null(df3_heatmap) && nrow(df3_heatmap) > 0) {
 
   print(p4)
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -425,6 +429,7 @@ if (exists("df3_heatmap") && !is.null(df3_heatmap) && nrow(df3_heatmap) > 0) {
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df3_change") && !is.null(df3_change) && nrow(df3_change) > 0) {
 
@@ -446,7 +451,7 @@ if (exists("df3_change") && !is.null(df3_change) && nrow(df3_change) > 0) {
     mutate(cat_short = factor(cat_short, levels = unique(cat_short))) # fixed: use unique() to avoid duplicate factor levels
 
   if (nrow(df3_latest) == 0) {
-    cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+    cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
   } else {
     yr_label <- format(max(df3_change$date), "%Y")
 
@@ -494,7 +499,7 @@ if (exists("df3_change") && !is.null(df3_change) && nrow(df3_change) > 0) {
     print(p5) # fixed: added explicit print() to ensure plot renders
   }
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 

@@ -218,6 +218,7 @@ Norway's used-home price index captures the accumulated advantage — or disadva
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_hpi") && !is.null(df1_hpi) && nrow(df1_hpi) > 0) {
 
@@ -250,7 +251,7 @@ if (exists("df1_hpi") && !is.null(df1_hpi) && nrow(df1_hpi) > 0) {
   print(p)
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -259,6 +260,7 @@ if (exists("df1_hpi") && !is.null(df1_hpi) && nrow(df1_hpi) > 0) {
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_hpi_wide") && !is.null(df1_hpi_wide) && nrow(df1_hpi_wide) > 0) {
 
@@ -293,7 +295,7 @@ if (exists("df1_hpi_wide") && !is.null(df1_hpi_wide) && nrow(df1_hpi_wide) > 0) 
   print(p2) # fixed: added explicit print() to render figure
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -308,6 +310,7 @@ Household welfare in Norway is intertwined with the country's trade position. Ma
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df2_waterfall") && !is.null(df2_waterfall) && nrow(df2_waterfall) > 0) {
 
@@ -340,7 +343,7 @@ if (exists("df2_waterfall") && !is.null(df2_waterfall) && nrow(df2_waterfall) > 
   print(p3)
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -349,6 +352,7 @@ if (exists("df2_waterfall") && !is.null(df2_waterfall) && nrow(df2_waterfall) > 
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df2_trade") && !is.null(df2_trade) && nrow(df2_trade) > 0) {
 
@@ -384,11 +388,11 @@ if (exists("df2_trade") && !is.null(df2_trade) && nrow(df2_trade) > 0) {
       )
     print(p4)
   } else {
-    cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+    cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
   }
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -403,6 +407,7 @@ The sharpest evidence of a well-being crisis lies in how satisfaction scores div
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df3_income_avg") && !is.null(df3_income_avg) && nrow(df3_income_avg) > 0) {
 
@@ -432,7 +437,7 @@ if (exists("df3_income_avg") && !is.null(df3_income_avg) && nrow(df3_income_avg)
   print(p5)
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -441,6 +446,7 @@ if (exists("df3_income_avg") && !is.null(df3_income_avg) && nrow(df3_income_avg)
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df3_low") && !is.null(df3_low) && nrow(df3_low) > 0) {
 
@@ -477,11 +483,11 @@ if (exists("df3_low") && !is.null(df3_low) && nrow(df3_low) > 0) {
       )
     print(p6)
   } else {
-    cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+    cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
   }
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 

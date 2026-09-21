@@ -687,15 +687,22 @@ Only do seasonal charts if has_monthly is TRUE.
 - ALWAYS guard the FULL plot body: if (exists("df") && !is.null(df) && nrow(df) > 0) { ...; print(p) }
 - ALWAYS add an else branch emitting a clean editorial note (NOT an R error / NOT a message)
   so an unavailable series never leaves a silent blank gap. Use EXACTLY:
-    else { cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n") }
+    else { cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n") }
 - NEVER rely on implicit printing
 - Every plot chunk must have:
 ```{r plot-name}
 #| fig-height: 5
 #| fig-width: 9
 #| fig-show: asis
+#| results: asis
 #| dev: "png"
 ```
+Every cat() string must OPEN with \n\n and CLOSE with \n\n so the sentence becomes its own
+paragraph instead of being glued onto the preceding figure.
+`results: asis` is MANDATORY on every chunk that emits prose with cat(). Without it knitr
+wraps the sentence in a grey verbatim output box that reads like console output instead of
+flowing as part of the article. Any chunk containing a cat() call — plot chunks, the
+key-findings chunk, any commentary chunk — MUST carry `#| results: asis`.
 
 ## Commentary must follow the data (CRITICAL — the whole point of the post)
 You have NOT seen the actual numbers — only column names and a few example category
@@ -725,12 +732,13 @@ Rules:
 Example — data-driven commentary that self-omits when data is absent:
 ```{r plot-example}
 #| fig-show: asis
+#| results: asis
 if (exists("df1_national") && !is.null(df1_national) && nrow(df1_national) > 0) {
   p <- ggplot(df1_national, aes(date, value, colour = type_label)) + geom_line()
   print(p)
   latest <- df1_national |> dplyr::filter(date == max(date))
   top    <- latest[which.max(latest$value), ]
-  cat(sprintf("\nIn %s, %s led with %s dwellings started.\n\n",
+  cat(sprintf("\n\nIn %s, %s led with %s dwellings started.\n\n",
               format(max(df1_national$date), "%Y"), top$type_label,
               scales::comma(top$value)))
 } else {
@@ -748,7 +756,7 @@ if (exists("df1_national") && !is.null(df1_national) && nrow(df1_national) > 0) 
 1. Brief intro (2-3 sentences) — the hook, why this matters. General context only; NO specific figures or per-series outcomes.
 2. Data section — fetch + wrangle
 3. 2-3 analysis sections with charts; the interpretation of each chart is emitted by code inside its guard (see "Commentary must follow the data")
-4. Key findings — do NOT hand-write these. Emit them from ONE guarded R chunk that, for each dataset, appends a bullet ONLY if that data frame is non-null and non-empty, with every number computed from the data via cat()/sprintf(). A series with no data contributes no bullet. If nothing has data, print nothing.
+4. Key findings — do NOT hand-write these. Emit them from ONE guarded R chunk (labelled key-findings, carrying `#| results: asis`) that, for each dataset, appends a bullet ONLY if that data frame is non-null and non-empty, with every number computed from the data via cat()/sprintf(). A series with no data contributes no bullet. If nothing has data, print nothing.
 5. Closing reflection — broader qualitative context only; NO specific figures or rankings
 
 ## YAML front matter
@@ -789,8 +797,9 @@ USER_PROMPT <- paste0(
   "           ALWAYS add an else { cat(\"\\n*Figure omitted — Statistics Norway returned no data for this series.*\\n\\n\") }\n",
   "           Use series_col / measure_col variables for filtering — see spec for exact values.\n",
   "           After print(p), emit the chart's interpretation with cat()/sprintf() computed from the data, INSIDE the same guard.\n",
+  "           Every chunk that calls cat() MUST carry #| results: asis so the sentence renders as body prose, not a verbatim output box.\n",
   "           Do NOT write any numeric result, ranking, or named category as static prose outside a guard — see 'Commentary must follow the data'.\n\n",
-  "FINAL CHUNK — Key findings: ONE guarded R chunk that appends a bullet per dataset ONLY when its data frame is non-null and non-empty, every number computed from the data. Do NOT hand-write findings in markdown."
+  "FINAL CHUNK — Key findings: ONE guarded R chunk (with #| results: asis) that appends a bullet per dataset ONLY when its data frame is non-null and non-empty, every number computed from the data. Do NOT hand-write findings in markdown."
 )
 
 # ── Generation call ────────────────────────────────────────────────────────────

@@ -202,6 +202,7 @@ The share of Norwegians who have used a generative AI tool — ChatGPT being the
 #| fig-width: 10
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_purpose") && !is.null(df1_purpose) && nrow(df1_purpose) > 0) {
   
@@ -256,7 +257,7 @@ if (exists("df1_purpose") && !is.null(df1_purpose) && nrow(df1_purpose) > 0) {
   print(p1)
   
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -265,6 +266,7 @@ if (exists("df1_purpose") && !is.null(df1_purpose) && nrow(df1_purpose) > 0) {
 #| fig-width: 10
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_age") && !is.null(df1_age) && nrow(df1_age) > 0) {
   
@@ -297,7 +299,7 @@ if (exists("df1_age") && !is.null(df1_age) && nrow(df1_age) > 0) {
   print(p2)
   
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -310,6 +312,7 @@ The ridgeline chart above captures something crucial: generative AI is not a mon
 #| fig-width: 10
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_gender") && !is.null(df1_gender) && nrow(df1_gender) > 0) {
   
@@ -369,11 +372,11 @@ if (exists("df1_gender") && !is.null(df1_gender) && nrow(df1_gender) > 0) {
     print(p3) # fixed: added explicit print() to ensure figure renders
     
   } else {
-    cat("\n*Figure omitted — insufficient gender categories in returned data.*\n\n")
+    cat("\n\n*Figure omitted — insufficient gender categories in returned data.*\n\n")
   }
   
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -386,6 +389,7 @@ While the digital economy races ahead for some, the physical economy tells a dif
 #| fig-width: 11
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df2_long") && !is.null(df2_long) && nrow(df2_long) > 0) {
   
@@ -438,7 +442,7 @@ if (exists("df2_long") && !is.null(df2_long) && nrow(df2_long) > 0) {
   print(p4)
   
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -447,6 +451,7 @@ if (exists("df2_long") && !is.null(df2_long) && nrow(df2_long) > 0) {
 #| fig-width: 10
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df2_dumbbell") && !is.null(df2_dumbbell) && nrow(df2_dumbbell) > 0) {
   
@@ -498,7 +503,7 @@ if (exists("df2_dumbbell") && !is.null(df2_dumbbell) && nrow(df2_dumbbell) > 0) 
   print(p5)
   
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 

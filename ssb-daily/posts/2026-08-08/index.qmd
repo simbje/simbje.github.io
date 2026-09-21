@@ -158,6 +158,7 @@ if (!is.null(df1) && nrow(df1) > 0) {
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_area") && !is.null(df1_area) && nrow(df1_area) > 0) {
 
@@ -206,7 +207,7 @@ if (exists("df1_area") && !is.null(df1_area) && nrow(df1_area) > 0) {
 
   if (length(goods_val) > 0 && length(svc_val) > 0) {
     cat(sprintf(
-      "\nIn the most recent quarter (%s), goods consumption stood at NOK %.1f billion and services consumption at NOK %.1f billion (both in fixed 2023 prices).\n\n",
+      "\n\nIn the most recent quarter (%s), goods consumption stood at NOK %.1f billion and services consumption at NOK %.1f billion (both in fixed 2023 prices).\n\n",
       format(latest_date, "%Y Q%q"),
       goods_val / 1000,
       svc_val / 1000
@@ -214,7 +215,7 @@ if (exists("df1_area") && !is.null(df1_area) && nrow(df1_area) > 0) {
   }
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -273,6 +274,7 @@ Monthly turnover indices from SSB's service-sector statistics capture how differ
 #| fig-width: 10
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df2_trend") && !is.null(df2_trend) && nrow(df2_trend) > 0) {
 
@@ -320,7 +322,7 @@ if (exists("df2_trend") && !is.null(df2_trend) && nrow(df2_trend) > 0) {
   bot_sector   <- latest_t2[which.min(latest_t2$value), ]
 
   cat(sprintf(
-    "\nIn %s, the highest turnover index among the four sectors was recorded by '%s' (index: %.1f), while the lowest was '%s' (index: %.1f).\n\n",
+    "\n\nIn %s, the highest turnover index among the four sectors was recorded by '%s' (index: %.1f), while the lowest was '%s' (index: %.1f).\n\n",
     format(latest_date2, "%B %Y"),
     top_sector$sector_en,
     top_sector$value,
@@ -329,7 +331,7 @@ if (exists("df2_trend") && !is.null(df2_trend) && nrow(df2_trend) > 0) {
   ))
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -338,6 +340,7 @@ if (exists("df2_trend") && !is.null(df2_trend) && nrow(df2_trend) > 0) {
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df2_unadj") && !is.null(df2_unadj) && nrow(df2_unadj) > 0) {
 
@@ -390,13 +393,13 @@ if (exists("df2_unadj") && !is.null(df2_unadj) && nrow(df2_unadj) > 0) {
     arrange(desc(med_val))
 
   cat(sprintf(
-    "\nAcross all available months, '%s' shows the highest median unadjusted turnover index (%.1f), while '%s' records the lowest median (%.1f).\n\n",
+    "\n\nAcross all available months, '%s' shows the highest median unadjusted turnover index (%.1f), while '%s' records the lowest median (%.1f).\n\n",
     sector_stats$sector_en[1], sector_stats$med_val[1],
     sector_stats$sector_en[nrow(sector_stats)], sector_stats$med_val[nrow(sector_stats)]
   ))
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -474,6 +477,7 @@ if (!is.null(df3) && nrow(df3) > 0) {
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df3_lollipop") && !is.null(df3_lollipop) && nrow(df3_lollipop) > 0) {
 
@@ -519,14 +523,14 @@ if (exists("df3_lollipop") && !is.null(df3_lollipop) && nrow(df3_lollipop) > 0) 
   yr_lol  <- format(max(df3_lollipop$date), "%Y")
 
   cat(sprintf(
-    "\nIn %s, the sharpest annual price increase among the four categories was in '%s' (%.1f%%), while '%s' saw the smallest change (%.1f%%).\n\n",
+    "\n\nIn %s, the sharpest annual price increase among the four categories was in '%s' (%.1f%%), while '%s' saw the smallest change (%.1f%%).\n\n",
     yr_lol,
     top_cat$cat_en, top_cat$value,
     bot_cat$cat_en, bot_cat$value
   ))
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -535,6 +539,7 @@ if (exists("df3_lollipop") && !is.null(df3_lollipop) && nrow(df3_lollipop) > 0) 
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df3_heatmap") && !is.null(df3_heatmap) && nrow(df3_heatmap) > 0) {
 
@@ -576,18 +581,19 @@ if (exists("df3_heatmap") && !is.null(df3_heatmap) && nrow(df3_heatmap) > 0) {
     arrange(desc(sd_val))
 
   cat(sprintf(
-    "\nOver the full period, '%s' shows the highest year-to-year price volatility (standard deviation: %.1f percentage points), suggesting it has been the most unpredictable spending category for Norwegian households.\n\n",
+    "\n\nOver the full period, '%s' shows the highest year-to-year price volatility (standard deviation: %.1f percentage points), suggesting it has been the most unpredictable spending category for Norwegian households.\n\n",
     cat_volatility$cat_en[1], cat_volatility$sd_val[1]
   ))
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
 ## Key Findings
 
 ```{r key-findings}
+#| results: asis
 bullets <- character(0)
 
 # df1 findings
@@ -649,7 +655,7 @@ if (exists("df3_lollipop") && !is.null(df3_lollipop) && nrow(df3_lollipop) > 0) 
 if (length(bullets) > 0) {
   cat("### Key findings\n\n")
   cat(paste(bullets, collapse = "\n\n"))
-  cat("\n")
+  cat("\n\n")
 }
 ```
 

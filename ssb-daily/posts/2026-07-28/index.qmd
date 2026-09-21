@@ -246,6 +246,7 @@ Norway's crime rate never disappeared; it merely dipped after the mid-2000s peak
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_total") && !is.null(df1_total) && nrow(df1_total) > 0) {
 
@@ -274,7 +275,7 @@ if (exists("df1_total") && !is.null(df1_total) && nrow(df1_total) > 0) {
   print(p)
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -283,6 +284,7 @@ if (exists("df1_total") && !is.null(df1_total) && nrow(df1_total) > 0) {
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_breakdown") && !is.null(df1_breakdown) && nrow(df1_breakdown) > 0) {
 
@@ -324,11 +326,11 @@ if (exists("df1_breakdown") && !is.null(df1_breakdown) && nrow(df1_breakdown) > 
     print(p) # fixed: added missing print() statement
 
   } else {
-    cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+    cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
   }
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -343,6 +345,7 @@ The Norwegian housing market was, for two decades, one of the most reliably dyna
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df2_types") && !is.null(df2_types) && nrow(df2_types) > 0) {
 
@@ -374,7 +377,7 @@ if (exists("df2_types") && !is.null(df2_types) && nrow(df2_types) > 0) {
   print(p) # fixed: added missing print() statement
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -383,6 +386,7 @@ if (exists("df2_types") && !is.null(df2_types) && nrow(df2_types) > 0) {
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df2_dumbbell") && !is.null(df2_dumbbell) && nrow(df2_dumbbell) > 0) {
 
@@ -426,7 +430,7 @@ if (exists("df2_dumbbell") && !is.null(df2_dumbbell) && nrow(df2_dumbbell) > 0) 
   print(p)
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -441,6 +445,7 @@ Consumer price indices for food have attracted most of the political attention. 
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df3_index") && !is.null(df3_index) && nrow(df3_index) > 0) {
 
@@ -481,7 +486,7 @@ if (exists("df3_index") && !is.null(df3_index) && nrow(df3_index) > 0) {
   print(p)
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -490,6 +495,7 @@ if (exists("df3_index") && !is.null(df3_index) && nrow(df3_index) > 0) {
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df3_ridgeline") && !is.null(df3_ridgeline) && nrow(df3_ridgeline) > 0) {
 
@@ -523,11 +529,11 @@ if (exists("df3_ridgeline") && !is.null(df3_ridgeline) && nrow(df3_ridgeline) > 
 
     print(p)
   } else {
-    cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+    cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
   }
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 

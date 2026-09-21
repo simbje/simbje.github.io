@@ -281,6 +281,7 @@ Norway's labour market looks reassuring in aggregate, but the recent monthly dat
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_combined") && !is.null(df1_combined) && nrow(df1_combined) > 0) {
 
@@ -316,7 +317,7 @@ if (exists("df1_combined") && !is.null(df1_combined) && nrow(df1_combined) > 0) 
   print(p)
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -325,6 +326,7 @@ if (exists("df1_combined") && !is.null(df1_combined) && nrow(df1_combined) > 0) 
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_rate") && !is.null(df1_rate) && nrow(df1_rate) > 0) {
 
@@ -366,7 +368,7 @@ if (exists("df1_rate") && !is.null(df1_rate) && nrow(df1_rate) > 0) {
   print(p)
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -379,6 +381,7 @@ Criminal convictions in Norway tell a story that defies the comfortable narrativ
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df2_categories") && !is.null(df2_categories) && nrow(df2_categories) > 0) {
 
@@ -424,7 +427,7 @@ if (exists("df2_categories") && !is.null(df2_categories) && nrow(df2_categories)
   print(p) # fixed: added print() to render figure
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -433,6 +436,7 @@ if (exists("df2_categories") && !is.null(df2_categories) && nrow(df2_categories)
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df2_per1000") && !is.null(df2_per1000) && nrow(df2_per1000) > 0) {
 
@@ -477,11 +481,11 @@ if (exists("df2_per1000") && !is.null(df2_per1000) && nrow(df2_per1000) > 0) {
     print(p)
 
   } else {
-    cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+    cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
   }
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -494,6 +498,7 @@ While headline inflation in Norway has moderated somewhat, food prices continue 
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df3_food12m") && !is.null(df3_food12m) && nrow(df3_food12m) > 0 &&
     exists("df3_bread")   && !is.null(df3_bread)   && nrow(df3_bread)   > 0) {
@@ -567,7 +572,7 @@ if (exists("df3_food12m") && !is.null(df3_food12m) && nrow(df3_food12m) > 0 &&
   print(p)
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 

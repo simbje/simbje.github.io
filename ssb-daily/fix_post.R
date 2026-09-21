@@ -242,6 +242,9 @@ tryCatch({
     "  * Empty SSB fetch → add `if (is.null(df) || nrow(df) == 0) df <- NULL` after ApiData().\n",
     "  * Wrong filter values, mismatched column names → fix to match the spec.\n",
     "- After fixing, add a one-line comment # fixed: <brief reason> near the change\n\n",
+    "- PRESERVE every chunk option verbatim, especially `#| results: asis` — it is what makes\n",
+    "  the cat()-emitted commentary render as body prose instead of a console output box.\n",
+    "  Any chunk that calls cat() must keep (or gain) `#| results: asis`.\n\n",
     "OUTPUT FORMAT:\n",
     "Line 1: FIXES: <comma-separated list of what was fixed>\n",
     "Line 2+: Corrected .qmd starting with ---"

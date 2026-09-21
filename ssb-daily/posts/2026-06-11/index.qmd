@@ -219,6 +219,7 @@ The most striking feature of Norway's well-being data is not the high overall av
 #| fig-width: 10
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_heatmap") && !is.null(df1_heatmap) && nrow(df1_heatmap) > 0) {
 
@@ -257,7 +258,7 @@ if (exists("df1_heatmap") && !is.null(df1_heatmap) && nrow(df1_heatmap) > 0) {
   print(p)
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -266,6 +267,7 @@ if (exists("df1_heatmap") && !is.null(df1_heatmap) && nrow(df1_heatmap) > 0) {
 #| fig-width: 10
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_avg") && !is.null(df1_avg) && nrow(df1_avg) > 0) {
 
@@ -300,7 +302,7 @@ if (exists("df1_avg") && !is.null(df1_avg) && nrow(df1_avg) > 0) {
   print(p)
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -315,6 +317,7 @@ Material deprivation — being unable to afford specific goods or experiences co
 #| fig-width: 10
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df2_lollipop") && !is.null(df2_lollipop) && nrow(df2_lollipop) > 0) {
 
@@ -355,7 +358,7 @@ if (exists("df2_lollipop") && !is.null(df2_lollipop) && nrow(df2_lollipop) > 0) 
   print(p)
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -364,6 +367,7 @@ if (exists("df2_lollipop") && !is.null(df2_lollipop) && nrow(df2_lollipop) > 0) 
 #| fig-width: 10
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df2_national") && !is.null(df2_national) && nrow(df2_national) > 0) {
 
@@ -413,11 +417,11 @@ if (exists("df2_national") && !is.null(df2_national) && nrow(df2_national) > 0) 
     print(p)
 
   } else {
-    cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+    cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
   }
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -430,6 +434,7 @@ Home ownership in Norway is both a financial asset and a marker of security. The
 #| fig-width: 10
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df3_dumbbell") && !is.null(df3_dumbbell) && nrow(df3_dumbbell) > 0) {
 
@@ -475,7 +480,7 @@ if (exists("df3_dumbbell") && !is.null(df3_dumbbell) && nrow(df3_dumbbell) > 0) 
   print(p) # fixed: added explicit print() to ensure plot renders
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 

@@ -693,16 +693,25 @@ SCRAPPED entirely if any chunk emits the exact phrase "returned no data for this
       cat(sprintf("\nThe ensemble projects %s by %s (95%% interval %s to %s).\n\n",
                   scales::comma(round(ens$.mean)), as.character(ens$idx),
                   scales::comma(round(pit[["95%"]]$lower)), scales::comma(round(pit[["95%"]]$upper))))
-    } else { cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n") }
+    } else { cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n") }
+- Every chunk that calls cat() (plot-*, fig-*, tbl-*, key-findings) MUST carry #| results: asis
+  so the emitted sentence renders as body prose rather than a verbatim console box.
 - REQUIRED plot-* figures use this else-branch EXACTLY:
-    else { cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n") }
+    else { cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n") }
 - Every plot-* / fig-* chunk carries:
 ```{r plot-name}
 #| fig-height: 5
 #| fig-width: 9
 #| fig-show: asis
+#| results: asis
 #| dev: "png"
 ```
+Every cat() string must OPEN with \n\n and CLOSE with \n\n so the sentence becomes its own
+paragraph instead of being glued onto the preceding figure.
+`results: asis` is MANDATORY on every chunk that emits prose with cat(). Without it knitr
+wraps the sentence in a grey verbatim output box that reads like console output instead of
+flowing as part of the article. Any chunk containing a cat() call — plot chunks, the
+key-findings chunk, any commentary chunk — MUST carry `#| results: asis`.
 
 ## Variable-scope discipline (CRITICAL — prevents "object X not found")
 Initialise every derived variable to NULL at the top of a wrangle chunk BEFORE any conditional

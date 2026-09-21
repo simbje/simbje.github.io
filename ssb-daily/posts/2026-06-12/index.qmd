@@ -233,6 +233,7 @@ Trust in Norwegian institutions is measured on a 0–10 scale across authorities
 #| fig-width: 10
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_wide") && !is.null(df1_wide) && nrow(df1_wide) > 0) {
 
@@ -280,7 +281,7 @@ if (exists("df1_wide") && !is.null(df1_wide) && nrow(df1_wide) > 0) {
   print(p) # fixed: added explicit print() to ensure figure renders
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -289,6 +290,7 @@ if (exists("df1_wide") && !is.null(df1_wide) && nrow(df1_wide) > 0) {
 #| fig-width: 10
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_avg") && !is.null(df1_avg) && nrow(df1_avg) > 0) {
 
@@ -345,11 +347,11 @@ if (exists("df1_avg") && !is.null(df1_avg) && nrow(df1_avg) > 0) {
 
     print(p2) # fixed: added explicit print() to ensure figure renders
   } else {
-    cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+    cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
   }
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -362,6 +364,7 @@ Norway's family structure data from SSB covers the full range of household types
 #| fig-width: 10
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df2_top_types") && !is.null(df2_top_types) && nrow(df2_top_types) > 0) {
 
@@ -404,7 +407,7 @@ if (exists("df2_top_types") && !is.null(df2_top_types) && nrow(df2_top_types) > 
   print(p3)
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -417,6 +420,7 @@ The consumer confidence index from SSB captures expectations about the economy, 
 #| fig-width: 10
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df3_tidy") && !is.null(df3_tidy) && nrow(df3_tidy) > 0) {
 
@@ -461,11 +465,11 @@ if (exists("df3_tidy") && !is.null(df3_tidy) && nrow(df3_tidy) > 0) {
 
     print(p4)
   } else {
-    cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+    cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
   }
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -474,6 +478,7 @@ if (exists("df3_tidy") && !is.null(df3_tidy) && nrow(df3_tidy) > 0) {
 #| fig-width: 10
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df3_seasonal") && !is.null(df3_seasonal) && nrow(df3_seasonal) > 0) {
 
@@ -520,11 +525,11 @@ if (exists("df3_seasonal") && !is.null(df3_seasonal) && nrow(df3_seasonal) > 0) 
 
     print(p5)
   } else {
-    cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+    cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
   }
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 

@@ -236,6 +236,7 @@ Norway's building sector is the canary in the economic coal mine. When developer
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_long") && !is.null(df1_long) && nrow(df1_long) > 0) {
 
@@ -274,11 +275,11 @@ if (exists("df1_long") && !is.null(df1_long) && nrow(df1_long) > 0) {
       )
     print(p)
   } else {
-    cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+    cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
   }
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -287,6 +288,7 @@ if (exists("df1_long") && !is.null(df1_long) && nrow(df1_long) > 0) {
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_long") && !is.null(df1_long) && nrow(df1_long) > 0) {
 
@@ -334,11 +336,11 @@ if (exists("df1_long") && !is.null(df1_long) && nrow(df1_long) > 0) {
       )
     print(p2)
   } else {
-    cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+    cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
   }
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -355,6 +357,7 @@ Norway generates the overwhelming majority of its electricity from hydropower, y
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df2_spread") && !is.null(df2_spread) && nrow(df2_spread) > 0) {
 
@@ -398,7 +401,7 @@ if (exists("df2_spread") && !is.null(df2_spread) && nrow(df2_spread) > 0) {
   print(p3)
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -407,6 +410,7 @@ if (exists("df2_spread") && !is.null(df2_spread) && nrow(df2_spread) > 0) {
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 df2_all <- NULL # fixed: initialize before conditional to prevent 'object not found' error
 
@@ -454,11 +458,11 @@ if (exists("df2_clean") && !is.null(df2_clean) && nrow(df2_clean) > 0) {
       )
     print(p4) # fixed: explicit print to ensure figure renders
   } else {
-    cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+    cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
   }
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -475,6 +479,7 @@ New orders are the leading edge of industrial activity. When export orders dry u
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df3_all") && !is.null(df3_all) && nrow(df3_all) > 0) {
 
@@ -535,11 +540,11 @@ if (exists("df3_all") && !is.null(df3_all) && nrow(df3_all) > 0) {
       )
     print(p5)
   } else {
-    cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+    cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
   }
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -548,6 +553,7 @@ if (exists("df3_all") && !is.null(df3_all) && nrow(df3_all) > 0) {
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df3_all") && !is.null(df3_all) && nrow(df3_all) > 0) {
 
@@ -601,11 +607,11 @@ if (exists("df3_all") && !is.null(df3_all) && nrow(df3_all) > 0) {
       )
     print(p6)
   } else {
-    cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+    cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
   }
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 

@@ -290,6 +290,7 @@ Norway's financial institutions collectively hold a vast array of assets, from c
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_area") && !is.null(df1_area) && nrow(df1_area) > 0) {
 
@@ -329,7 +330,7 @@ if (exists("df1_area") && !is.null(df1_area) && nrow(df1_area) > 0) {
   loans_val   <- if (nrow(loans_row) > 0) loans_row$value[1] / 1e6 else NA
 
   cat(sprintf(
-    "\nAs of %s, the largest single item on Norwegian financial institutions' balance sheets was **%s**, standing at **%.0f billion NOK**.",
+    "\n\nAs of %s, the largest single item on Norwegian financial institutions' balance sheets was **%s**, standing at **%.0f billion NOK**.",
     format(latest_date, "%B %Y"), top_item, top_val
   ))
   if (!is.na(loans_val)) {
@@ -342,7 +343,7 @@ if (exists("df1_area") && !is.null(df1_area) && nrow(df1_area) > 0) {
   }
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -351,6 +352,7 @@ if (exists("df1_area") && !is.null(df1_area) && nrow(df1_area) > 0) {
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_heatmap") && !is.null(df1_heatmap) && nrow(df1_heatmap) > 0) {
 
@@ -390,12 +392,12 @@ if (exists("df1_heatmap") && !is.null(df1_heatmap) && nrow(df1_heatmap) > 0) {
     slice_max(index, n = 1)
 
   cat(sprintf(
-    "\nAcross the full period, the sharpest indexed gain relative to each series' baseline belonged to **%s**, reaching **+%.1f%%** above its initial observation level.\n\n",
+    "\n\nAcross the full period, the sharpest indexed gain relative to each series' baseline belonged to **%s**, reaching **+%.1f%%** above its initial observation level.\n\n",
     max_growth_row$series_short[1], max_growth_row$index[1]
   ))
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -408,6 +410,7 @@ Norway's goods exports are dominated by a handful of commodity categories. The d
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df2_slope") && !is.null(df2_slope) && nrow(df2_slope) > 0) {
 
@@ -416,7 +419,7 @@ if (exists("df2_slope") && !is.null(df2_slope) && nrow(df2_slope) > 0) {
     filter(date == max(date))
 
   if (nrow(latest_yr_df2) == 0) {
-    cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+    cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
   } else {
 
     # Add direction column if present
@@ -473,13 +476,13 @@ if (exists("df2_slope") && !is.null(df2_slope) && nrow(df2_slope) > 0) {
 
     top_row <- latest_yr_df2 |> slice_max(value, n = 1)
     cat(sprintf(
-      "\nIn %s, **%s** was the highest-value commodity category, at **%.0f billion NOK**. This concentration underscores Norway's structural reliance on a narrow export base.\n\n",
+      "\n\nIn %s, **%s** was the highest-value commodity category, at **%.0f billion NOK**. This concentration underscores Norway's structural reliance on a narrow export base.\n\n",
       format(max(df2_slope$date), "%Y"), top_row$series_short[1], top_row$value[1] / 1e3
     ))
   }
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -488,6 +491,7 @@ if (exists("df2_slope") && !is.null(df2_slope) && nrow(df2_slope) > 0) {
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df2_slope") && !is.null(df2_slope) && nrow(df2_slope) > 0) {
 
@@ -564,18 +568,18 @@ if (exists("df2_slope") && !is.null(df2_slope) && nrow(df2_slope) > 0) {
     top_loser  <- change_df |> slice_min(pct_change, n = 1)
 
     cat(sprintf(
-      "\nBetween %d and %d, **%s** recorded the largest proportional increase (+%.1f%%), while **%s** showed the weakest trajectory (%.1f%%).\n\n",
+      "\n\nBetween %d and %d, **%s** recorded the largest proportional increase (+%.1f%%), while **%s** showed the weakest trajectory (%.1f%%).\n\n",
       yr_start, yr_end,
       top_gainer$series_short[1], top_gainer$pct_change[1],
       top_loser$series_short[1],  top_loser$pct_change[1]
     ))
 
   } else {
-    cat("\n*Figure omitted — insufficient years for slope comparison.*\n\n")
+    cat("\n\n*Figure omitted — insufficient years for slope comparison.*\n\n")
   }
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -588,6 +592,7 @@ Every year, oil companies submit investment intentions for Statistics Norway's q
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df3_dumbbell") && !is.null(df3_dumbbell) && nrow(df3_dumbbell) > 0) {
 
@@ -628,13 +633,13 @@ if (exists("df3_dumbbell") && !is.null(df3_dumbbell) && nrow(df3_dumbbell) > 0) 
   most_under <- df3_dumbbell |> slice_min(gap, n = 1)
 
   cat(sprintf(
-    "\nThe year with the largest overshoot relative to the February estimate was **%d**: actual accrued investment exceeded early estimates by **%.0f billion NOK** (+%.1f%%). The largest undershoot was in **%d** (%.0f bn NOK, %.1f%%).\n\n",
+    "\n\nThe year with the largest overshoot relative to the February estimate was **%d**: actual accrued investment exceeded early estimates by **%.0f billion NOK** (+%.1f%%). The largest undershoot was in **%d** (%.0f bn NOK, %.1f%%).\n\n",
     most_over$yr[1],  most_over$gap[1] / 1e3,  most_over$gap_pct[1],
     most_under$yr[1], most_under$gap[1] / 1e3, most_under$gap_pct[1]
   ))
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -643,6 +648,7 @@ if (exists("df3_dumbbell") && !is.null(df3_dumbbell) && nrow(df3_dumbbell) > 0) 
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df3_components") && !is.null(df3_components) && nrow(df3_components) > 0) {
 
@@ -691,19 +697,20 @@ if (exists("df3_components") && !is.null(df3_components) && nrow(df3_components)
 
   top_comp <- latest_comp[1, ]
   cat(sprintf(
-    "\nIn the most recent year of accrued data (%s), **%s** was the largest single investment category at **%.0f billion NOK**.\n\n",
+    "\n\nIn the most recent year of accrued data (%s), **%s** was the largest single investment category at **%.0f billion NOK**.\n\n",
     format(max(df3_components$date), "%Y"),
     top_comp$series_short, top_comp$value / 1e3
   ))
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
 ## Key Findings
 
 ```{r key-findings}
+#| results: asis
 findings <- character(0)
 
 if (!is.null(df1_area) && nrow(df1_area) > 0) {
@@ -748,7 +755,7 @@ if (!is.null(df3_dumbbell) && nrow(df3_dumbbell) > 0) {
 if (length(findings) > 0) {
   cat("### Key findings\n\n")
   cat(paste(findings, collapse = "\n\n"))
-  cat("\n")
+  cat("\n\n")
 } else {
   cat("*No data were available to compute key findings.*\n")
 }

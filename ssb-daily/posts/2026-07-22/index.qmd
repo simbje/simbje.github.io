@@ -227,6 +227,7 @@ The energy price crisis that squeezed Norwegian households and businesses betwee
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_power") && !is.null(df1_power) && nrow(df1_power) > 0) {
   n_contracts <- length(unique(df1_power$contract))
@@ -265,7 +266,7 @@ if (exists("df1_power") && !is.null(df1_power) && nrow(df1_power) > 0) {
 
   print(p1) # fixed: explicitly print plot to ensure PNG output
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -278,6 +279,7 @@ While energy markets have calmed, Norway's hiring market tells a more troubling 
 #| fig-width: 10
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df3_heatmap") && !is.null(df3_heatmap) && nrow(df3_heatmap) > 0) {
 
@@ -317,7 +319,7 @@ if (exists("df3_heatmap") && !is.null(df3_heatmap) && nrow(df3_heatmap) > 0) {
 
   print(p2)
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -326,6 +328,7 @@ if (exists("df3_heatmap") && !is.null(df3_heatmap) && nrow(df3_heatmap) > 0) {
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 df3_lollipop <- NULL
 
@@ -388,7 +391,7 @@ if (!is.null(df3_lollipop) && nrow(df3_lollipop) > 0) {
 
   print(p3)
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -401,6 +404,7 @@ The third pillar of Norway's 2026 paradox sits in the labour force survey. Emplo
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df2_gender_pct") && !is.null(df2_gender_pct) && nrow(df2_gender_pct) > 0) {
 
@@ -432,7 +436,7 @@ if (exists("df2_gender_pct") && !is.null(df2_gender_pct) && nrow(df2_gender_pct)
 
   print(p4)
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -441,6 +445,7 @@ if (exists("df2_gender_pct") && !is.null(df2_gender_pct) && nrow(df2_gender_pct)
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df2_dumbbell") && !is.null(df2_dumbbell) && nrow(df2_dumbbell) > 0) {
 
@@ -499,7 +504,7 @@ if (exists("df2_dumbbell") && !is.null(df2_dumbbell) && nrow(df2_dumbbell) > 0) 
 
   print(p5)
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 

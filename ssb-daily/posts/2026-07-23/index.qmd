@@ -260,6 +260,7 @@ Norway's household landscape has been quietly atomising for decades. The share o
 #| fig-width: 10
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_slope") && !is.null(df1_slope) && nrow(df1_slope) > 0 &&
     exists("df1_dumbbell") && !is.null(df1_dumbbell) && nrow(df1_dumbbell) > 0) {
@@ -305,7 +306,7 @@ if (exists("df1_slope") && !is.null(df1_slope) && nrow(df1_slope) > 0 &&
   print(p)
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -314,6 +315,7 @@ if (exists("df1_slope") && !is.null(df1_slope) && nrow(df1_slope) > 0 &&
 #| fig-width: 10
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_recent") && !is.null(df1_recent) && nrow(df1_recent) > 0) {
 
@@ -349,7 +351,7 @@ if (exists("df1_recent") && !is.null(df1_recent) && nrow(df1_recent) > 0) {
   print(p) # fixed: added explicit print() to ensure plot appears
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -362,6 +364,7 @@ Norway's trade statistics tell a more complex story than the headline oil wealth
 #| fig-width: 10
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df2_balance") && !is.null(df2_balance) && nrow(df2_balance) > 0) {
 
@@ -411,7 +414,7 @@ if (exists("df2_balance") && !is.null(df2_balance) && nrow(df2_balance) > 0) {
   print(p)
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -420,6 +423,7 @@ if (exists("df2_balance") && !is.null(df2_balance) && nrow(df2_balance) > 0) {
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df2_lollipop") && !is.null(df2_lollipop) && nrow(df2_lollipop) > 0) {
 
@@ -462,7 +466,7 @@ if (exists("df2_lollipop") && !is.null(df2_lollipop) && nrow(df2_lollipop) > 0) 
   print(p)
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -475,6 +479,7 @@ Where and how Norwegians live has direct implications for the country's energy s
 #| fig-width: 11
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df3_all_bldg") && !is.null(df3_all_bldg) && nrow(df3_all_bldg) > 0) {
 
@@ -536,11 +541,11 @@ if (exists("df3_all_bldg") && !is.null(df3_all_bldg) && nrow(df3_all_bldg) > 0) 
 
     print(p)
   } else {
-    cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+    cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
   }
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 

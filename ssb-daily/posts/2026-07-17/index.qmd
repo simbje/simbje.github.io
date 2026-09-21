@@ -145,6 +145,7 @@ Norway has long pointed to its per-household renewable electricity system as evi
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df_total") && !is.null(df_total) && nrow(df_total) > 0 &&
     exists("df_sectors") && !is.null(df_sectors) && nrow(df_sectors) > 0) {
@@ -197,7 +198,7 @@ if (exists("df_total") && !is.null(df_total) && nrow(df_total) > 0 &&
   print(p1)
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -210,6 +211,7 @@ The structure of Norwegian emissions has remained stubbornly concentrated. Oil a
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df_lollipop") && !is.null(df_lollipop) && nrow(df_lollipop) > 0) {
 
@@ -271,7 +273,7 @@ if (exists("df_lollipop") && !is.null(df_lollipop) && nrow(df_lollipop) > 0) {
   print(p2)  # fixed: added missing print() statement
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -284,6 +286,7 @@ An index chart, anchored to the first year in the series, strips away the distor
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df_heat") && !is.null(df_heat) && nrow(df_heat) > 0) {
 
@@ -335,7 +338,7 @@ if (exists("df_heat") && !is.null(df_heat) && nrow(df_heat) > 0) {
   print(p3)  # fixed: added missing print() statement
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -348,6 +351,7 @@ The aggregate picture masks divergent sector-level dynamics. Examining each sect
 #| fig-width: 11
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df_sectors") && !is.null(df_sectors) && nrow(df_sectors) > 0) {
 
@@ -395,7 +399,7 @@ if (exists("df_sectors") && !is.null(df_sectors) && nrow(df_sectors) > 0) {
   print(p4)
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -408,6 +412,7 @@ A slope chart offers the clearest visual summary of directional change between t
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df_slope") && !is.null(df_slope) && nrow(df_slope) > 0) {
 
@@ -479,7 +484,7 @@ if (exists("df_slope") && !is.null(df_slope) && nrow(df_slope) > 0) {
   print(p5)  # fixed: added missing print() statement
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 

@@ -182,6 +182,7 @@ Norway's headline consumer price index shows annual growth that, while moderatin
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_change") && !is.null(df1_change) && nrow(df1_change) > 0) {
   
@@ -233,7 +234,7 @@ if (exists("df1_change") && !is.null(df1_change) && nrow(df1_change) > 0) {
   
   print(p1)
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -242,6 +243,7 @@ if (exists("df1_change") && !is.null(df1_change) && nrow(df1_change) > 0) {
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_change") && !is.null(df1_change) && nrow(df1_change) > 0) {
   
@@ -264,7 +266,7 @@ if (exists("df1_change") && !is.null(df1_change) && nrow(df1_change) > 0) {
     )
   
   if (nrow(df1_latest) == 0) {
-    cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+    cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
   } else {
     pal2 <- met.brewer("Hokusai2", n = 2)
     
@@ -302,7 +304,7 @@ if (exists("df1_change") && !is.null(df1_change) && nrow(df1_change) > 0) {
     print(p2)
   }
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -315,6 +317,7 @@ While households feel the squeeze from elevated prices, Norway's service industr
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df2_trend") && !is.null(df2_trend) && nrow(df2_trend) > 0) {
   
@@ -360,7 +363,7 @@ if (exists("df2_trend") && !is.null(df2_trend) && nrow(df2_trend) > 0) {
   
   print(p3)
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -373,6 +376,7 @@ Monthly unadjusted data reveal seasonal surges — Norwegian tourism peaks sharp
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df2_sectors") && !is.null(df2_sectors) && nrow(df2_sectors) > 0) {
   
@@ -423,10 +427,10 @@ if (exists("df2_sectors") && !is.null(df2_sectors) && nrow(df2_sectors) > 0) {
     
     print(p4)
   } else {
-    cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+    cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
   }
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -439,6 +443,7 @@ The dumbbell chart below crystallises the directional shift in price pressure ac
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_dumbbell") && !is.null(df1_dumbbell) && nrow(df1_dumbbell) > 0) {
   
@@ -465,7 +470,7 @@ if (exists("df1_dumbbell") && !is.null(df1_dumbbell) && nrow(df1_dumbbell) > 0) 
       filter(!is.na(.data[[yr_old]]) & !is.na(.data[[yr_new]]))
     
     if (nrow(df_db) == 0) {
-      cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+      cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
     } else {
       pal5 <- met.brewer("Hokusai2", n = 2)
       
@@ -516,10 +521,10 @@ if (exists("df1_dumbbell") && !is.null(df1_dumbbell) && nrow(df1_dumbbell) > 0) 
       print(p5)
     }
   } else {
-    cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+    cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
   }
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 

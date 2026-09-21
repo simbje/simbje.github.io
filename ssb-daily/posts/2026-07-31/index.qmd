@@ -243,6 +243,7 @@ The broadest view first: how has the total number of wage earners in Norway shif
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_national") && !is.null(df1_national) && nrow(df1_national) > 0) {
 
@@ -290,7 +291,7 @@ if (exists("df1_national") && !is.null(df1_national) && nrow(df1_national) > 0) 
   print(p)
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -303,6 +304,7 @@ Not all regions are moving in the same direction. A lollipop chart of year-on-ye
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_quarterly") && !is.null(df1_quarterly) && nrow(df1_quarterly) > 0) {
 
@@ -342,7 +344,7 @@ if (exists("df1_quarterly") && !is.null(df1_quarterly) && nrow(df1_quarterly) > 
   print(p)
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -355,6 +357,7 @@ While employment data suggests a healthy market, household survey data from SSB 
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df2_heatmap") && !is.null(df2_heatmap) && nrow(df2_heatmap) > 0) {
 
@@ -391,7 +394,7 @@ if (exists("df2_heatmap") && !is.null(df2_heatmap) && nrow(df2_heatmap) > 0) {
   print(p)
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -404,6 +407,7 @@ The dumbbell chart below compares the share of households struggling to make end
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df2_dumbbell") && !is.null(df2_dumbbell) && nrow(df2_dumbbell) > 0) {
 
@@ -450,7 +454,7 @@ if (exists("df2_dumbbell") && !is.null(df2_dumbbell) && nrow(df2_dumbbell) > 0) 
   print(p) # fixed: added explicit print() to render plot
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -463,6 +467,7 @@ The area chart below traces how all four hardship indicators have evolved nation
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df2_national") && !is.null(df2_national) && nrow(df2_national) > 0) {
 
@@ -524,7 +529,7 @@ if (exists("df2_national") && !is.null(df2_national) && nrow(df2_national) > 0) 
   print(p) # fixed: added explicit print() to render plot
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 

@@ -234,6 +234,7 @@ Norway's digital statistics capture something remarkable: the adoption of genera
 #| fig-width: 10
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_age") && !is.null(df1_age) && nrow(df1_age) > 0) {
 
@@ -281,11 +282,11 @@ if (exists("df1_age") && !is.null(df1_age) && nrow(df1_age) > 0) {
       )
     print(p1)
   } else {
-    cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+    cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
   }
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -294,6 +295,7 @@ if (exists("df1_age") && !is.null(df1_age) && nrow(df1_age) > 0) {
 #| fig-width: 10
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_broad") && !is.null(df1_broad) && nrow(df1_broad) > 0) {
 
@@ -358,14 +360,14 @@ if (exists("df1_broad") && !is.null(df1_broad) && nrow(df1_broad) > 0) {
         )
       print(p2) # fixed: added missing print() statement
     } else {
-      cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+      cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
     }
   } else {
-    cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+    cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
   }
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -378,6 +380,7 @@ Population projections from SSB tell a stark story. Under the baseline "medium n
 #| fig-width: 10
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df2_groups") && !is.null(df2_groups) && nrow(df2_groups) > 0) {
 
@@ -430,11 +433,11 @@ if (exists("df2_groups") && !is.null(df2_groups) && nrow(df2_groups) > 0) {
       guides(fill = guide_legend(nrow = 3))
     print(p3) # fixed: added missing print() statement
   } else {
-    cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+    cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
   }
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -447,6 +450,7 @@ Norway's criminal justice statistics offer a window into social stress by genera
 #| fig-width: 10
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df3_heatmap") && !is.null(df3_heatmap) && nrow(df3_heatmap) > 0) {
 
@@ -495,11 +499,11 @@ if (exists("df3_heatmap") && !is.null(df3_heatmap) && nrow(df3_heatmap) > 0) {
       )
     print(p4)
   } else {
-    cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+    cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
   }
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -508,6 +512,7 @@ if (exists("df3_heatmap") && !is.null(df3_heatmap) && nrow(df3_heatmap) > 0) {
 #| fig-width: 10
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df3_rate") && !is.null(df3_rate) && nrow(df3_rate) > 0) {
 
@@ -563,11 +568,11 @@ if (exists("df3_rate") && !is.null(df3_rate) && nrow(df3_rate) > 0) {
       )
     print(p5)
   } else {
-    cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+    cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
   }
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 

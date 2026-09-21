@@ -269,6 +269,7 @@ Norway's headline consumer price index has moderated since its 2022–2023 peaks
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_food") && !is.null(df1_food) && nrow(df1_food) > 0) {
 
@@ -308,7 +309,7 @@ if (exists("df1_food") && !is.null(df1_food) && nrow(df1_food) > 0) {
   print(p1)
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -317,6 +318,7 @@ if (exists("df1_food") && !is.null(df1_food) && nrow(df1_food) > 0) {
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_food") && !is.null(df1_food) && nrow(df1_food) > 0) {
 
@@ -362,7 +364,7 @@ if (exists("df1_food") && !is.null(df1_food) && nrow(df1_food) > 0) {
   print(p2)
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -377,6 +379,7 @@ The registered unemployment rate tracked by SSB's monthly series offers a higher
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df2_ridge") && !is.null(df2_ridge) && nrow(df2_ridge) > 0) {
 
@@ -421,11 +424,11 @@ if (exists("df2_ridge") && !is.null(df2_ridge) && nrow(df2_ridge) > 0) {
       )
     print(p3) # fixed: added explicit print() to ensure plot renders
   } else {
-    cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+    cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
   }
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -440,6 +443,7 @@ The structural story in Norway's housing market is a long-run undersupply, and t
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df3_types") && !is.null(df3_types) && nrow(df3_types) > 0) {
 
@@ -485,7 +489,7 @@ if (exists("df3_types") && !is.null(df3_types) && nrow(df3_types) > 0) {
   print(p4)
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -494,6 +498,7 @@ if (exists("df3_types") && !is.null(df3_types) && nrow(df3_types) > 0) {
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df3_dumbbell") && !is.null(df3_dumbbell) && nrow(df3_dumbbell) > 0) {
 
@@ -555,7 +560,7 @@ if (exists("df3_dumbbell") && !is.null(df3_dumbbell) && nrow(df3_dumbbell) > 0) 
   print(p5)
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 

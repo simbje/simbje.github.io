@@ -307,6 +307,7 @@ Norway is not merely an oil nation — it is a major exporter of aluminium, nick
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_indexed") && !is.null(df1_indexed) && nrow(df1_indexed) > 0) {
   pal <- MetBrewer::met.brewer("Hokusai2", n = 5)
@@ -340,7 +341,7 @@ if (exists("df1_indexed") && !is.null(df1_indexed) && nrow(df1_indexed) > 0) {
     )
   print(p)
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -349,6 +350,7 @@ if (exists("df1_indexed") && !is.null(df1_indexed) && nrow(df1_indexed) > 0) {
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_lollipop") && !is.null(df1_lollipop) && nrow(df1_lollipop) > 0) {
   pal2 <- MetBrewer::met.brewer("Hokusai2", n = 7)
@@ -384,7 +386,7 @@ if (exists("df1_lollipop") && !is.null(df1_lollipop) && nrow(df1_lollipop) > 0) 
     )
   print(p)
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -399,6 +401,7 @@ National employment statistics reassure. But the regional picture — visible on
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df2_top_region") && !is.null(df2_top_region) && nrow(df2_top_region) > 0) {
 
@@ -436,7 +439,7 @@ if (exists("df2_top_region") && !is.null(df2_top_region) && nrow(df2_top_region)
     )
   print(p)
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -451,6 +454,7 @@ If metal prices and regional jobs represent economic stress, institutional trust
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df3_dist") && !is.null(df3_dist) && nrow(df3_dist) > 0) {
 
@@ -488,7 +492,7 @@ if (exists("df3_dist") && !is.null(df3_dist) && nrow(df3_dist) > 0) {
     )
   print(p) # fixed: added explicit print() call to ensure plot renders
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -497,6 +501,7 @@ if (exists("df3_dist") && !is.null(df3_dist) && nrow(df3_dist) > 0) {
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df3_ridge") && !is.null(df3_ridge) && nrow(df3_ridge) > 0) {
 
@@ -541,10 +546,10 @@ if (exists("df3_ridge") && !is.null(df3_ridge) && nrow(df3_ridge) > 0) {
       )
     print(p) # fixed: added explicit print() call to ensure plot renders
   } else {
-    cat("\n*Figure omitted — insufficient regional trust observations for ridge chart.*\n\n")
+    cat("\n\n*Figure omitted — insufficient regional trust observations for ridge chart.*\n\n")
   }
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 

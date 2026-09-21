@@ -239,6 +239,7 @@ Quarterly job vacancy data from Statistics Norway tracks not just overall labour
 #| fig-width: 10
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_heatmap") && !is.null(df1_heatmap) && nrow(df1_heatmap) > 0) {
 
@@ -281,13 +282,13 @@ if (exists("df1_heatmap") && !is.null(df1_heatmap) && nrow(df1_heatmap) > 0) {
     filter(mean_val == min(mean_val, na.rm = TRUE))
 
   cat(sprintf(
-    "\nThe sector with the highest annual mean vacancy count was **%s** in **%d** (%s vacancies). The lowest recorded annual mean was in **%s** in **%d** (%s vacancies).\n\n",
+    "\n\nThe sector with the highest annual mean vacancy count was **%s** in **%d** (%s vacancies). The lowest recorded annual mean was in **%s** in **%d** (%s vacancies).\n\n",
     peak_row[[sector_var]][1], peak_row$year[1], comma(round(peak_row$mean_val[1])),
     low_row[[sector_var]][1],  low_row$year[1],  comma(round(low_row$mean_val[1]))
   ))
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -296,6 +297,7 @@ if (exists("df1_heatmap") && !is.null(df1_heatmap) && nrow(df1_heatmap) > 0) {
 #| fig-width: 10
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_top_sectors") && !is.null(df1_top_sectors) && nrow(df1_top_sectors) > 0) {
 
@@ -337,12 +339,12 @@ if (exists("df1_top_sectors") && !is.null(df1_top_sectors) && nrow(df1_top_secto
   top_now   <- latest_df[which.max(latest_df$value), ]
 
   cat(sprintf(
-    "\nIn the most recent available quarter (%s), the sector with the highest vacancy count was **%s** with **%s** open positions.\n\n",
+    "\n\nIn the most recent available quarter (%s), the sector with the highest vacancy count was **%s** with **%s** open positions.\n\n",
     format(latest_q, "%Y Q%q"), top_now[[sector_var]], comma(top_now$value)
   ))
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -355,6 +357,7 @@ The number of people convicted per thousand inhabitants is one of the clearest s
 #| fig-width: 10
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df2_offence_top") && !is.null(df2_offence_top) && nrow(df2_offence_top) > 0) {
 
@@ -401,13 +404,13 @@ if (exists("df2_offence_top") && !is.null(df2_offence_top) && nrow(df2_offence_t
     arrange(desc(total))
 
   cat(sprintf(
-    "\nAcross all available years, **%s** accumulated the highest total conviction count (%s). The offence category with the fewest total convictions among the top eight was **%s** (%s).\n\n",
+    "\n\nAcross all available years, **%s** accumulated the highest total conviction count (%s). The offence category with the fewest total convictions among the top eight was **%s** (%s).\n\n",
     by_offence[[offence_var]][1], comma(by_offence$total[1]),
     by_offence[[offence_var]][nrow(by_offence)], comma(by_offence$total[nrow(by_offence)])
   ))
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -416,6 +419,7 @@ if (exists("df2_offence_top") && !is.null(df2_offence_top) && nrow(df2_offence_t
 #| fig-width: 10
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df2_rate") && !is.null(df2_rate) && nrow(df2_rate) > 0) {
 
@@ -463,13 +467,13 @@ if (exists("df2_rate") && !is.null(df2_rate) && nrow(df2_rate) > 0) {
 
     top_off <- df2_latest |> filter(mean_rate == max(mean_rate))
     cat(sprintf(
-      "\nIn **%d**, **%s** had the highest conviction rate among all offence types at **%.2f** convictions per 1 000 inhabitants.\n\n",
+      "\n\nIn **%d**, **%s** had the highest conviction rate among all offence types at **%.2f** convictions per 1 000 inhabitants.\n\n",
       latest_year, top_off[[offence_var]][1], top_off$mean_rate[1]
     ))
   }
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -482,6 +486,7 @@ Statistics Norway publishes several demographic scenarios for Norway's future po
 #| fig-width: 10
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df3_age_total") && !is.null(df3_age_total) && nrow(df3_age_total) > 0) {
 
@@ -551,7 +556,7 @@ if (exists("df3_age_total") && !is.null(df3_age_total) && nrow(df3_age_total) > 
     low_val  <- latest_spread$total_pop[nrow(latest_spread)]
     gap      <- high_val - low_val
     cat(sprintf(
-      "\nBy **%s**, the projected population spans from **%s** (low growth) to **%s** (high growth) — a difference of **%s** people depending on which demographic assumptions prevail.\n\n",
+      "\n\nBy **%s**, the projected population spans from **%s** (low growth) to **%s** (high growth) — a difference of **%s** people depending on which demographic assumptions prevail.\n\n",
       format(latest_proj, "%Y"),
       label_number(scale = 1e-6, suffix = " million", accuracy = 0.01)(low_val),
       label_number(scale = 1e-6, suffix = " million", accuracy = 0.01)(high_val),
@@ -560,7 +565,7 @@ if (exists("df3_age_total") && !is.null(df3_age_total) && nrow(df3_age_total) > 
   }
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -568,6 +573,7 @@ if (exists("df3_age_total") && !is.null(df3_age_total) && nrow(df3_age_total) > 
 
 ```{r key-findings}
 #| echo: false
+#| results: asis
 
 bullets <- character(0)
 
@@ -628,7 +634,7 @@ if (exists("df3_age_total") && !is.null(df3_age_total) && nrow(df3_age_total) > 
 if (length(bullets) > 0) {
   cat("### Key findings\n\n")
   cat(paste(bullets, collapse = "\n\n"))
-  cat("\n")
+  cat("\n\n")
 } 
 ```
 

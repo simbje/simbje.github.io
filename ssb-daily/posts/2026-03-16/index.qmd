@@ -318,6 +318,7 @@ if (!is.null(df)) {
 ## Key findings
 
 ```{r summary-stats}
+#| results: asis
 if (!is.null(df)) {
   
   # Calculate key changes
@@ -328,7 +329,7 @@ if (!is.null(df)) {
     bed_change <- (beds$value[beds$year == max(beds$year)] / 
                    beds$value[beds$year == min(beds$year)] - 1) * 100
     
-    cat(sprintf("\n• Hospital beds have declined by %.1f%% over the period\n", abs(bed_change)))
+    cat(sprintf("\n\n- Hospital beds have declined by %.1f%% over the period\n", abs(bed_change)))
   }
   
   los <- df |>
@@ -340,7 +341,7 @@ if (!is.null(df)) {
     los_days_saved <- los$value[los$year == min(los$year)] - 
                       los$value[los$year == max(los$year)]
     
-    cat(sprintf("• Average hospital stay has shortened by %.1f%% (%.1f fewer days)\n", 
+    cat(sprintf("- Average hospital stay has shortened by %.1f%% (%.1f fewer days)\n", 
                 abs(los_change), los_days_saved))
   }
   
@@ -351,12 +352,12 @@ if (!is.null(df)) {
     surgery_growth <- (surgery$value[surgery$year == max(surgery$year)] / 
                        surgery$value[surgery$year == min(surgery$year)] - 1) * 100
     
-    cat(sprintf("• Day surgeries have increased by %.1f%% as outpatient care expands\n", 
+    cat(sprintf("- Day surgeries have increased by %.1f%% as outpatient care expands\n", 
                 surgery_growth))
   }
   
-  cat("\n• Norway's hospital system has fundamentally restructured around efficiency and rapid throughput\n")
-  cat("• Fewer beds, shorter stays, and more outpatient procedures reflect both technological progress and cost pressure\n")
+  cat("\n\n- Norway's hospital system has fundamentally restructured around efficiency and rapid throughput\n")
+  cat("- Fewer beds, shorter stays, and more outpatient procedures reflect both technological progress and cost pressure\n")
 }
 ```
 

@@ -248,6 +248,7 @@ Norway's actual hours worked per week have drifted downward over the measured pe
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_sector_hrs") && !is.null(df1_sector_hrs) && nrow(df1_sector_hrs) > 0) {
 
@@ -281,7 +282,7 @@ if (exists("df1_sector_hrs") && !is.null(df1_sector_hrs) && nrow(df1_sector_hrs)
   print(p)
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -290,6 +291,7 @@ if (exists("df1_sector_hrs") && !is.null(df1_sector_hrs) && nrow(df1_sector_hrs)
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df1_dumbbell") && !is.null(df1_dumbbell) && nrow(df1_dumbbell) > 0) {
 
@@ -329,7 +331,7 @@ if (exists("df1_dumbbell") && !is.null(df1_dumbbell) && nrow(df1_dumbbell) > 0) 
   print(p) # fixed: added explicit print() to ensure plot renders
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -342,6 +344,7 @@ The quarterly national accounts data from SSB table 09171 allow a more granular 
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df2_quarterly") && !is.null(df2_quarterly) && nrow(df2_quarterly) > 0) {
 
@@ -377,7 +380,7 @@ if (exists("df2_quarterly") && !is.null(df2_quarterly) && nrow(df2_quarterly) > 
   print(p)
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -390,6 +393,7 @@ A ridgeline chart shows the full distribution of quarterly volume-change reading
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (exists("df2_quarterly") && !is.null(df2_quarterly) && nrow(df2_quarterly) > 0) {
 
@@ -436,7 +440,7 @@ if (exists("df2_quarterly") && !is.null(df2_quarterly) && nrow(df2_quarterly) > 
   print(p)
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 
@@ -449,6 +453,7 @@ The total volume of weeks worked (in thousands, at the standard 37.5-hour week e
 #| fig-width: 9
 #| fig-show: asis
 #| dev: "png"
+#| results: asis
 
 if (!is.null(df1_weeks) && nrow(df1_weeks) > 0) {
   s1_col <- "næring (SN2007)"
@@ -522,7 +527,7 @@ if (exists("df1_weeks_dumbbell") && !is.null(df1_weeks_dumbbell) && nrow(df1_wee
   print(p)
 
 } else {
-  cat("\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
+  cat("\n\n*Figure omitted — Statistics Norway returned no data for this series.*\n\n")
 }
 ```
 

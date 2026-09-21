@@ -478,15 +478,16 @@ if (!is.null(df_sectors) && nrow(df_sectors) > 0) {
 
 ```{r findings-summary}
 #| echo: false
+#| results: asis
 
 if (!is.null(df_all) && nrow(df_all) > 0) {
   peak_val   <- max(df_all$value, na.rm = TRUE)
   peak_date  <- df_all$date[which.max(df_all$value)]
   latest_val <- df_all |> slice_max(date, n = 1) |> pull(value)
   pct_drop   <- round((peak_val - latest_val) / peak_val * 100, 1)
-  cat("Peak vacancies:", format(peak_val, big.mark = ","), "in", format(peak_date, "%Y Q"), quarter(peak_date), "\n")
-  cat("Latest quarter:", format(latest_val, big.mark = ","), "\n")
-  cat("Drop from peak:", pct_drop, "%\n")
+  cat("\n\n- Peak vacancies:", format(peak_val, big.mark = ","), "in", format(peak_date, "%Y Q"), quarter(peak_date), "\n")
+  cat("- Latest quarter:", format(latest_val, big.mark = ","), "\n")
+  cat("- Drop from peak:", pct_drop, "%\n")
 }
 
 if (!is.null(df_rate) && nrow(df_rate) > 0) {
@@ -497,8 +498,8 @@ if (!is.null(df_rate) && nrow(df_rate) > 0) {
   bot_sector <- df_rate |>
     filter(date == latest_q) |>
     slice_min(value, n = 1)
-  cat("Highest vacancy rate (latest):", top_sector$sector_short, "-", top_sector$value, "%\n")
-  cat("Lowest vacancy rate (latest):", bot_sector$sector_short, "-", bot_sector$value, "%\n")
+  cat("\n\n- Highest vacancy rate (latest):", top_sector$sector_short, "-", top_sector$value, "%\n")
+  cat("- Lowest vacancy rate (latest):", bot_sector$sector_short, "-", bot_sector$value, "%\n")
 }
 ```
 
