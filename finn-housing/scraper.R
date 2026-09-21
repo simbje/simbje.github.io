@@ -556,8 +556,9 @@ scrape_listing_detail <- function(finn_id) {
 # ── Main scrape loop ───────────────────────────────────────────────────────────
 message("Starter finn.no-henting — ", Sys.time())
 
-new_rows   <- list()
-stop_early <- FALSE
+new_rows        <- list()
+stop_early      <- FALSE
+seen_only_pages <- 0L
 
 for (pg in seq_len(MAX_PAGES)) {
   if (stop_early) break
@@ -580,9 +581,17 @@ for (pg in seq_len(MAX_PAGES)) {
           nrow(novel), " nye (ikke i DB ennå)")
 
   if (nrow(novel) == 0) {
-    message("  Alle annonser allerede sett — stopper paginering.")
-    stop_early <- TRUE
+    # finn.no intermittently serves a reduced page (we have seen 3 cards where
+    # another request returned 51). One all-seen page is therefore not proof we
+    # have caught up — only stop once two in a row bring nothing new.
+    seen_only_pages <- seen_only_pages + 1L
+    message("  Alle annonser allerede sett (", seen_only_pages, " side(r) på rad).")
+    if (seen_only_pages >= 2L) {
+      message("  Stopper paginering.")
+      stop_early <- TRUE
+    }
   } else {
+    seen_only_pages <- 0L
     new_rows <- c(new_rows, list(novel))
   }
 
@@ -705,9 +714,13 @@ if (nrow(needs_backfill) > 0) {
     if (is.null(d) || detail_is_empty(d)) {
       consecutive_failures <- consecutive_failures + 1L
       if (consecutive_failures >= MAX_CONSECUTIVE_FAILURES) {
-        message("  ", consecutive_failures, " tomme svar på rad — avbryter etterlysingen",
-                " etter ", i, " av ", nrow(needs_backfill), ".")
-        scrape_degraded <- TRUE
+        # Expected, not a degraded run: this queue is sorted oldest-data-first
+        # and is full of ads that have since been delisted, so their detail
+        # pages are legitimately empty. Stop early to save the fetches, but do
+        # not cry wolf — scrape_degraded is reserved for actually being blocked.
+        message("  ", consecutive_failures, " tomme svar på rad (trolig avpubliserte",
+                " annonser) — avbryter etterlysingen etter ", i, " av ",
+                nrow(needs_backfill), ".")
         break
       }
       Sys.sleep(DETAIL_SLEEP)
@@ -767,9 +780,10 @@ if (nrow(needs_floor) > 0) {
     if (is.null(d) || detail_is_empty(d)) {
       consecutive_failures <- consecutive_failures + 1L
       if (consecutive_failures >= MAX_CONSECUTIVE_FAILURES) {
-        message("  ", consecutive_failures, " tomme svar på rad — avbryter etterlysingen",
-                " etter ", i, " av ", nrow(needs_floor), ".")
-        scrape_degraded <- TRUE
+        # Same as above: delisted ads, not a blocked scraper.
+        message("  ", consecutive_failures, " tomme svar på rad (trolig avpubliserte",
+                " annonser) — avbryter etterlysingen etter ", i, " av ",
+                nrow(needs_floor), ".")
         break
       }
       Sys.sleep(DETAIL_SLEEP)
