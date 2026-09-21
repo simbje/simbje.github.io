@@ -2,9 +2,11 @@ name: 🇳🇴 SSB Analysis + Deploy
 
 on:
   schedule:
-    # Runs daily as a checker, but only GENERATES a new analysis every 3 days
-    # (plus the ML special every Friday) — see the cadence gate in the generate
-    # step. Deploy still runs on every trigger so other site changes go live.
+    # SSB generation is PAUSED (2026-09-21) — see the PAUSED gate in the generate
+    # step. The daily run is kept so the site is still rendered and deployed
+    # (other workflows commit data with [skip ci] and rely on this deploy).
+    # When resumed: generates a new analysis every 3 days, plus the ML special
+    # every Friday — see the cadence gate in the generate step.
     - cron: '0 6 * * *'
   push:
     branches: [main]
@@ -95,6 +97,20 @@ jobs:
           TODAY=$(date +%Y-%m-%d)
           DOW=$(date +%u)   # 1=Mon .. 7=Sun; 5 = Friday
           FORCE="${{ github.event.inputs.force_regenerate }}"
+
+          # ── PAUSED (2026-09-21) ───────────────────────────────────────────────
+          # Automatic SSB analysis generation is paused. The rest of this workflow
+          # still runs, so the site keeps being rendered and deployed (which is how
+          # other bot-committed data, e.g. the housing scraper, reaches the site).
+          # To resume: set PAUSED=false below and restore the "Live" badge/header
+          # text in ssb-daily/index.qmd. A manual workflow_dispatch run with
+          # force_regenerate=true still produces a one-off post while paused.
+          PAUSED=true
+          if [ "$PAUSED" = "true" ] && [ "$FORCE" != "true" ]; then
+            echo "⏸️ SSB analysis generation is PAUSED — skipping generation; the site is still re-rendered and deployed."
+            exit 0
+          fi
+
           if [ "$FORCE" = "true" ]; then
             rm -rf "ssb-daily/posts/$TODAY"
           fi

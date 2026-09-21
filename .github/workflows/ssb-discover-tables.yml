@@ -3,9 +3,13 @@ name: 🔎 SSB Table Discovery (bi-weekly)
 # Grows the pool of SSB tables the daily post generator can draw from.
 # Runs on the 1st and 15th of each month (~every two weeks). Only real
 # catalogue IDs are added, so nothing it commits can ever 404.
+#
+# PAUSED (2026-09-21): the SSB analysis pipeline is paused, so there is nothing
+# to grow the pool for. The schedule below is disabled — uncomment the cron to
+# resume alongside the generator in deploy.yml. Manual runs still work.
 on:
-  schedule:
-    - cron: '0 5 1,15 * *'
+  # schedule:
+  #   - cron: '0 5 1,15 * *'
   workflow_dispatch:
 
 permissions:
