@@ -1,61 +1,10 @@
-## 2026-09-07
-
-**Data unavailable:** SSB tables 07221, 10634, 07201 returned no data or API error
-**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-## 2026-09-07
-
-**Data unavailable:** SSB tables 14700, 09170, 05196 returned no data or API error
-**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-## 2026-09-07
-
-**Data unavailable:** SSB tables 03778, 09189, 13835 returned no data or API error
-**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
-
-
-
-
-
-
-
-
-
-
-
-
-
 ## 2026-09-08
 
 **Data unavailable:** SSB tables 08268, 05803 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
+
 
 
 
@@ -83,10 +32,16 @@
 
 
 
+
+
+
 ## 2026-09-08
 
 **Error:** `Error in `loadNamespace()`:`
 **Fixes applied:** removed janitor dependency (janitor::clean_names() call), initialized df2_lollipop properly to avoid undefined variable error
+
+
+
 
 
 
@@ -110,10 +65,16 @@
 
 
 
+
+
+
 ## 2026-09-14
 
 **Data unavailable:** SSB tables 14620, 13635 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
+
 
 
 
@@ -133,10 +94,16 @@
 
 
 
+
+
+
 ## 2026-09-17
 
 **Data unavailable:** SSB tables 06988, 14472, 09429 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
+
 
 
 
@@ -152,10 +119,16 @@
 
 
 
+
+
+
 ## 2026-09-18
 
 **Data unavailable:** SSB tables 03013 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
+
 
 
 
@@ -167,14 +140,41 @@
 
 
 
+
+
+
 ## 2026-09-18
 
 **Data unavailable:** SSB tables 06090, 11386, 01223 returned no data or API error
 **Fixes applied:** none (post scrapped — data-level issue, not a code bug)
 
 
+
+
+
 ## 2026-09-18
 
 **Error:** `Error in `met.brewer()`:`
 **Fixes applied:** met.brewer color palette count exceeded discrete limit (reduced from 4 to 3), missing print() statements in three plot chunks, color palette initialization errors in emissions lollipop
+
+
+
+
+## 2026-09-21
+
+**Data unavailable:** SSB tables 13863, 12315, 09190 returned no data or API error
+**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
+
+## 2026-09-21
+
+**Data unavailable:** SSB tables 14366, 13771 returned no data or API error
+**Fixes applied:** none (post scrapped — data-level issue, not a code bug)
+
+
+## 2026-09-21
+
+**Error:** `Error in `mutate()`:`
+**Fixes applied:** mutate() error in df3_dumbbell due to column name case mismatch (Latest/Earliest vs Earliest/Latest), missing print() statements in plot-dumbbell-employed and plot-ridgeline-employed chunks
 
