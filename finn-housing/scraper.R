@@ -112,6 +112,11 @@ tryCatch(dbExecute(con, "ALTER TABLE listings ADD COLUMN has_balcony            
 # that can actually be bought.
 tryCatch(dbExecute(con, "ALTER TABLE listings ADD COLUMN status                 TEXT"),    error = function(e) NULL)
 tryCatch(dbExecute(con, "ALTER TABLE listings ADD COLUMN status_checked_at      TEXT"),    error = function(e) NULL)
+# Oslo district/sub-district from the ad's breadcrumb, e.g. "Grünerløkka -
+# Sofienberg". Kept separate from `neighborhood` (which is nearly always empty
+# and feeds the value-score references) so the dashboard filter has a field
+# that is actually populated, without shifting the value model underneath it.
+tryCatch(dbExecute(con, "ALTER TABLE listings ADD COLUMN area                   TEXT"),    error = function(e) NULL)
 
 existing_ids <- dbGetQuery(con, "SELECT finn_id FROM listings")$finn_id
 message("Eksisterende annonser i DB: ", length(existing_ids))
@@ -130,7 +135,7 @@ EXPORT_COLS <- c(
   "property_type", "year_built", "broker", "url", "scraped_at", "lat", "lon",
   "category", "category_confidence", "category_reasoning", "classified_at",
   "standard", "standard_confidence", "standard_reasoning", "standard_classified_at",
-  "floor", "has_balcony", "status", "status_checked_at"
+  "floor", "has_balcony", "status", "status_checked_at", "area"
 )
 
 export_snapshot <- function() {
@@ -321,7 +326,33 @@ empty_detail <- function() {
        address = NA_character_, neighborhood = NA_character_,
        property_type = NA_character_, year_built = NA_integer_,
        description = NA_character_, broker = NA_character_,
-       floor = NA_integer_, has_balcony = NA_integer_)
+       floor = NA_integer_, has_balcony = NA_integer_,
+       area = NA_character_)
+}
+
+# ── Oslo area from the ad's breadcrumb ────────────────────────────────────────
+# The trail ends "... > Eiendom > Bolig til salgs > Oslo > <område>", so the
+# crumb after the city is the district. The old selector looked for a
+# breadcrumb aria-label/class that finn.no does not use, which is why the
+# neighborhood column ended up empty for 608 of 637 live listings.
+extract_area <- function(doc) {
+  trail <- str_squish(html_text(html_elements(doc, "nav a, [class*='breadcrumb'] a")))
+  trail <- trail[nzchar(trail)]
+  if (length(trail) == 0) return(NA_character_)
+
+  anchors <- which(trail %in% c("Oslo", "Bolig til salgs"))
+  cand <- if (length(anchors) > 0 && max(anchors) < length(trail)) {
+    trail[max(anchors) + 1L]
+  } else {
+    trail[length(trail)]
+  }
+
+  # When the trail is missing, these site-chrome links are what is left.
+  chrome <- c("Logg inn", "FINN.no", "FINN.no Mulighetenes marked", "For bedrifter",
+              "Varslinger", "Ny annonse", "Gå til annonsen", "Eiendom",
+              "Bolig til salgs", "Oslo")
+  if (cand %in% chrome || nchar(cand) > 45) return(NA_character_)
+  cand
 }
 
 # Force a value into something SQLite can bind: exactly length 1, never NULL.
@@ -340,15 +371,18 @@ detail_is_empty <- function(d) {
   all(is.na(c(d$title, d$price, d$size_sqm, d$address)))
 }
 
-# ── Is this listing still for sale? ───────────────────────────────────────────
-# "sold"   — the ad carries finn.no's Solgt badge
-# "gone"   — the ad has been removed (404/410)
-# "active" — the ad is up and parseable
-# NA       — could not tell (network trouble, unparseable page); left unchanged
-#            in the DB so a bad network day never marks live ads as sold.
+# ── Can this listing still be bought? ─────────────────────────────────────────
+# Returns list(status, area) — the area comes free from the same fetch.
+# "sold"     — the ad carries finn.no's Solgt badge
+# "inactive" — the ad carries the Inaktiv badge: unpublished, so not for sale
+#              even though it is still readable and has no Solgt badge
+# "gone"     — the ad has been removed (404/410)
+# "active"   — the ad is published and parseable
+# NA         — could not tell (network trouble, unparseable page); left
+#              unchanged in the DB so a bad network day never retires live ads.
 #
-# The badge is an element whose ENTIRE text is "Solgt". Do not grep the page for
-# "solgt": every ad, sold or not, contains the phrase "Hva er denne boligen
+# Both badges are elements whose ENTIRE text is the word. Do not grep the page
+# for "solgt": every ad, sold or not, contains the phrase "Hva er denne boligen
 # solgt for tidligere?".
 check_listing_status <- function(finn_id) {
   url <- paste0("https://www.finn.no/realestate/homes/ad.html?finnkode=", finn_id)
@@ -361,17 +395,22 @@ check_listing_status <- function(finn_id) {
         req_error(is_error = function(resp) FALSE) |>
         req_perform()
 
-      if (resp_status(resp) >= 400) return("gone")
+      if (resp_status(resp) >= 400) return(list(status = "gone", area = NA_character_))
 
       doc    <- read_html(resp_body_string(resp))
-      labels <- str_squish(html_text(html_elements(doc, "span, div, p, strong, h1, h2")))
-      if (any(labels %in% c("Solgt", "SOLGT"))) return("sold")
-      if (length(html_elements(doc, "dl dt")) == 0) return(NA_character_)
-      "active"
+      labels <- str_squish(html_text(html_elements(doc, "span, div, p, strong, a, h1, h2")))
+      area   <- extract_area(doc)
+
+      # Checked in this order: a sold ad is usually unpublished too, and "sold"
+      # is the more informative of the two.
+      if (any(labels %in% c("Solgt", "SOLGT")))     return(list(status = "sold",     area = area))
+      if (any(labels %in% c("Inaktiv", "INAKTIV"))) return(list(status = "inactive", area = area))
+      if (length(html_elements(doc, "dl dt")) == 0) return(list(status = NA_character_, area = area))
+      list(status = "active", area = area)
     }, max_attempts = 2L, base_wait = 2),
     error = function(e) {
       message("    Statussjekk mislyktes for ", finn_id, ": ", conditionMessage(e))
-      NA_character_
+      list(status = NA_character_, area = NA_character_)
     }
   )
 }
@@ -597,7 +636,8 @@ scrape_listing_detail <- function(finn_id) {
          address = address, neighborhood = neighborhood,
          property_type = property_type, year_built = year_built,
          description = description, broker = broker,
-         floor = floor, has_balcony = has_balcony)
+         floor = floor, has_balcony = has_balcony,
+         area = extract_area(doc))
   )
 }
 
@@ -683,15 +723,15 @@ if (length(new_rows) > 0) {
         INSERT OR IGNORE INTO listings
           (finn_id, title, price, size_sqm, rooms, address,
            neighborhood, property_type, year_built, description,
-           broker, url, scraped_at, floor, has_balcony)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+           broker, url, scraped_at, floor, has_balcony, area)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         params = list(
           db_val(row$finn_id), db_val(final_title), db_val(final_price),
           db_val(final_size), db_val(final_rooms), db_val(final_address),
           db_val(detail$neighborhood), db_val(detail$property_type),
           db_val(detail$year_built), db_val(detail$description),
           db_val(detail$broker), db_val(row$url), scraped_at,
-          db_val(detail$floor), db_val(detail$has_balcony)
+          db_val(detail$floor), db_val(detail$has_balcony), db_val(detail$area)
         )
       )
 
@@ -791,13 +831,14 @@ if (nrow(needs_backfill) > 0) {
         description   = COALESCE(description,   ?),
         broker        = COALESCE(broker,        ?),
         floor         = COALESCE(floor,         ?),
-        has_balcony   = COALESCE(has_balcony,   ?)
+        has_balcony   = COALESCE(has_balcony,   ?),
+        area          = COALESCE(area,          ?)
       WHERE finn_id = ?",
       params = list(
         db_val(d$title), db_val(d$price), db_val(d$size_sqm), db_val(d$rooms),
         db_val(d$address), db_val(d$neighborhood), db_val(d$property_type),
         db_val(d$year_built), db_val(d$description), db_val(d$broker),
-        db_val(d$floor), db_val(d$has_balcony),
+        db_val(d$floor), db_val(d$has_balcony), db_val(d$area),
         fid
       )
     ), error = function(e) {
@@ -881,26 +922,47 @@ if (length(seen_ids) > 0) {
 STATUS_BATCH <- suppressWarnings(as.integer(Sys.getenv("FINN_STATUS_BATCH", "300")))
 if (is.na(STATUS_BATCH)) STATUS_BATCH <- 300L
 STATUS_RECHECK_DAYS <- 14L
+# FINN_STATUS_FORCE=1 re-checks everything that is not already sold/gone,
+# ignoring the recency rule. For one-off sweeps after the check itself changes
+# (e.g. when Inaktiv detection was added and every 'active' needed revisiting).
+STATUS_FORCE <- Sys.getenv("FINN_STATUS_FORCE") %in% c("1", "true", "TRUE")
+
+stale_clause <- if (STATUS_FORCE) {
+  "1"
+} else {
+  paste0("status_checked_at IS NULL",
+         " OR julianday('now') - julianday(status_checked_at) > ", STATUS_RECHECK_DAYS)
+}
 
 needs_status <- dbGetQuery(con, paste0(
   "SELECT finn_id FROM listings
     WHERE status IS NULL
-       OR (status = 'active'
-           AND (status_checked_at IS NULL
-                OR julianday('now') - julianday(status_checked_at) > ",
-                STATUS_RECHECK_DAYS, "))
+       OR (status NOT IN ('sold', 'gone') AND (", stale_clause, "))
     ORDER BY (status IS NOT NULL), status_checked_at
     LIMIT ", STATUS_BATCH
 ))
 
 if (nrow(needs_status) > 0) {
   message("\nSjekker salgsstatus for ", nrow(needs_status), " annonser...")
-  st_counts <- c(active = 0L, sold = 0L, gone = 0L, ukjent = 0L)
+  st_counts <- c(active = 0L, sold = 0L, inactive = 0L, gone = 0L, ukjent = 0L)
   consecutive_failures <- 0L
+  n_areas <- 0L
 
   for (i in seq_len(nrow(needs_status))) {
     fid <- needs_status$finn_id[i]
-    st  <- check_listing_status(fid)
+    res <- check_listing_status(fid)
+    st  <- res$status
+
+    # The area rides along on the same request, so store it whenever we got one
+    # — even when the status itself came back unknown.
+    if (!is.na(res$area)) {
+      tryCatch({
+        dbExecute(con, "UPDATE listings SET area = ? WHERE finn_id = ?",
+                  params = list(res$area, fid))
+        n_areas <- n_areas + 1L
+      }, error = function(e) message("    Kunne ikke lagre område for ", fid,
+                                     " — ", conditionMessage(e)))
+    }
 
     if (is.na(st)) {
       # Unknown: leave the stored status alone rather than guessing.
@@ -930,8 +992,9 @@ if (nrow(needs_status) > 0) {
   }
 
   message("  Statussjekk ferdig: ", st_counts[["active"]], " aktive, ",
-          st_counts[["sold"]], " solgt, ", st_counts[["gone"]], " borte, ",
-          st_counts[["ukjent"]], " ukjent.")
+          st_counts[["sold"]], " solgt, ", st_counts[["inactive"]], " inaktive, ",
+          st_counts[["gone"]], " borte, ", st_counts[["ukjent"]], " ukjent.")
+  message("  Områder hentet: ", n_areas)
 }
 
 total_active <- dbGetQuery(con, "SELECT COUNT(*) AS n FROM listings WHERE status = 'active'")$n

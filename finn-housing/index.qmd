@@ -54,7 +54,8 @@ raw <- read.csv(CSV_PATH, stringsAsFactors = FALSE, fileEncoding = "UTF-8")
 raw <- raw |>
   # Add optional columns that may be absent from older CSV exports
   (\(d) {
-    for (col in c("broker", "standard", "standard_confidence", "standard_reasoning")) {
+    for (col in c("broker", "standard", "standard_confidence", "standard_reasoning",
+                  "status", "area")) {
       if (!col %in% names(d)) d[[col]] <- NA_character_
     }
     for (col in c("floor", "has_balcony")) {
@@ -69,7 +70,8 @@ df <- raw |>
     # type conflicts in coalesce() when columns are entirely NA in the CSV
     across(any_of(c("title", "address", "neighborhood", "property_type", "broker",
                     "category", "category_confidence", "category_reasoning", "classified_at",
-                    "standard", "standard_confidence", "standard_reasoning", "url")),
+                    "standard", "standard_confidence", "standard_reasoning", "url",
+                    "status", "area")),
            as.character),
     scraped_date = as.Date(substr(scraped_at, 1, 10)),
     price_m      = price / 1e6,
@@ -562,7 +564,9 @@ ggplot(val_df, aes(x = size_sqm, y = value_score)) +
 
 ### Topp 10 Beste Verdi-Annonser
 
-*Kun annonser som fortsatt er til salgs. Salgsstatus hentes fra finn.no ved hver kjøring — solgte og fjernede annonser holdes utenfor, slik at tabellen bare viser boliger du faktisk kan kjøpe.*
+*Kun annonser som fortsatt er til salgs: solgte, inaktive og fjernede annonser holdes utenfor, slik at tabellen bare viser boliger du faktisk kan kjøpe. Salgsstatus hentes fra finn.no ved hver kjøring.*
+
+*Bruk nedtrekksmenyen under **Område** for å velge bydel — tabellen er rangert etter verdi-score, så de ti øverste radene er alltid de beste i det området du har valgt.*
 
 ```{r value-table}
 #| results: asis
@@ -570,26 +574,30 @@ value_pool <- classified |>
   filter(!is.na(value_score), !is.na(price), !is.na(size_sqm),
          size_sqm >= 25, price_sqm > 10000)
 
-# Bare usolgte annonser. status settes av scraper.R: "active" = annonsen ligger
-# ute, "sold" = Solgt-merket på finn.no, "gone" = annonsen er fjernet, NA = ikke
-# sjekket ennå. Ikke-sjekkede holdes utenfor — tabellen skal kun inneholde
-# annonser vi har bekreftet at er til salgs.
+# Bare annonser som kan kjøpes. status settes av scraper.R: "active" = annonsen
+# ligger ute, "sold" = Solgt-merket, "inactive" = Inaktiv-merket (avpublisert,
+# altså ikke til salgs), "gone" = fjernet, NA = ikke sjekket ennå. Alt annet enn
+# "active" holdes utenfor — også ikke-sjekkede, siden tabellen kun skal
+# inneholde annonser vi har bekreftet at er til salgs.
 status_known <- "status" %in% names(value_pool) && any(!is.na(value_pool$status))
 if (status_known) {
   value_pool <- value_pool |> filter(!is.na(status), status == "active")
 }
 
+# Hele det aktive utvalget sendes til tabellen, rangert etter verdi-score, med
+# 10 rader per side. Da virker områdefilteret som forventet: velger du en bydel,
+# viser de ti første radene de beste annonsene i nettopp den bydelen.
 top10 <- value_pool |>
   arrange(desc(value_score)) |>
-  slice_head(n = 10) |>
   transmute(
     Annonse = ifelse(!is.na(url),
       paste0('<a href="', url, '" target="_blank">', str_trunc(coalesce(title, "—"), 40), '</a>'),
       coalesce(title, "—")),
+    `Område` = factor(coalesce(na_if(area, ""), "Ukjent")),
     Pris    = paste0(format(price, big.mark = " "), " NOK"),
     `Størrelse` = paste0(size_sqm, " m²"),
     `kr/m²` = paste0(format(round(price_sqm), big.mark = " "), " NOK"),
-    Kategori = category,
+    Kategori = factor(category),
     `Verdi-score` = paste0(round(value_score, 2), "×  (+", round(value_pct), "%)")
   )
 
@@ -606,8 +614,26 @@ if (nrow(top10) == 0) {
 # Separate chunk: an htmlwidget must be the chunk's own visible value, which it
 # cannot be in the results:asis chunk above that emits the notes.
 if (nrow(top10) > 0) {
-  datatable(top10, escape = FALSE, rownames = FALSE,
-            options = list(dom = "t", pageLength = 10, scrollX = TRUE))
+  datatable(
+    top10,
+    escape = FALSE, rownames = FALSE,
+    # Factor columns get a select dropdown; "Område" is the one asked for.
+    filter = list(position = "top", clear = TRUE),
+    options = list(
+      dom = "ftip",        # filter row, table, info, pagination
+      pageLength = 10,
+      scrollX = TRUE,
+      order = list(),      # keep the verdi-score ranking from arrange()
+      language = list(
+        search      = "Søk:",
+        info        = "Viser _START_–_END_ av _TOTAL_ annonser til salgs",
+        infoFiltered = " (filtrert fra _MAX_)",
+        infoEmpty   = "Ingen annonser",
+        zeroRecords = "Ingen annonser i dette området",
+        paginate    = list(previous = "Forrige", `next` = "Neste")
+      )
+    )
+  )
 }
 ```
 

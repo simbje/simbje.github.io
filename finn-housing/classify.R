@@ -181,7 +181,7 @@ EXPORT_COLS <- c(
   "property_type", "year_built", "broker", "url", "scraped_at", "lat", "lon",
   "category", "category_confidence", "category_reasoning", "classified_at",
   "standard", "standard_confidence", "standard_reasoning", "standard_classified_at",
-  "floor", "has_balcony", "status", "status_checked_at"
+  "floor", "has_balcony", "status", "status_checked_at", "area"
 )
 
 # Only scraper.R runs the ALTER TABLE migrations, so classify.R can meet a DB
