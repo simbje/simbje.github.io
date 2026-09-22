@@ -562,10 +562,24 @@ ggplot(val_df, aes(x = size_sqm, y = value_score)) +
 
 ### Topp 10 Beste Verdi-Annonser
 
+*Kun annonser som fortsatt er til salgs. Salgsstatus hentes fra finn.no ved hver kjøring — solgte og fjernede annonser holdes utenfor, slik at tabellen bare viser boliger du faktisk kan kjøpe.*
+
 ```{r value-table}
-top10 <- classified |>
+#| results: asis
+value_pool <- classified |>
   filter(!is.na(value_score), !is.na(price), !is.na(size_sqm),
-         size_sqm >= 25, price_sqm > 10000) |>
+         size_sqm >= 25, price_sqm > 10000)
+
+# Bare usolgte annonser. status settes av scraper.R: "active" = annonsen ligger
+# ute, "sold" = Solgt-merket på finn.no, "gone" = annonsen er fjernet, NA = ikke
+# sjekket ennå. Ikke-sjekkede holdes utenfor — tabellen skal kun inneholde
+# annonser vi har bekreftet at er til salgs.
+status_known <- "status" %in% names(value_pool) && any(!is.na(value_pool$status))
+if (status_known) {
+  value_pool <- value_pool |> filter(!is.na(status), status == "active")
+}
+
+top10 <- value_pool |>
   arrange(desc(value_score)) |>
   slice_head(n = 10) |>
   transmute(
@@ -579,8 +593,22 @@ top10 <- classified |>
     `Verdi-score` = paste0(round(value_score, 2), "×  (+", round(value_pct), "%)")
   )
 
-datatable(top10, escape = FALSE, rownames = FALSE,
-          options = list(dom = "t", pageLength = 10, scrollX = TRUE))
+if (nrow(top10) == 0) {
+  cat("> **Ingen usolgte annonser å vise ennå.** Tabellen krever annonser som både er",
+      "bekreftet til salgs og AI-klassifisert. Nye annonser markeres som aktive når de",
+      "hentes; klassifiseringen kjører i GitHub Actions.\n")
+} else if (!status_known) {
+  cat("> *Salgsstatus er ikke hentet ennå for disse annonsene — tabellen kan inneholde solgte boliger.*\n\n")
+}
+```
+
+```{r value-table-dt}
+# Separate chunk: an htmlwidget must be the chunk's own visible value, which it
+# cannot be in the results:asis chunk above that emits the notes.
+if (nrow(top10) > 0) {
+  datatable(top10, escape = FALSE, rownames = FALSE,
+            options = list(dom = "t", pageLength = 10, scrollX = TRUE))
+}
 ```
 
 ---

@@ -107,6 +107,11 @@ tryCatch(dbExecute(con, "ALTER TABLE listings ADD COLUMN standard_reasoning     
 tryCatch(dbExecute(con, "ALTER TABLE listings ADD COLUMN standard_classified_at  TEXT"), error = function(e) NULL)
 tryCatch(dbExecute(con, "ALTER TABLE listings ADD COLUMN floor                  INTEGER"), error = function(e) NULL)
 tryCatch(dbExecute(con, "ALTER TABLE listings ADD COLUMN has_balcony            INTEGER"), error = function(e) NULL)
+# 'active' = still for sale, 'sold' = carries finn.no's Solgt badge, 'gone' =
+# ad removed (404). NULL = never checked. Lets the dashboard show only listings
+# that can actually be bought.
+tryCatch(dbExecute(con, "ALTER TABLE listings ADD COLUMN status                 TEXT"),    error = function(e) NULL)
+tryCatch(dbExecute(con, "ALTER TABLE listings ADD COLUMN status_checked_at      TEXT"),    error = function(e) NULL)
 
 existing_ids <- dbGetQuery(con, "SELECT finn_id FROM listings")$finn_id
 message("Eksisterende annonser i DB: ", length(existing_ids))
@@ -125,7 +130,7 @@ EXPORT_COLS <- c(
   "property_type", "year_built", "broker", "url", "scraped_at", "lat", "lon",
   "category", "category_confidence", "category_reasoning", "classified_at",
   "standard", "standard_confidence", "standard_reasoning", "standard_classified_at",
-  "floor", "has_balcony"
+  "floor", "has_balcony", "status", "status_checked_at"
 )
 
 export_snapshot <- function() {
@@ -161,12 +166,19 @@ options(error = function() {
 })
 
 # ── HTML fetch helper ─────────────────────────────────────────────────────────
+# Returns NULL when the ad is gone (404/410) — callers already treat NULL as
+# "no data". Those codes are a definitive answer, so they are not retried:
+# retrying spent ~7s per delisted ad in the backfill passes, and those passes
+# are full of them. 429 and 5xx still get the full retry treatment.
 fetch_html <- function(url) {
   with_retry(function() {
     resp <- request(url) |>
       req_headers("User-Agent" = UA, "Accept-Language" = "nb-NO,nb;q=0.9") |>
       req_timeout(30) |>
+      req_error(is_error = function(resp)
+        resp_status(resp) >= 400 && !resp_status(resp) %in% c(404L, 410L)) |>
       req_perform()
+    if (resp_status(resp) %in% c(404L, 410L)) return(NULL)
     read_html(resp_body_string(resp))
   }, max_attempts = 3L, base_wait = 2)
 }
@@ -326,6 +338,42 @@ complete_detail <- function(d) {
 # the HTML changed, as opposed to a listing that is genuinely sparse.
 detail_is_empty <- function(d) {
   all(is.na(c(d$title, d$price, d$size_sqm, d$address)))
+}
+
+# ── Is this listing still for sale? ───────────────────────────────────────────
+# "sold"   — the ad carries finn.no's Solgt badge
+# "gone"   — the ad has been removed (404/410)
+# "active" — the ad is up and parseable
+# NA       — could not tell (network trouble, unparseable page); left unchanged
+#            in the DB so a bad network day never marks live ads as sold.
+#
+# The badge is an element whose ENTIRE text is "Solgt". Do not grep the page for
+# "solgt": every ad, sold or not, contains the phrase "Hva er denne boligen
+# solgt for tidligere?".
+check_listing_status <- function(finn_id) {
+  url <- paste0("https://www.finn.no/realestate/homes/ad.html?finnkode=", finn_id)
+  tryCatch(
+    with_retry(function() {
+      resp <- request(url) |>
+        req_headers("User-Agent" = UA, "Accept-Language" = "nb-NO,nb;q=0.9") |>
+        req_timeout(30) |>
+        # A 404 is an answer ("this ad is gone"), not a failure to retry.
+        req_error(is_error = function(resp) FALSE) |>
+        req_perform()
+
+      if (resp_status(resp) >= 400) return("gone")
+
+      doc    <- read_html(resp_body_string(resp))
+      labels <- str_squish(html_text(html_elements(doc, "span, div, p, strong, h1, h2")))
+      if (any(labels %in% c("Solgt", "SOLGT"))) return("sold")
+      if (length(html_elements(doc, "dl dt")) == 0) return(NA_character_)
+      "active"
+    }, max_attempts = 2L, base_wait = 2),
+    error = function(e) {
+      message("    Statussjekk mislyktes for ", finn_id, ": ", conditionMessage(e))
+      NA_character_
+    }
+  )
 }
 
 # ── Scrape individual listing page for extra details ──────────────────────────
@@ -559,6 +607,7 @@ message("Starter finn.no-henting — ", Sys.time())
 new_rows        <- list()
 stop_early      <- FALSE
 seen_only_pages <- 0L
+seen_ids        <- character(0)   # everything on the search pages = still for sale
 
 for (pg in seq_len(MAX_PAGES)) {
   if (stop_early) break
@@ -576,6 +625,7 @@ for (pg in seq_len(MAX_PAGES)) {
     break
   }
 
+  seen_ids <- unique(c(seen_ids, page_df$finn_id))
   novel <- page_df[!page_df$finn_id %in% existing_ids, ]
   message("  Side ", pg, ": ", nrow(page_df), " annonser, ",
           nrow(novel), " nye (ikke i DB ennå)")
@@ -803,6 +853,90 @@ if (nrow(needs_floor) > 0) {
   }
   message("  Etasje/balkong-etterlysing ferdig.")
 }
+
+# ── Salgsstatus ───────────────────────────────────────────────────────────────
+# The dashboard's best-value table must only offer listings you can actually
+# buy. Two sources feed the status column:
+#   1. Free: everything that appeared on a search page just now is for sale.
+#   2. Paid (one request each): verify listings we have not checked recently.
+# 'sold' and 'gone' are terminal — those are never re-checked again, which also
+# stops us re-fetching delisted ads on every run forever.
+status_now <- format(Sys.time(), "%Y-%m-%dT%H:%M:%S")
+
+if (length(seen_ids) > 0) {
+  # Chunked to stay well under SQLite's bound-parameter limit.
+  for (chunk in split(seen_ids, ceiling(seq_along(seen_ids) / 400L))) {
+    tryCatch(dbExecute(con, paste0(
+      "UPDATE listings SET status = 'active', status_checked_at = ? WHERE finn_id IN (",
+      paste(rep("?", length(chunk)), collapse = ","), ")"),
+      params = c(list(status_now), as.list(chunk))
+    ), error = function(e) message("  Kunne ikke markere søketreff som aktive: ",
+                                   conditionMessage(e)))
+  }
+  message("\nMarkerte ", length(seen_ids), " annonser fra søkeresultatene som aktive.")
+}
+
+# Bounded per run so a CI job stays inside its time budget; raise it with
+# FINN_STATUS_BATCH for a one-off local sweep of the whole backlog.
+STATUS_BATCH <- suppressWarnings(as.integer(Sys.getenv("FINN_STATUS_BATCH", "300")))
+if (is.na(STATUS_BATCH)) STATUS_BATCH <- 300L
+STATUS_RECHECK_DAYS <- 14L
+
+needs_status <- dbGetQuery(con, paste0(
+  "SELECT finn_id FROM listings
+    WHERE status IS NULL
+       OR (status = 'active'
+           AND (status_checked_at IS NULL
+                OR julianday('now') - julianday(status_checked_at) > ",
+                STATUS_RECHECK_DAYS, "))
+    ORDER BY (status IS NOT NULL), status_checked_at
+    LIMIT ", STATUS_BATCH
+))
+
+if (nrow(needs_status) > 0) {
+  message("\nSjekker salgsstatus for ", nrow(needs_status), " annonser...")
+  st_counts <- c(active = 0L, sold = 0L, gone = 0L, ukjent = 0L)
+  consecutive_failures <- 0L
+
+  for (i in seq_len(nrow(needs_status))) {
+    fid <- needs_status$finn_id[i]
+    st  <- check_listing_status(fid)
+
+    if (is.na(st)) {
+      # Unknown: leave the stored status alone rather than guessing.
+      st_counts[["ukjent"]] <- st_counts[["ukjent"]] + 1L
+      consecutive_failures  <- consecutive_failures + 1L
+      if (consecutive_failures >= MAX_CONSECUTIVE_FAILURES) {
+        message("  ", consecutive_failures, " ubesvarte statussjekker på rad — avbryter",
+                " etter ", i, " av ", nrow(needs_status), ".")
+        scrape_degraded <- TRUE
+        break
+      }
+      Sys.sleep(DETAIL_SLEEP)
+      next
+    }
+
+    consecutive_failures <- 0L
+    st_counts[[st]] <- st_counts[[st]] + 1L
+    tryCatch(dbExecute(con,
+      "UPDATE listings SET status = ?, status_checked_at = ? WHERE finn_id = ?",
+      params = list(st, status_now, fid)
+    ), error = function(e) {
+      message("    Kunne ikke lagre status for ", fid, " — ", conditionMessage(e))
+    })
+
+    if (i %% 50 == 0) message("  [", i, "/", nrow(needs_status), "] sjekket...")
+    Sys.sleep(DETAIL_SLEEP)
+  }
+
+  message("  Statussjekk ferdig: ", st_counts[["active"]], " aktive, ",
+          st_counts[["sold"]], " solgt, ", st_counts[["gone"]], " borte, ",
+          st_counts[["ukjent"]], " ukjent.")
+}
+
+total_active <- dbGetQuery(con, "SELECT COUNT(*) AS n FROM listings WHERE status = 'active'")$n
+message("Annonser som fortsatt er til salgs: ", total_active, " av ",
+        dbGetQuery(con, "SELECT COUNT(*) AS n FROM listings")$n)
 
 # ── Export CSV snapshot so the Quarto page can render even before classify.R ──
 n_exported <- export_snapshot()
