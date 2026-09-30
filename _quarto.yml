@@ -33,6 +33,8 @@ website:
             text: LLM Alpha Farming
           - href: llm-alpha-construction/index.qmd
             text: Portfolio Construction
+          - href: llm-alpha-combination/index.qmd
+            text: Signal Combination
           - text: "---"
           - text: "Ad Hoc"
           - href: finn-housing/index.qmd
