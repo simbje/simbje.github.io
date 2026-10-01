@@ -1,0 +1,313 @@
+{
+  "run_date": "2026-10-01",
+  "candidates_count": 74,
+  "sources_used": ["arxiv:cs.LG", "arxiv:stat.ME", "arxiv:q-fin.CP", "arxiv:q-fin.MF", "arxiv:q-fin.PM", "arxiv:q-fin.RM", "arxiv:q-fin.GN", "arxiv:q-fin.TR", "arxiv:econ.GN", "arxiv:q-fin.ST", "arxiv:econ.EM", "arxiv:stat.ML", "arxiv:econ.TH", "arxiv:stat.AP"],
+  "bucket_counts": {
+    "data_science": 26,
+    "finance": 25,
+    "social_sciences": 25
+  },
+  "top_papers": {
+    "data_science": [
+      {
+        "id": "arxiv:2609.39866",
+        "rank": 1,
+        "title": "Preemptive LLM Unlearning against Forbidden Capability Acquisition via Gradient Sealing",
+        "authors": "Kemou Li",
+        "url": "https://arxiv.org/abs/2609.39866",
+        "source": "arxiv",
+        "why_trending": "Addresses critical open-weight LLM security through preemptive unlearning to prevent capability acquisition during fine-tuning, highly relevant as open-source models proliferate.",
+        "topics": [
+          "LLM Safety and Alignment",
+          "Model Unlearning"
+        ]
+      },
+      {
+        "id": "arxiv:2609.39929",
+        "rank": 2,
+        "title": "RoPE at the End of Its Rope? Theory, Diagnosis, and Mitigation of Long-Context Failures",
+        "authors": "Yuyang Wu",
+        "url": "https://arxiv.org/abs/2609.39929",
+        "source": "arxiv",
+        "why_trending": "Provides theoretical characterization of RoPE failures in long-context LLMs, directly addressing practical limits of current transformer scaling approaches.",
+        "topics": [
+          "Foundation Model Theory",
+          "Long-Context LLMs"
+        ]
+      },
+      {
+        "id": "arxiv:2609.39869",
+        "rank": 3,
+        "title": "GrammarRL: Effective Grammar-Constrained Decoding via Reinforcement Learning",
+        "authors": "Gabriele Tuccio",
+        "url": "https://arxiv.org/abs/2609.39869",
+        "source": "arxiv",
+        "why_trending": "Combines RL with grammar-constrained generation to improve semantic quality of LLM outputs, addressing practical deployment constraints.",
+        "topics": [
+          "Reinforcement Learning for NLP",
+          "Constrained Generation"
+        ]
+      },
+      {
+        "id": "arxiv:2609.39892",
+        "rank": 4,
+        "title": "Shared Weights, Selected Computations: How Looped Transformers Route What Each Loop Does",
+        "authors": "Jiaju Wu",
+        "url": "https://arxiv.org/abs/2609.39892",
+        "source": "arxiv",
+        "why_trending": "Investigates weight-sharing mechanisms in looped transformers, revealing how shared parameters enable diverse computational behaviors for iterative reasoning.",
+        "topics": [
+          "Foundation Model Theory",
+          "Efficient Transformers"
+        ]
+      },
+      {
+        "id": "arxiv:2609.39967",
+        "rank": 5,
+        "title": "What Limits Recursive Reasoning Models: Optimization, Architecture and Test-Time Scaling",
+        "authors": "Yuliana Shakhvalieva",
+        "url": "https://arxiv.org/abs/2609.39967",
+        "source": "arxiv",
+        "why_trending": "Systematically analyzes optimization and architectural factors limiting recursive reasoning models, clarifying design choices for compact algorithmic solvers.",
+        "topics": [
+          "Foundation Model Theory",
+          "Efficient Transformers"
+        ]
+      }
+    ],
+    "finance": [
+      {
+        "id": "arxiv:2609.37741",
+        "rank": 1,
+        "title": "Dyson-Schwinger Effective-Action Methods for Rough Volatility: A Correlation-Response Architecture for Calibration, Exotics and Risk",
+        "authors": "Frédéric Pauquay",
+        "url": "https://arxiv.org/abs/2609.37741",
+        "source": "arxiv",
+        "why_trending": "Develops non-perturbative quantum field theory framework for stochastic volatility calibration, advancing rough-volatility modeling for exotic pricing.",
+        "topics": [
+          "Volatility Modeling and Calibration",
+          "Advanced Derivatives Pricing"
+        ]
+      },
+      {
+        "id": "arxiv:2609.38545",
+        "rank": 2,
+        "title": "Say, Echo, Do: Strategic Narratives and Revealed Positioning in Financial Markets",
+        "authors": "Ali Atiah Alzahrani",
+        "url": "https://arxiv.org/abs/2609.38545",
+        "source": "arxiv",
+        "why_trending": "Analyzes strategic narrative-trading interactions where institutions can talk down assets while accumulating positions, with quantified thresholds for narrative credibility.",
+        "topics": [
+          "Market Microstructure and Narratives",
+          "Information Asymmetry"
+        ]
+      },
+      {
+        "id": "arxiv:2609.39420",
+        "rank": 3,
+        "title": "QuantCode Model: Specializing Language Models for Executable Algorithmic Trading Code",
+        "authors": "Alexey Chernysh",
+        "url": "https://arxiv.org/abs/2609.39420",
+        "source": "arxiv",
+        "why_trending": "Demonstrates specialization of LLMs for executable algorithmic trading code, bridging natural-language strategy specification and framework-compliant implementation.",
+        "topics": [
+          "AI for Quantitative Trading",
+          "Natural Language Finance"
+        ]
+      },
+      {
+        "id": "arxiv:2609.35086",
+        "rank": 4,
+        "title": "Retrieval-Augmented Diffusion Modeling for Stochastic Discount Factor Portfolios",
+        "authors": "Kelvin J. L. Koa",
+        "url": "https://arxiv.org/abs/2609.35086",
+        "source": "arxiv",
+        "why_trending": "Combines diffusion models with retrieval-augmented learning for SDF-based portfolio optimization, handling non-stationary regime shifts in financial data.",
+        "topics": [
+          "Portfolio Optimization and ML",
+          "Deep Learning for Finance"
+        ]
+      },
+      {
+        "id": "arxiv:2609.37872",
+        "rank": 5,
+        "title": "A Generalized Langevin Model of Latent Liquidity and Concave Price Impact",
+        "authors": "Andrey Itkin",
+        "url": "https://arxiv.org/abs/2609.37872",
+        "source": "arxiv",
+        "why_trending": "Models market impact through generalized Langevin dynamics with latent liquidity, capturing technical analysis support/resistance via local-time mechanisms.",
+        "topics": [
+          "Market Microstructure and Narratives",
+          "Advanced Volatility Models"
+        ]
+      }
+    ],
+    "social_sciences": [
+      {
+        "id": "arxiv:2609.38692",
+        "rank": 1,
+        "title": "Imputation is all you need: double robustness, semiparametric efficiency, and automatic covariate balance for estimating the average treatment effect",
+        "authors": "Fang Han",
+        "url": "https://arxiv.org/abs/2609.38692",
+        "source": "arxiv",
+        "why_trending": "Reveals hidden dual-weighting structure in sieve-regression imputation, unifying causal inference theory and showing automatic covariate balance properties.",
+        "topics": [
+          "Causal Inference and Estimation",
+          "Machine Learning for Economics"
+        ]
+      },
+      {
+        "id": "arxiv:2609.36667",
+        "rank": 2,
+        "title": "When One Leak Pays Forever: Context Binding and the Price of Deterring Collusion",
+        "authors": "Tingyi Lin",
+        "url": "https://arxiv.org/abs/2609.36667",
+        "source": "arxiv",
+        "why_trending": "Game-theoretic analysis of MEV-prevention committee collusion in threshold encryption, quantifying how single breaches unlock persistent future vulnerabilities.",
+        "topics": [
+          "Blockchain Economics and Mechanism Design",
+          "Game Theory Applications"
+        ]
+      },
+      {
+        "id": "arxiv:2609.37168",
+        "rank": 3,
+        "title": "Are there asymmetries in euro area monetary policy transmission?",
+        "authors": "Michael Pfarrhofer",
+        "url": "https://arxiv.org/abs/2609.37168",
+        "source": "arxiv",
+        "why_trending": "Identifies sign asymmetry in ECB monetary transmission using Bayesian additive regression trees, finding tightening has predictable effects while easing does not.",
+        "topics": [
+          "Monetary Policy and Econometrics",
+          "Nonlinear Economic Dynamics"
+        ]
+      },
+      {
+        "id": "arxiv:2609.39077",
+        "rank": 4,
+        "title": "The Capacity Cost of Informational Screening",
+        "authors": "Keita Kuwahara",
+        "url": "https://arxiv.org/abs/2609.39077",
+        "source": "arxiv",
+        "why_trending": "Mechanism-design analysis of information elicitation under capacity constraints, showing when screening reveals harmful uses alongside beneficial ones.",
+        "topics": [
+          "Mechanism Design and Information",
+          "Game Theory Applications"
+        ]
+      },
+      {
+        "id": "arxiv:2609.37412",
+        "rank": 5,
+        "title": "Debiased Inference for Bounding Wage Inequality with Many Controls",
+        "authors": "Yaroslav Korobka",
+        "url": "https://arxiv.org/abs/2609.37412",
+        "source": "arxiv",
+        "why_trending": "Develops debiased machine-learning approach for partial identification with moment inequalities, applicable to wage discrimination and inequality studies.",
+        "topics": [
+          "Causal Inference and Estimation",
+          "Machine Learning for Economics"
+        ]
+      }
+    ]
+  },
+  "topics": [
+    {
+      "name": "LLM Safety, Alignment, and Unlearning",
+      "paper_ids": [
+        "arxiv:2609.39866",
+        "arxiv:2609.39882",
+        "arxiv:2609.39880"
+      ],
+      "summary": "Papers addressing security and control of open-weight LLMs through preemptive unlearning, persona removal, and password-modeling insights; critical for responsible deployment of foundation models."
+    },
+    {
+      "name": "Foundation Model Theory and Long-Context LLMs",
+      "paper_ids": [
+        "arxiv:2609.39929",
+        "arxiv:2609.39892",
+        "arxiv:2609.39967",
+        "arxiv:2609.39914"
+      ],
+      "summary": "Theoretical and architectural analyses of transformer scaling limits, weight-sharing mechanisms, and recursive reasoning; addresses how recurrent and neural-operator designs enable efficient computation."
+    },
+    {
+      "name": "Reinforcement Learning for NLP and Constrained Generation",
+      "paper_ids": [
+        "arxiv:2609.39869",
+        "arxiv:2609.39884",
+        "arxiv:2609.39995"
+      ],
+      "summary": "Uses RL to improve controllable and rule-aligned text generation under grammar, instruction, and safety constraints; spans diffusion planning for autonomous driving and retrosynthesis."
+    },
+    {
+      "name": "Volatility Modeling and Calibration",
+      "paper_ids": [
+        "arxiv:2609.37741",
+        "arxiv:2609.39256",
+        "arxiv:2609.36061"
+      ],
+      "summary": "Advances in stochastic and rough volatility calibration using quantum-field-theory methods, Knothe-Rosenblatt transport, and loss functions tailored to financial prediction economics."
+    },
+    {
+      "name": "Market Microstructure, Narratives, and Information Asymmetry",
+      "paper_ids": [
+        "arxiv:2609.38545",
+        "arxiv:2609.37820",
+        "arxiv:2609.37872",
+        "arxiv:2609.37903"
+      ],
+      "summary": "Analyzes strategic information disclosure, narrative-trading interactions, firm repositioning in language-model space, and latent-liquidity activation; bridges text and market dynamics."
+    },
+    {
+      "name": "AI and Machine Learning for Quantitative Trading",
+      "paper_ids": [
+        "arxiv:2609.39420",
+        "arxiv:2609.35086",
+        "arxiv:2609.34474",
+        "arxiv:2609.38545"
+      ],
+      "summary": "Applies deep learning, diffusion models, and kernel methods to algorithmic trading, portfolio optimization under SDF framework, and hedging with neural embeddings."
+    },
+    {
+      "name": "Causal Inference and Partial Identification",
+      "paper_ids": [
+        "arxiv:2609.38692",
+        "arxiv:2609.38875",
+        "arxiv:2609.37412",
+        "arxiv:2609.40156"
+      ],
+      "summary": "Develops debiased ML approaches for treatment effects, wage inequality, and optimal transport-based partial identification under unobserved heterogeneity."
+    },
+    {
+      "name": "Blockchain Economics, Game Theory, and Mechanism Design",
+      "paper_ids": [
+        "arxiv:2609.36667",
+        "arxiv:2609.39077",
+        "arxiv:2609.37373",
+        "arxiv:2609.39425",
+        "arxiv:2609.34074"
+      ],
+      "summary": "Game-theoretic and mechanism-design analyses of MEV collusion, information screening, voting rules, school choice, and strategic behavior under incentive constraints."
+    },
+    {
+      "name": "Monetary Policy, Nonlinear Dynamics, and Econometrics",
+      "paper_ids": [
+        "arxiv:2609.37168",
+        "arxiv:2609.39070",
+        "arxiv:2609.35011",
+        "arxiv:2609.36445"
+      ],
+      "summary": "Studies asymmetries in monetary transmission, discretionary policy under wage inequality, price stability via random matrix theory, and GMM in IV models."
+    },
+    {
+      "name": "Decision-Focused Learning and Optimization",
+      "paper_ids": [
+        "arxiv:2609.39261",
+        "arxiv:2609.38765",
+        "arxiv:2609.39877",
+        "arxiv:2609.39934"
+      ],
+      "summary": "Examines Jacobian rank collapse in decision-focused learning, bond portfolio optimization with transaction costs, algorithmic recourse under competition, and checkpoint selection for domain generalization."
+    }
+  ]
+}
