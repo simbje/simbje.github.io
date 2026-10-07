@@ -43,8 +43,8 @@ website:
             text: Research Trends
       - text: "SSB Analysis"
         href: ssb-daily/index.qmd
-      - text: "Risk analysis and Machine Learning"
-        href: https://simen-bjerkelund.shinyapps.io/tradingstats_shiny_app/
+      - text: "Trading Analysis and Machine Learning"
+        href: https://01a1165b-cc6f-0ba4-638a-adce2fa8a494.share.connect.posit.cloud/
     right:
       - icon: linkedin
         href: https://www.linkedin.com/in/simen-bjerkelund-428b07141/
