@@ -1,7 +1,13 @@
 ---
 title: "Data Projects"
 listing:
-  contents: "*.qmd"
+  contents:
+    - "*.qmd"
+    - "../llm-alpha/index.qmd"
+    - "../llm-alpha-construction/index.qmd"
+    - "../llm-alpha-combination/index.qmd"
+    - "../finn-housing/index.qmd"
+    - "../ssrn-research/index.qmd"
   type: default
   sort: "date desc"
   fields: [title, description, date, categories]

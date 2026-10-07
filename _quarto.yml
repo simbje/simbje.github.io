@@ -28,7 +28,7 @@ website:
           - href: data-projects/tennis-slams.qmd
             text: Grand Slam Point-by-Point
           - text: "---"
-          - text: "Finance"
+          - text: "Finance and Factor Analysis"
           - href: llm-alpha/index.qmd
             text: LLM Alpha Farming
           - href: llm-alpha-construction/index.qmd
