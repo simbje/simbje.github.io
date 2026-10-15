@@ -1,0 +1,294 @@
+{
+  "run_date": "2026-10-15",
+  "candidates_count": 73,
+  "sources_used": ["arxiv:cs.LG", "arxiv:stat.ML", "arxiv:stat.ME", "arxiv:q-fin.ST", "arxiv:q-fin.MF", "arxiv:q-fin.PM", "arxiv:q-fin.RM", "arxiv:econ.EM", "arxiv:q-fin.GN", "arxiv:q-fin.CP", "arxiv:stat.AP", "arxiv:q-fin.TR", "arxiv:econ.GN", "arxiv:econ.TH"],
+  "bucket_counts": {
+    "data_science": 25,
+    "finance": 25,
+    "social_sciences": 25
+  },
+  "top_papers": {
+    "data_science": [
+      {
+        "id": "arxiv:2610.20218",
+        "rank": 1,
+        "title": "Mixed Poisson diffusion models and application to posterior sampling",
+        "authors": "Thibaut Pellerin",
+        "url": "https://arxiv.org/abs/2610.20218",
+        "source": "arxiv",
+        "why_trending": "Extends diffusion models to Poisson-driven processes, opening new directions for inverse problems and posterior sampling beyond Gaussian assumptions.",
+        "topics": [
+          "Generative modeling and diffusion"
+        ]
+      },
+      {
+        "id": "arxiv:2610.20229",
+        "rank": 2,
+        "title": "The minimal width of neural networks and immersions of real projective space",
+        "authors": "BaoZhi Chu",
+        "url": "https://arxiv.org/abs/2610.20229",
+        "source": "arxiv",
+        "why_trending": "Provides theoretical foundations for neural network expressiveness through topological immersion theory, bridging deep learning theory with algebraic topology.",
+        "topics": [
+          "Neural network theory and expressiveness"
+        ]
+      },
+      {
+        "id": "arxiv:2610.20238",
+        "rank": 3,
+        "title": "MAEM: Mitigating Recency Bias via a Replay-Free, Capacity-Controlled Dynamic Mixture of Experts for Class-Incremental Graph Learning",
+        "authors": "Junlin Chen",
+        "url": "https://arxiv.org/abs/2610.20238",
+        "source": "arxiv",
+        "why_trending": "Addresses catastrophic forgetting in graph learning with capacity-controlled mixture of experts, enabling scalable continual learning on graphs.",
+        "topics": [
+          "Continual learning and graph neural networks"
+        ]
+      },
+      {
+        "id": "arxiv:2610.20243",
+        "rank": 4,
+        "title": "Retrieval Over Training: Similarity search-based Model Selection for Time Series Anomaly Detection",
+        "authors": "Christos Panourgias",
+        "url": "https://arxiv.org/abs/2610.20243",
+        "source": "arxiv",
+        "why_trending": "Novel model-selection approach using similarity search for time series anomaly detection, addressing practical heterogeneity across diverse time series.",
+        "topics": [
+          "Time series and anomaly detection"
+        ]
+      },
+      {
+        "id": "arxiv:2610.20247",
+        "rank": 5,
+        "title": "Scaling Multilingual Mixture-of-Experts: How Language Coverage Changes Capacity and Compute Allocation",
+        "authors": "Joel Dag",
+        "url": "https://arxiv.org/abs/2610.20247",
+        "source": "arxiv",
+        "why_trending": "Scaling law for multilingual MoE models quantifies the capacity cost of language coverage, informing efficient multilingual model design.",
+        "topics": [
+          "Large-scale multimodal and multilingual systems"
+        ]
+      }
+    ],
+    "finance": [
+      {
+        "id": "arxiv:2610.16732",
+        "rank": 1,
+        "title": "GROMM: Generative Risk-neutral Option Market Models",
+        "authors": "Magnus Wiese",
+        "url": "https://arxiv.org/abs/2610.16732",
+        "source": "arxiv",
+        "why_trending": "First arbitrage-free generative model for European option markets with smooth interpolation, extending SANOS framework to dynamic pricing.",
+        "topics": [
+          "Option pricing and volatility modeling"
+        ]
+      },
+      {
+        "id": "arxiv:2610.16524",
+        "rank": 2,
+        "title": "Reinforcement Learning with Hawkes-Structured Networks for Market Making",
+        "authors": "Fernando Acero",
+        "url": "https://arxiv.org/abs/2610.16524",
+        "source": "arxiv",
+        "why_trending": "Combines Hawkes process order-flow dynamics with RL for market making, addressing non-Markovian self-exciting order arrivals with theoretical guarantees.",
+        "topics": [
+          "Reinforcement learning for market microstructure"
+        ]
+      },
+      {
+        "id": "arxiv:2610.20037",
+        "rank": 3,
+        "title": "Data-Driven Dynamic Portfolio Selection with Vine Copula Simulation and Reinforcement Learning",
+        "authors": "Gabriël M. J. Gelissen",
+        "url": "https://arxiv.org/abs/2610.20037",
+        "source": "arxiv",
+        "why_trending": "Integrates vine copula simulation with RL for portfolio selection under CVaR penalty, combining statistical dependence modeling with learning.",
+        "topics": [
+          "Portfolio optimization and reinforcement learning"
+        ]
+      },
+      {
+        "id": "arxiv:2610.17732",
+        "rank": 4,
+        "title": "Structured SDEs for Realized GARCH: Continuous-Time Volatility Modelling and Component-Level Analysis",
+        "authors": "Hongyu Yao",
+        "url": "https://arxiv.org/abs/2610.17732",
+        "source": "arxiv",
+        "why_trending": "Structured SDE for realized variance forecasting with component-level analysis, improving upon GARCH and HAR benchmarks with simulation-based learning.",
+        "topics": [
+          "Volatility forecasting and time series models"
+        ]
+      },
+      {
+        "id": "arxiv:2610.18387",
+        "rank": 5,
+        "title": "Risk Measures for the Climate Transition Age: Why Symmetric Risk Budgets are unlikely to mitigate two-dimensionally asymmetric Climate Change risks",
+        "authors": "Lars Dijkstra",
+        "url": "https://arxiv.org/abs/2610.18387",
+        "source": "arxiv",
+        "why_trending": "Addresses asymmetric climate transition risk with non-symmetric risk budgets, timely for sustainable finance amid market regime changes.",
+        "topics": [
+          "Climate risk and sustainable finance"
+        ]
+      }
+    ],
+    "social_sciences": [
+      {
+        "id": "arxiv:2610.19075",
+        "rank": 1,
+        "title": "Randomization Inference for Dynamic Causal Effects in Short Panels with Autoregressive Instruments",
+        "authors": "Pedro Picchetti",
+        "url": "https://arxiv.org/abs/2610.19075",
+        "source": "arxiv",
+        "why_trending": "Develops randomization inference for dynamic causal effects under endogenous treatment with autoregressive instruments, advancing causal inference in short panels.",
+        "topics": [
+          "Causal inference and econometrics"
+        ]
+      },
+      {
+        "id": "arxiv:2610.19720",
+        "rank": 2,
+        "title": "Which Text Matters: Handling Model Uncertainty in Text-as-Data Regressions, with an Application to Central Bank Communication",
+        "authors": "Martin Feldkircher",
+        "url": "https://arxiv.org/abs/2610.19720",
+        "source": "arxiv",
+        "why_trending": "Formalizes model uncertainty in text-as-data regressions with application to central bank communication, addressing reproducibility in computational social science.",
+        "topics": [
+          "Text analysis and measurement uncertainty"
+        ]
+      },
+      {
+        "id": "arxiv:2610.20441",
+        "rank": 3,
+        "title": "Revealing Structured Heterogeneity",
+        "authors": "Christopher Turansick",
+        "url": "https://arxiv.org/abs/2610.20441",
+        "source": "arxiv",
+        "why_trending": "Characterizes behavioral content and identification in restricted heterogeneity models, connecting discrete choice theory with structural estimation.",
+        "topics": [
+          "Discrete choice and preference heterogeneity"
+        ]
+      },
+      {
+        "id": "arxiv:2610.19512",
+        "rank": 4,
+        "title": "Rewarding Noise: Incentives in Decentralized A/B Testing",
+        "authors": "Ryan Kessler",
+        "url": "https://arxiv.org/abs/2610.19512",
+        "source": "arxiv",
+        "why_trending": "Shows how misaligned incentives in decentralized A/B testing create noise-rewarding mechanisms, with broad implications for experimentation design.",
+        "topics": [
+          "Mechanism design and organizational economics"
+        ]
+      },
+      {
+        "id": "arxiv:2610.18625",
+        "rank": 5,
+        "title": "Falsification-proof non-market allocation mechanisms",
+        "authors": "Eduardo Perez-Richet",
+        "url": "https://arxiv.org/abs/2610.18625",
+        "source": "arxiv",
+        "why_trending": "Characterizes optimal allocation mechanisms robust to falsification across diverse falsification technologies, advancing mechanism design under manipulation.",
+        "topics": [
+          "Mechanism design and incentive compatibility"
+        ]
+      }
+    ]
+  },
+  "topics": [
+    {
+      "name": "Generative modeling and diffusion processes",
+      "paper_ids": [
+        "arxiv:2610.20218",
+        "arxiv:2610.20288",
+        "arxiv:2610.20331"
+      ],
+      "summary": "Extensions of diffusion and flow-matching frameworks beyond Gaussian assumptions, including Poisson-driven models and one-step generators. Focus on improving expressiveness and computational efficiency in generative modeling."
+    },
+    {
+      "name": "Neural network theory and expressiveness",
+      "paper_ids": [
+        "arxiv:2610.20229",
+        "arxiv:2610.20286",
+        "arxiv:2610.20303"
+      ],
+      "summary": "Theoretical characterization of neural network capacity through topological immersion, representation hypothesis convergence, and quantization-friendly transforms, bridging deep learning with mathematics."
+    },
+    {
+      "name": "Continual learning and catastrophic forgetting",
+      "paper_ids": [
+        "arxiv:2610.20238",
+        "arxiv:2610.20294",
+        "arxiv:2610.20318"
+      ],
+      "summary": "Methods for sequential task learning without forgetting, including mixture-of-experts routing, recursive self-improvement, and test-time adaptation in dynamic environments."
+    },
+    {
+      "name": "Time series analysis and anomaly detection",
+      "paper_ids": [
+        "arxiv:2610.20243",
+        "arxiv:2610.20256",
+        "arxiv:2610.15296"
+      ],
+      "summary": "Model selection and forecasting for time series, including anomaly detection via similarity search, long-horizon RL, and neural network approaches to noncausal processes."
+    },
+    {
+      "name": "Reinforcement learning for financial markets",
+      "paper_ids": [
+        "arxiv:2610.16524",
+        "arxiv:2610.20037",
+        "arxiv:2610.15256"
+      ],
+      "summary": "RL applications to market microstructure and portfolio optimization, incorporating order-flow dynamics (Hawkes processes), multi-agent interactions in fee markets, and vine copula dependencies."
+    },
+    {
+      "name": "Option pricing and volatility modeling",
+      "paper_ids": [
+        "arxiv:2610.16732",
+        "arxiv:2610.17732",
+        "arxiv:2610.20000",
+        "arxiv:2610.19254"
+      ],
+      "summary": "Arbitrage-free generative models for option surfaces, structured SDEs for volatility, American option boundaries under Heston, and physics-informed neural solvers for parametric pricing."
+    },
+    {
+      "name": "Causal inference and econometric methods",
+      "paper_ids": [
+        "arxiv:2610.19075",
+        "arxiv:2610.16701",
+        "arxiv:2610.16754",
+        "arxiv:2610.16503"
+      ],
+      "summary": "Advanced econometric methods including randomization inference for dynamic effects, rational inattention estimation, pseudo-panel event studies, and high-dimensional inference."
+    },
+    {
+      "name": "Mechanism design and incentive alignment",
+      "paper_ids": [
+        "arxiv:2610.19512",
+        "arxiv:2610.18625",
+        "arxiv:2610.20125",
+        "arxiv:2610.17450"
+      ],
+      "summary": "Optimal mechanism design under information asymmetry, falsification, and strategic behavior, including allocation rules for decentralized systems and pricing under heterogeneous buyer behavior."
+    },
+    {
+      "name": "Multimodal and large-scale systems",
+      "paper_ids": [
+        "arxiv:2610.20247",
+        "arxiv:2610.20217",
+        "arxiv:2610.20251",
+        "arxiv:2610.20269"
+      ],
+      "summary": "Scaling multilingual and multimodal models, vision-language foundation models for medical imaging, uncertainty-aware segmentation, and signal processing with generative models."
+    },
+    {
+      "name": "Text analysis and measurement uncertainty",
+      "paper_ids": [
+        "arxiv:2610.19720",
+        "arxiv:2610.18921",
+        "arxiv:2610.18435"
+      ],
+      "summary": "Handling model uncertainty in text-as-data applications, human-AI collaboration in creative tasks, and LLM evaluation in peer review, addressing reproducibility in computational social science."
+    }
+  ]
+}
